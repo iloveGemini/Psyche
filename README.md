@@ -24,6 +24,7 @@
 7. [联想](notes/design/association.md) —— 激活度 + 处境调制；不写时机，先定考卷
 8. [自我](notes/design/self.md) —— Agent 唯一能直接写的地方：自述、作息计划、focus、自主区
 9. [组装器](notes/design/assembler.md) —— 它此刻看得见什么：常驻 vs 按需、真实处境、出境检查
+10. [通道与心跳](notes/design/channel-and-heartbeat.md) —— 收件箱、交接信不送回原处、它自己写的作息
 
 想知道这些决定从哪来，再看 [背景与调研](#背景与调研10-12)。
 
@@ -67,7 +68,7 @@
 | ⏸ | 身体 | 搁置：先做能力，不设计反应（见文件头） | [body](notes/design/body.md) |
 | 5 | 自我 | ✅ 已细化 | [self](notes/design/self.md) |
 | 6 | 组装器 | ✅ 初稿（差额度比例） | [assembler](notes/design/assembler.md) |
-| 7 / 8 | 心跳与家 / 通道 | 草稿 | [lib-vs-harness](notes/design/lib-vs-harness.md)、[perception-and-fading §八](notes/design/perception-and-fading.md) |
+| 7 / 8 | 心跳与家 / 通道 | ✅ 已细化（沿用 Roxy 收件箱与 rhythm） | [channel-and-heartbeat](notes/design/channel-and-heartbeat.md)、[lib-vs-harness](notes/design/lib-vs-harness.md) |
 | 9 | 门户 | 草稿 | 同上（能力表、位置状态表） |
 | 1 | 感知 | 草稿 | [perception-and-fading](notes/design/perception-and-fading.md)（含隐私两道门） |
 | ⟂ | Lethe 褪色 | ⏸ 后置 | [events §九](notes/design/events.md) |

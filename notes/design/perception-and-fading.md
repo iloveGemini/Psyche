@@ -133,6 +133,7 @@ AI 的思考发生在供应商那里，记忆进上下文就等于外传。所�
 ## 八、rhythm / attention / focus 迁进 lib（10-13 定）
 
 > 10-13 修订：rhythm 改为 Agent 自己的作息计划（`self.md`），生物钟随身体搁置；focus 窄化为眼下在关注的事。
+> 10-13 晚：通道、心跳、同时被找、主动发消息已定，见 `channel-and-heartbeat.md`；本节下面的"待定"以那里为准。
 
 迁。harness 变成"地方"，Agent 是同一个主体，在哪里由 lib 记。自我独立性和连续性都落在 lib 一处。
 
