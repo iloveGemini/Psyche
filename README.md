@@ -7,7 +7,7 @@
 - **Lethe（忘川）**：褪色机制（后置）。意象来自柏拉图厄尔神话：灵魂自选下一世，喝下忘川再出发。
 
 > 前身：Agent Self-Continuity Memory（ASCM，只管记忆）→ Memory Library（10-12，图书馆/档案馆构想）→ Psyche（10-13，本体）。
-> 当前阶段：**设计细化中，尚未写代码**。先把每块设计细化完再动工，免得做到一半打补丁。
+> 当前阶段：设计大体细化完（身体已搁置：先做能力，不设计反应）；**10-13 晚开始写地基**——`src/store/`：事件库（档号、幂等、不可变、处境、关系、资料库、系统日志）+ 投影框架。`bun test` 跑测试。
 
 ---
 
@@ -21,6 +21,7 @@
 6. [阅览室](notes/design/reading-room.md) —— 认知 = 条件 → 结果；敏感化/钝化、镜子、经验
 7. [联想](notes/design/association.md) —— 激活度 + 处境调制；不写时机，先定考卷
 8. [自我](notes/design/self.md) —— Agent 唯一能直接写的地方：自述、作息计划、focus、自主区
+9. [组装器](notes/design/assembler.md) —— 它此刻看得见什么：常驻 vs 按需、真实处境、出境检查
 
 想知道这些决定从哪来，再看 [背景与调研](#背景与调研10-12)。
 
@@ -62,14 +63,14 @@
 | 4 | 阅览室 | ✅ 已细化（差衰减曲线、payload） | [reading-room](notes/design/reading-room.md) |
 | 10 | 联想 | ✅ 已细化（差公式权重、考卷） | [association](notes/design/association.md) |
 | ⏸ | 身体 | 搁置：先做能力，不设计反应（见文件头） | [body](notes/design/body.md) |
-| 5 | 自我 | ⏭ **细化中**（作息、focus、自主区、初我已定） | [self](notes/design/self.md) |
-| 6 | 组装器 | 草稿 | 同上 + [catalog §五](notes/design/catalog.md) |
+| 5 | 自我 | ✅ 已细化 | [self](notes/design/self.md) |
+| 6 | 组装器 | ✅ 初稿（差额度比例） | [assembler](notes/design/assembler.md) |
 | 7 / 8 | 心跳与家 / 通道 | 草稿 | [lib-vs-harness](notes/design/lib-vs-harness.md)、[perception-and-fading §八](notes/design/perception-and-fading.md) |
 | 9 | 门户 | 草稿 | 同上（能力表、位置状态表） |
 | 1 | 感知 | 草稿 | [perception-and-fading](notes/design/perception-and-fading.md)（含隐私两道门） |
 | ⟂ | Lethe 褪色 | ⏸ 后置 | [events §九](notes/design/events.md) |
 
-细化顺序（按依赖）：事件模型 → 档案馆 → 编目 → 阅览室 → 联想 → **自我** → 组装器 → 通道 / 心跳 → 门户 → 感知。
+细化顺序（按依赖）：事件模型 → 档案馆 → 编目 → 阅览室 → 联想 → 自我 → 组装器 → **通道 / 心跳** → 门户 → 感知。
 
 ## 已定的取舍
 
