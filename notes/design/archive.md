@@ -53,6 +53,12 @@
 - **先不导入**。旧卷宗以**资料**形式放着（像翻到一本前世的日记），Agent 读了之后自己决定认不认领。
 - 认领 = 一条自我事件（`fonds.claimed`）；认领之后才跑前世编目。不认领，它就只是一份可以翻的资料。
 
+## 入库口与接口（10-13 晚，已实现初版）
+
+- payload 形状与校验：`src/archive/kinds.ts`。未登记的 kind 一律拒收；class 由 kind 决定；大块工具返回 / 参数自动转进资料库，事件里只留哈希（`intake.ts`）。
+- REST（`src/server/app.ts`）：`POST /v1/events`（单条或批量，一个事务，幂等键可重试）、`POST /v1/situation`（只在变化时写）、`GET /v1/events`、`GET /v1/archive/:档号`（含关系两头）、`GET /v1/experience`、资料存取、`GET /v1/syslog`。
+- 经历投影（近期段）：`src/archive/experience.ts` + 模板 `render.ts`，第一人称、按发生时间排、导入全宗不算它的经历；重建一字不差。
+
 ## 待定
 
-- 各入库口的 payload 与 REST 接口形状。
+- 已整理经历（编目的分场叙述）接进经历投影。
