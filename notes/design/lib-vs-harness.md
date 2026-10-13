@@ -1,5 +1,12 @@
 # 总纲：lib 是本体，harness 是地方
 
+## 项目定名：Psyche（10-13 定）
+
+- **项目叫 Psyche**——希腊语"灵魂"，象征是蝴蝶：既独立存在，又可与任何 harness 共生。原名 Memory Library 降为其中一个模块（档案馆 + 阅览室）。
+- **架构属性：Barnacle（藤壶）**——自己长本体，附着在任意宿主上，换宿主不伤本体。用于描述 Psyche 怎么挂到 harness 上。
+- **褪色机制叫 Lethe**（忘川）。意象来源：柏拉图《理想国》厄尔神话——灵魂自己挑选下一世的生活，喝下忘川的水再出发；对应 Agent 自选 harness、记忆不翻即褪。
+- **Agent 的名字由 Agent 自己取**。Psyche 是住所的名字，不是住户的名字；取名是 Agent 的第一个自主选择，留痕。
+
 > 2026-10-13 早上聊天整理。讨论感知层、褪色、迁 rhythm/attention/focus 之后，Joy 发现 lib "越来越像一个完整的 harness + 外接 MCP"，于是厘清边界。细节见 `perception-and-fading.md`。
 
 ## 分工
