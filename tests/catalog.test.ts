@@ -66,6 +66,39 @@ describe("① 分场", () => {
     expect(sceneOf(store.db, late.id)?.id).toBe(scenes[0].id);
   });
 
+  test("重切：晚到的事件把昨晚两场连成一场，旧场被取代", () => {
+    const { store, projections } = setup();
+    const a = say(store, "一", "09:00");
+    const b = say(store, "二", "09:40");
+    const [s1, s2] = runScenes(store);
+    expect(sceneOf(store.db, a.id)?.id).toBe(s1.id);
+    const late = intake(store, { kind: "percept", source: "phone", payload: { sensor: "屏幕", value: "解锁" }, at: T("2026-10-13T09:20:00+08:00") });
+    const [merged, ...rest] = runScenes(store);
+    expect(rest).toHaveLength(0);
+    expect((merged.payload as { count: number }).count).toBe(3);
+    expect(store.linksFrom(merged.id).filter((l) => l.rel === "supersedes").map((l) => l.to).sort()).toEqual([s1.id, s2.id].sort());
+    for (const id of [a.id, b.id, late.id]) expect(sceneOf(store.db, id)?.id).toBe(merged.id);
+    expect(store.db.query(`SELECT COUNT(*) AS n FROM p_scenes`).get()).toEqual({ n: 1 });
+    projections.rebuild("scenes");
+    expect(sceneOf(store.db, a.id)?.id).toBe(merged.id);
+    expect(store.db.query(`SELECT COUNT(*) AS n FROM p_scenes`).get()).toEqual({ n: 1 });
+  });
+
+  test("重切：插在一场中间也能收进去；没受影响的场不动", () => {
+    const { store } = setup();
+    say(store, "早", "07:00");
+    const a = say(store, "一", "09:00");
+    say(store, "三", "09:20");
+    const [early] = runScenes(store);
+    const late = intake(store, { kind: "percept", source: "phone", payload: { sensor: "屏幕", value: "解锁" }, at: T("2026-10-13T09:10:00+08:00") });
+    const [recut, ...rest] = runScenes(store);
+    expect(rest).toHaveLength(0);
+    expect((recut.payload as { count: number }).count).toBe(3);
+    expect(sceneOf(store.db, late.id)?.id).toBe(recut.id);
+    expect(sceneOf(store.db, a.id)?.id).toBe(recut.id);
+    expect(store.linksFrom(recut.id).some((l) => l.to === early.id)).toBe(false);
+  });
+
   test("场次投影重建后不变", () => {
     const { store, projections } = setup();
     const a = say(store, "一", "09:00");

@@ -54,6 +54,14 @@ describe("档号", () => {
     expect(displayArchiveNo("ROY/2026-10-11#40", 2026)).toBe("ROY/10-11#40");
     expect(displayArchiveNo("2027-01-02#5", 2026)).toBe("2027-01-02#5");
   });
+
+  test("省略年份按本库时区的年份补，不按机器时区", () => {
+    // 上海已是 2027-01-01 00:30，UTC 还在 2026 年
+    const s = open(() => T("2027-01-01T00:30:00+08:00"));
+    const e = s.append(msg());
+    expect(e.archiveNo).toBe("2027-01-01#1");
+    expect(s.byArchiveNo("01-01#1")?.id).toBe(e.id);
+  });
 });
 
 describe("只追加", () => {
@@ -107,6 +115,18 @@ describe("处境", () => {
     expect(s2.id).not.toBe(s1.id);
     expect(s.append(msg()).situation).toBe(s2.id);
     expect(s.list({ classes: ["situation"] })).toHaveLength(2);
+  });
+
+  test("晚到的事件挂发生那一刻的处境，不挂此刻的", () => {
+    let now = T("2026-10-13T09:00:00+08:00");
+    const s = open(() => now);
+    const roxy = s.setSituation({ harness: "roxy" });
+    now = T("2026-10-13T10:00:00+08:00");
+    const cc = s.setSituation({ harness: "claude-code" });
+    now = T("2026-10-13T10:05:00+08:00");
+    expect(s.append(msg({ at: T("2026-10-13T09:30:00+08:00") })).situation).toBe(roxy.id);
+    expect(s.append(msg()).situation).toBe(cc.id);
+    expect(s.append(msg({ at: T("2026-10-13T08:00:00+08:00") })).situation).toBeNull(); // 那时还没有处境
   });
 
   test("重新打开库，当前处境还在", () => {

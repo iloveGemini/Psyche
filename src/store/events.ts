@@ -165,7 +165,7 @@ export class EventStore {
     const fonds = input.fonds ?? "";
     const day = localDay(at, this.timeZone);
     const situation =
-      input.situation !== undefined ? input.situation : input.class === "situation" || fonds ? null : (this.currentSituation?.id ?? null);
+      input.situation !== undefined ? input.situation : input.class === "situation" || fonds ? null : this.situationAt(at);
     const id = ulid(recorded);
 
     const tx = this.db.transaction(() => {
@@ -202,6 +202,14 @@ export class EventStore {
     return this.currentSituation;
   }
 
+  /** 发生时间 at 那一刻有效的处境 id：晚到的事件挂当时的处境，不挂此刻的 */
+  situationAt(at: number): string | null {
+    const cur = this.currentSituation;
+    if (!cur || cur.at <= at) return cur?.id ?? null;
+    const r = this.db.query(`SELECT id FROM events WHERE class = 'situation' AND fonds = '' AND at <= ? ORDER BY at DESC, id DESC LIMIT 1`).get(at) as { id: string } | null;
+    return r?.id ?? null;
+  }
+
   /** 写入后通知（进程内总线）。返回取消订阅函数 */
   subscribe(fn: Listener): () => void {
     this.listeners.push(fn);
@@ -218,7 +226,7 @@ export class EventStore {
   }
 
   /** 按档号取：接受 `ROY/2026-10-11#40`，也接受省略年份的 `10-13#112`（按 refYear 补） */
-  byArchiveNo(no: string, refYear: number = new Date(this.now()).getFullYear()): PsycheEvent | null {
+  byArchiveNo(no: string, refYear: number = Number(localDay(this.now(), this.timeZone).slice(0, 4))): PsycheEvent | null {
     const m = no.match(/^(?:([^/]+)\/)?((?:\d{4}-)?\d{2}-\d{2})#(\d+)$/);
     if (!m) return null;
     const day = m[2].length === 5 ? `${refYear}-${m[2]}` : m[2];
