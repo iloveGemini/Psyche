@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { EventStore } from "./store/events.ts";
 import { Projections } from "./store/projections.ts";
 import { experienceProjector } from "./archive/experience.ts";
+import { scenesProjector } from "./catalog/scenes.ts";
 import { createApp } from "./server/app.ts";
 
 const dataDir = process.env.PSYCHE_DATA_DIR ?? join(homedir(), ".psyche/data");
@@ -21,6 +22,7 @@ mkdirSync(dataDir, { recursive: true });
 const store = new EventStore(join(dataDir, "psyche.db"), { timeZone: process.env.PSYCHE_TZ });
 const projections = new Projections(store);
 projections.register(experienceProjector);
+projections.register(scenesProjector);
 projections.live();
 
 const port = Number(process.env.PSYCHE_PORT ?? 7450);
