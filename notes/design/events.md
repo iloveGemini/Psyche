@@ -114,7 +114,7 @@ Lethe 是作用层与机制层，持续运行，不是事件：可见状态由"�
 
 补充（10-13）：
 - **自我**加 `recalled`（主动翻了哪几条）、`entity.merged`（实体合并由 Agent 自己确认）。
-- **自我**加 `drive.claimed` / `drive.revised`（魔盒的认领与转化，见 `body.md`）；`ignored` 取消，改由投影算（见 `association.md`）。
+- ~~**自我**加 `drive.claimed` / `drive.revised`~~（随身体搁置）；`ignored` 取消，改由投影算（见 `association.md`）。
 - **梦**加 `entity` / `alias`（识别人与别名）、`thread.*`（线索卷，见第八节）。
 - **原则：记忆库的操作，除了权限和初始化，不设计人类参与。** 合并错了也是一次经历；错了却没有后果，说明这事也不重要。
 

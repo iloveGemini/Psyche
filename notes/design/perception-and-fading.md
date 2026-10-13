@@ -132,6 +132,8 @@ AI 的思考发生在供应商那里，记忆进上下文就等于外传。所�
 
 ## 八、rhythm / attention / focus 迁进 lib（10-13 定）
 
+> 10-13 修订：rhythm 改为 Agent 自己的作息计划（`self.md`），生物钟随身体搁置；focus 窄化为眼下在关注的事。
+
 迁。harness 变成"地方"，Agent 是同一个主体，在哪里由 lib 记。自我独立性和连续性都落在 lib 一处。
 
 - **心跳归 lib**：lib 带调度器，到点或事件触发时由 lib 唤醒 Agent。Claude Code 本身没有心跳，但可以无头启动（`claude -p` / Agent SDK），lib 就能在工位叫醒它。

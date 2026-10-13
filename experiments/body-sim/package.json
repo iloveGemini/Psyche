@@ -1,0 +1,9 @@
+{
+  "name": "body-sim",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-sdk/openai": "^1.3.22",
+    "ai": "^4.3.16"
+  }
+}
