@@ -1,0 +1,248 @@
+/**
+ * 冷写（catalog.md §三，契约 m2.md）：它睡觉时，看跨会话的经历和书架，写回事实、明说的规矩、规律、镜子。
+ *
+ * 系统只做确定性的事：摆材料（游标之后的经历）、按它自己写的 watch 词机械地找候选证据、校验、数证据。
+ * 归纳成什么由它写；没判的候选记进 coldwrite.done，积压可见，不让它自报。
+ * 游标 = 最近一条 coldwrite.done 的 upTo，读时算，不另存表。
+ */
+import type { EventStore, PsycheEvent } from "../store/events.ts";
+import { displayArchiveNo } from "../store/events.ts";
+import { localDay } from "../core/time.ts";
+import { sessionOf } from "../archive/experience.ts";
+import { ENTRY_FIELDS, SHELVES, countedEvidence, readShelf, rootOf, type ShelfEntry } from "../reading/shelf.ts";
+
+export class ColdwriteError extends Error {}
+
+export interface MaterialLine {
+  eventId: string;
+  archiveNo: string;
+  at: number;
+  kind: string;
+  text: string;
+}
+
+const refYear = (store: EventStore) => Number(localDay(store.now(), store.timeZone).slice(0, 4));
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
+/** 冷写写的事件：不当材料、不当证据 */
+const OWN = `kind LIKE 'semantic.%' OR kind = 'coldwrite.done'`;
+
+export function coldCursor(store: EventStore): string {
+  const r = store.db.query(`SELECT MAX(json_extract(payload, '$.upTo')) AS c FROM events WHERE kind = 'coldwrite.done' AND fonds = ''`).get() as { c: string | null };
+  return r.c ?? "";
+}
+
+/** 当前最后一条可当材料的事件 */
+function lastMaterialId(store: EventStore): string | null {
+  const r = store.db.query(`SELECT MAX(id) AS id FROM events WHERE fonds = '' AND class <> 'situation' AND NOT (${OWN})`).get() as { id: string | null };
+  return r.id;
+}
+
+/** (since, upTo] 内的可见经历（有情节的给情节，没写情节的给原话），按会话分组，组按首行时间、行按 at 排 */
+export function materialLines(store: EventStore, since: string, upTo: string): { session: string | null; lines: MaterialLine[] }[] {
+  const rows = store.db
+    .query(
+      `SELECT event_id, archive_no, at, kind, text, session FROM p_experience
+       WHERE covered = 0 AND class <> 'situation' AND event_id > ? AND event_id <= ? ORDER BY at, event_id`,
+    )
+    .all(since, upTo) as { event_id: string; archive_no: string; at: number; kind: string; text: string; session: string | null }[];
+  const year = refYear(store);
+  const groups = new Map<string | null, MaterialLine[]>();
+  for (const r of rows) {
+    const g = groups.get(r.session) ?? [];
+    g.push({ eventId: r.event_id, archiveNo: displayArchiveNo(r.archive_no, year), at: r.at, kind: r.kind, text: r.text });
+    groups.set(r.session, g);
+  }
+  return [...groups].map(([session, lines]) => ({ session, lines })).sort((a, b) => a.lines[0].at - b.lines[0].at);
+}
+
+/** 候选证据：现行规律 / 镜子按它的 watch 词在材料里命中、还没计过的行 */
+export function candidatesFor(store: EventStore, shelf: ShelfEntry[], material: MaterialLine[]): { entry: ShelfEntry; lines: (MaterialLine & { hit: string })[] }[] {
+  const out: { entry: ShelfEntry; lines: (MaterialLine & { hit: string })[] }[] = [];
+  for (const e of shelf) {
+    if ((e.shelf !== "rule" && e.shelf !== "mirror") || !e.watch?.length) continue;
+    const counted = countedEvidence(store.db, e.root);
+    const lines = material.flatMap((l) => {
+      if (counted.has(l.eventId)) return [];
+      const hit = e.watch!.find((w) => w && l.text.includes(w));
+      return hit ? [{ ...l, hit }] : [];
+    });
+    if (lines.length) out.push({ entry: e, lines });
+  }
+  return out;
+}
+
+export function readColdwrite(store: EventStore) {
+  const since = coldCursor(store);
+  const last = lastMaterialId(store);
+  const upTo = last && last > since ? last : null;
+  const groups = upTo ? materialLines(store, since, upTo) : [];
+  const shelf = readShelf(store.db);
+  const year = refYear(store);
+  const shown = (e: ShelfEntry) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year) });
+  const candidates = candidatesFor(store, shelf, groups.flatMap((g) => g.lines));
+  return {
+    upTo,
+    since,
+    material: groups.map((g) => ({ session: g.session, from: g.lines[0].at, to: g.lines.at(-1)!.at, lines: g.lines.map(({ eventId, ...l }) => l) })),
+    shelf: shelf.map(shown),
+    candidates: candidates.map((c) => ({ target: shown(c.entry).archiveNo, lines: c.lines.map(({ eventId, ...l }) => l) })),
+  };
+}
+
+// ── 写回 ──
+
+type Op = "propose" | "evidence" | "revise" | "retire";
+const OP_KIND: Record<Op, string> = { propose: "semantic.proposed", evidence: "semantic.evidence", revise: "semantic.revised", retire: "semantic.retired" };
+
+interface Checked {
+  op: Op;
+  kind: string;
+  payload: Record<string, unknown>;
+  links: { to: string; rel: string; props?: unknown }[];
+  root?: string;
+  cited: PsycheEvent[];
+}
+
+/** 证据只认自己全宗的经历和情节，不认书架条目和处境 */
+function resolveCites(store: EventStore, cites: unknown, at: string, upTo: string): PsycheEvent[] {
+  if (!Array.isArray(cites)) throw new ColdwriteError(`${at}的 cites 应为数组`);
+  const out = new Map<string, PsycheEvent>();
+  for (const c of cites) {
+    const ev = typeof c === "string" ? store.byArchiveNo(c.trim().replace(/^\[|\]$/g, "")) : null;
+    if (!ev) throw new ColdwriteError(`${at}引的 ${String(c)} 查不到`);
+    if (ev.fonds || ev.class === "situation" || ev.kind.startsWith("semantic.") || ev.kind === "coldwrite.done")
+      throw new ColdwriteError(`${at}引的 ${c} 不是你的经历或情节，不能当证据`);
+    if (ev.id > upTo) throw new ColdwriteError(`${at}引的 ${c} 在这次材料之后`);
+    out.set(ev.id, ev);
+  }
+  return [...out.values()];
+}
+
+/** target：现行（最新版、未作废）条目的档号 → 条目 */
+function resolveTarget(store: EventStore, target: unknown, at: string): ShelfEntry {
+  if (!nonEmpty(target)) throw new ColdwriteError(`${at}缺 target（书架条目的档号）`);
+  const ev = store.byArchiveNo(target.trim());
+  const root = ev ? rootOf(store.db, ev.id) : null;
+  const entry = root ? readShelf(store.db, { includeRetired: true }).find((e) => e.root === root) : undefined;
+  if (!ev || !entry) throw new ColdwriteError(`${at}的 target ${target} 不是书架条目`);
+  if (entry.retired) throw new ColdwriteError(`${at}的 target ${target} 已经作废了`);
+  if (entry.current !== ev.id) throw new ColdwriteError(`${at}的 target ${target} 不是最新版，最新的是 ${displayArchiveNo(entry.archiveNo, refYear(store))}`);
+  return entry;
+}
+
+function fieldsOf(e: Record<string, unknown>, at: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of ENTRY_FIELDS) {
+    const v = e[k];
+    if (v === undefined) continue;
+    if (k === "watch") {
+      if (!Array.isArray(v) || !v.every(nonEmpty)) throw new ColdwriteError(`${at}的 watch 应为非空字符串数组`);
+    } else if (typeof v !== "string") throw new ColdwriteError(`${at}的 ${k} 应为字符串`);
+    out[k] = v;
+  }
+  return out;
+}
+
+const sessionsOf = (store: EventStore, evs: PsycheEvent[]) => new Set(evs.map((e) => sessionOf(store.db, e)).filter((s) => s !== null));
+
+/** 条目的规则：规律 / 镜子要条件、结果、观察方式；明说的规矩原话要逐字出现在所引的她的话里 */
+function checkEntryShape(store: EventStore, shelf: string, f: Record<string, unknown>, cited: PsycheEvent[], at: string) {
+  if (!nonEmpty(f.text)) throw new ColdwriteError(`${at}的 text 是空的`);
+  if (shelf === "rule" || shelf === "mirror") {
+    for (const k of ["when", "then", "observe"]) if (!nonEmpty(f[k])) throw new ColdwriteError(`${at}是${shelf === "rule" ? "规律" : "镜子"}，缺 ${k}`);
+  }
+  if (shelf === "told") {
+    if (!nonEmpty(f.quote)) throw new ColdwriteError(`${at}是明说的规矩，缺 quote（原话）`);
+    const q = (f.quote as string).trim();
+    if (!cited.some((e) => e.kind === "message.in" && typeof (e.payload as { text?: unknown }).text === "string" && ((e.payload as { text: string }).text).includes(q)))
+      throw new ColdwriteError(`${at}的原话「${q}」在所引的消息里找不到（要逐字）`);
+  }
+}
+
+function checkOp(store: EventStore, e: unknown, i: number, upTo: string): Checked {
+  const at = `第 ${i + 1} 条`;
+  if (!e || typeof e !== "object") throw new ColdwriteError(`${at}不是对象`);
+  const o = e as Record<string, unknown>;
+  const op = o.op as Op;
+  if (!(op in OP_KIND)) throw new ColdwriteError(`${at}的 op 应为 propose / evidence / revise / retire`);
+  const cited = resolveCites(store, o.cites, at, upTo);
+  const evidence = (props?: unknown) => cited.map((c) => ({ to: c.id, rel: "evidence", ...(props ? { props } : {}) }));
+
+  if (op === "propose") {
+    if (!SHELVES.includes(o.shelf as never)) throw new ColdwriteError(`${at}的 shelf 应为 ${SHELVES.join(" / ")}`);
+    const f = fieldsOf(o, at);
+    checkEntryShape(store, o.shelf as string, f, cited, at);
+    if (!cited.length) throw new ColdwriteError(`${at}没有证据（cites）`);
+    if ((o.shelf === "rule" || o.shelf === "mirror") && (cited.length < 2 || sessionsOf(store, cited).size < 2))
+      throw new ColdwriteError(`${at}是${o.shelf === "rule" ? "规律" : "镜子"}：证据至少 2 条、来自至少 2 个不同的会话（单次不是规律）`);
+    return { op, kind: OP_KIND[op], payload: { shelf: o.shelf, ...f }, links: evidence({ stance: "for" }), cited };
+  }
+
+  const entry = resolveTarget(store, o.target, at);
+  const target = { target: entry.current };
+  if (op === "evidence") {
+    if (!["for", "against", "irrelevant"].includes(o.stance as string)) throw new ColdwriteError(`${at}的 stance 应为 for / against / irrelevant`);
+    if (!cited.length) throw new ColdwriteError(`${at}没挂事件：${o.stance === "against" ? "反例要指出是哪条事件" : "判的是哪条，要挂上"}`);
+    const counted = countedEvidence(store.db, entry.root);
+    const dup = cited.find((c) => counted.has(c.id));
+    if (dup) throw new ColdwriteError(`${at}引的 ${dup.archiveNo} 已经算过这条的证据了`);
+    if (o.note !== undefined && typeof o.note !== "string") throw new ColdwriteError(`${at}的 note 应为字符串`);
+    return { op, kind: OP_KIND[op], payload: { ...target, stance: o.stance, ...(o.note ? { note: o.note } : {}) }, links: evidence({ stance: o.stance }), root: entry.root, cited };
+  }
+  if (!nonEmpty(o.why)) throw new ColdwriteError(`${at}要写 why（为什么${op === "revise" ? "改" : "作废"}）`);
+  if (!cited.length) throw new ColdwriteError(`${at}没挂证据：看了哪些事才${op === "revise" ? "改" : "作废"}的`);
+  if (op === "retire") return { op, kind: OP_KIND[op], payload: { ...target, why: o.why }, links: evidence(), root: entry.root, cited };
+  const f = fieldsOf(o, at);
+  const merged = { ...Object.fromEntries(ENTRY_FIELDS.filter((k) => entry[k] !== undefined).map((k) => [k, entry[k]])), ...f };
+  checkEntryShape(store, entry.shelf, merged, cited, at);
+  return { op, kind: OP_KIND[op], payload: { ...target, why: o.why, ...f }, links: [...evidence(), { to: entry.current, rel: "revises" }], root: entry.root, cited };
+}
+
+const idemOf = (upTo: string, n: number | "done") => `cold:${upTo}:${n}`;
+
+/** POST /v1/coldwrite：校验全过才写，一个事务；最后写 coldwrite.done（游标与没判的候选） */
+export function writeColdwrite(store: EventStore, input: { upTo?: unknown; entries?: unknown }, promptVersion: number) {
+  const upTo = input.upTo;
+  if (!nonEmpty(upTo)) throw new ColdwriteError("缺 upTo");
+  const year = refYear(store);
+  const shown = (ev: PsycheEvent, op: string) => ({ id: ev.id, archiveNo: displayArchiveNo(ev.archiveNo, year), op });
+
+  // 重试：同一个 upTo 已经交过，取回同一批
+  const done = store.db.query(`SELECT id FROM events WHERE source = 'agent' AND idem = ?`).get(idemOf(upTo, "done")) as { id: string } | null;
+  if (done) {
+    const evs = store.db.query(`SELECT id FROM events WHERE source = 'agent' AND idem LIKE ? AND idem <> ? ORDER BY id`).all(`cold:${upTo}:%`, idemOf(upTo, "done")) as { id: string }[];
+    return { written: evs.map((r) => store.get(r.id)!).map((ev) => shown(ev, Object.entries(OP_KIND).find(([, k]) => k === ev.kind)![0])) };
+  }
+
+  const since = coldCursor(store);
+  const last = store.get(upTo);
+  if (!last || last.id <= since || last.fonds || last.kind.startsWith("semantic.") || last.kind === "coldwrite.done")
+    throw new ColdwriteError(`upTo ${upTo} 不是这次材料里的事件`);
+  const entries = input.entries ?? [];
+  if (!Array.isArray(entries)) throw new ColdwriteError("entries 应为数组（可以是空的：看过了，没什么要写）");
+
+  const checked = entries.map((e, i) => checkOp(store, e, i, upTo));
+  // 同一批里同一条目只能改一次 / 作废一次
+  const touched = new Set<string>();
+  checked.forEach((c, i) => {
+    if (c.op !== "revise" && c.op !== "retire") return;
+    if (touched.has(c.root!)) throw new ColdwriteError(`第 ${i + 1} 条：同一条目这一批里已经改过或作废过了`);
+    touched.add(c.root!);
+  });
+
+  // 没判的候选：这次摆出来的候选里，没被本批任何一条挂到对应条目上的
+  const material = materialLines(store, since, upTo).flatMap((g) => g.lines);
+  const judged = new Set(checked.filter((c) => c.root).flatMap((c) => c.cited.map((e) => `${c.root}:${e.id}`)));
+  const unjudged = candidatesFor(store, readShelf(store.db), material).flatMap((c) =>
+    c.lines.filter((l) => !judged.has(`${c.entry.root}:${l.eventId}`)).map((l) => ({ target: displayArchiveNo(c.entry.archiveNo, year), line: l.archiveNo })),
+  );
+
+  const written = store.db.transaction(() => {
+    const evs = checked.map((c, i) =>
+      store.append({ kind: c.kind, class: "self", source: "agent", producer: `cold-write@${promptVersion}`, payload: c.payload, links: c.links, idem: idemOf(upTo, i + 1) }),
+    );
+    store.append({ kind: "coldwrite.done", class: "self", source: "agent", producer: `cold-write@${promptVersion}`, payload: { upTo, since, unjudged }, idem: idemOf(upTo, "done") });
+    return evs;
+  })();
+  return { written: written.map((ev, i) => shown(ev, checked[i].op)), unjudged: unjudged.length };
+}

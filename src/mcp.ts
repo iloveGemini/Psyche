@@ -1,10 +1,14 @@
 /**
- * MCP 服务（stdio）：给 Agent 本人用的四个工具，全部转调 REST（notes/plan/m1.md §五）。
+ * MCP 服务（stdio）：给 Agent 本人用的工具，全部转调 REST（notes/plan/m1.md §五）。
  *
  *   recall            按内容找记忆          → GET  /v1/recall
  *   detail            按档号看原件          → GET  /v1/archive/:no
  *   hotwrite_segment  取还没写进记忆的这一段 → GET  /v1/hotwrite
  *   hotwrite          把这一段写成情节       → POST /v1/hotwrite
+ *   revise_episode    改写自己的一条情节     → POST /v1/episodes/revise
+ *   coldwrite_material 睡前整理的材料        → GET  /v1/coldwrite
+ *   coldwrite         写回书架               → POST /v1/coldwrite
+ *   shelf             看书架                 → GET  /v1/shelf
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -113,7 +117,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "recall",
     {
       description: [
-        "在你的记忆里按内容找。找得到的是你经历过的事（对话、工具调用和结果……），以及你自己写下的情节。",
+        "在你的记忆里按内容找。找得到的是你经历过的事（对话、工具调用和结果……）、你自己写下的情节，以及你书架上整理过的条目（排在前面）。",
         "每行带档号和时间；想看某一行的原件，用 detail。",
         "from / to 可选：ISO 日期（2026-10-14）或时间（2026-10-14T09:30）；不带时区按本地时间。只给日期时，to 包含那一整天。",
       ].join("\n"),
@@ -221,6 +225,128 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/episodes/revise", args)) as { archiveNo: string };
       return text(`改好了：${args.target} → ${r.archiveNo}`);
+    }),
+  );
+
+  type Entry = { archiveNo: string; shelf: string; text: string; when?: string; then?: string; observe?: string; quote?: string; watch?: string[]; for: number; against: number; irrelevant: number; lastEvidenceAt: number | null };
+  const SHELF_NAME: Record<string, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子" };
+  const entryLine = (e: Entry) =>
+    [
+      `[${e.archiveNo}]（${SHELF_NAME[e.shelf] ?? e.shelf}）${e.text}`,
+      e.quote && `  原话：「${e.quote}」`,
+      e.when && `  条件：${e.when}`,
+      e.then && `  结果：${e.then}`,
+      e.observe && `  怎么观察：${e.observe}`,
+      e.watch?.length && `  留意：${e.watch.join("、")}`,
+      `  印证 ${e.for} · 反例 ${e.against}${e.irrelevant ? ` · 判无关 ${e.irrelevant}` : ""}${e.lastEvidenceAt ? ` · 最近一次 ${shortTime(e.lastEvidenceAt, tz)}` : ""}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+  server.registerTool(
+    "coldwrite_material",
+    {
+      description: [
+        "睡前整理用：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、以及按你留意的词找到的候选证据。",
+        "同时给你写法说明和 upTo。看完用 coldwrite 写回。",
+      ].join("\n"),
+      inputSchema: {},
+    },
+    guard(async () => {
+      const m = (await call("GET", "/v1/coldwrite")) as {
+        upTo: string | null;
+        prompt: string;
+        promptVersion: number;
+        material: { session: string | null; lines: { archiveNo: string; at: number; text: string }[] }[];
+        shelf: Entry[];
+        candidates: { target: string; lines: { archiveNo: string; at: number; text: string; hit: string }[] }[];
+      };
+      if (m.upTo === null) return text("上次整理之后没有新的经历，不用整理。");
+      return text(
+        [
+          m.prompt.trim(),
+          "",
+          `upTo: ${m.upTo}`,
+          `promptVersion: ${m.promptVersion}`,
+          "",
+          "<shelf>",
+          ...(m.shelf.length ? m.shelf.map(entryLine) : ["（书架还是空的）"]),
+          "</shelf>",
+          "",
+          "<candidates>",
+          ...(m.candidates.length ? m.candidates.flatMap((c) => [`关于 ${c.target}：`, ...c.lines.map((l) => `${line(l)}　〔命中「${l.hit}」〕`)]) : ["（没有）"]),
+          "</candidates>",
+          "",
+          "<material>",
+          ...m.material.flatMap((g) => [`── 会话 ${g.session ?? "（不在会话里）"} ──`, ...g.lines.map(line)]),
+          "</material>",
+        ].join("\n"),
+      );
+    }),
+  );
+
+  const citesSchema = z.array(z.string().min(1)).describe("依据的档号：你的经历或情节，可以是以前的（recall 翻出来的）");
+  server.registerTool(
+    "coldwrite",
+    {
+      description: [
+        "睡前整理，写回你的书架。书架上的字都是你写的；证据数、强弱由系统从你挂的档号数，不用自评。",
+        "op：propose 新条目（shelf: fact 事实 / told 明说的规矩 / rule 规律 / mirror 镜子）· evidence 对现行条目判一条证据（for 印证 / against 反例 / irrelevant 无关）· revise 改写 · retire 作废。",
+        "规律和镜子要写 when（条件）、then（结果）、observe（结果怎么观察），首批证据至少 2 条、来自不同会话；明说的规矩 quote 逐字照录她的原话。",
+        "upTo 原样传回。entries 可以是空的（看过了，没什么要写）。整批要么全收、要么全拒；被拒时会告诉你原因，改了再交。",
+      ].join("\n"),
+      inputSchema: {
+        upTo: z.string().min(1).describe("coldwrite_material 给的 upTo，原样传回"),
+        promptVersion: z.number().int().optional().describe("给你的 promptVersion，原样传回"),
+        entries: z
+          .array(
+            z.object({
+              op: z.enum(["propose", "evidence", "revise", "retire"]),
+              shelf: z.enum(["fact", "told", "rule", "mirror"]).optional().describe("propose 时必填"),
+              target: z.string().optional().describe("evidence / revise / retire：书架条目的档号（最新版）"),
+              stance: z.enum(["for", "against", "irrelevant"]).optional().describe("evidence 时必填"),
+              text: z.string().optional().describe("这一条，用你自己的话"),
+              when: z.string().optional(),
+              then: z.string().optional(),
+              observe: z.string().optional(),
+              quote: z.string().optional().describe("明说的规矩：她的原话，逐字"),
+              watch: z.array(z.string().min(1)).optional().describe("以后在新经历里留意哪些词，系统按这些词给你找候选证据"),
+              why: z.string().optional().describe("revise / retire：为什么"),
+              note: z.string().optional().describe("evidence：补一句判断理由（可选）"),
+              cites: citesSchema,
+            }),
+          )
+          .describe("要写的条目；可以为空"),
+      },
+    },
+    guard(async ({ upTo, promptVersion, entries }) => {
+      const r = (await call("POST", "/v1/coldwrite", { upTo, entries, ...(promptVersion !== undefined ? { promptVersion } : {}) })) as {
+        written: { archiveNo: string; op: string }[];
+        unjudged: number;
+      };
+      return text(
+        [r.written.length ? `写下了 ${r.written.length} 条：${r.written.map((w) => `${w.archiveNo}（${w.op}）`).join("、")}` : "这次没写。", r.unjudged ? `还有 ${r.unjudged} 条候选没判，记下了。` : ""]
+          .filter(Boolean)
+          .join("\n"),
+      );
+    }),
+  );
+
+  server.registerTool(
+    "shelf",
+    {
+      description: "看你的书架：你整理过的事实、明说的规矩、规律、镜子（现行的），带证据计数。可以按书架或词筛。",
+      inputSchema: {
+        shelf: z.enum(["fact", "told", "rule", "mirror"]).optional(),
+        query: z.string().optional().describe("词，各词都要出现"),
+      },
+    },
+    guard(async ({ shelf, query }) => {
+      const qs = new URLSearchParams();
+      if (shelf) qs.set("shelf", shelf);
+      if (query) qs.set("q", query);
+      const { entries } = (await call("GET", `/v1/shelf?${qs}`)) as { entries: Entry[] };
+      return text(entries.length ? entries.map(entryLine).join("\n") : "书架上没有符合的条目。");
     }),
   );
 

@@ -25,7 +25,7 @@ export function hasFts(db: Database): boolean {
 }
 
 /** 事件属于哪个会话：情节自己记着；处境看自己的 payload；其余经所挂处境查 */
-function sessionOf(db: Database, ev: PsycheEvent): string | null {
+export function sessionOf(db: Database, ev: PsycheEvent): string | null {
   const p = ev.payload as Record<string, unknown>;
   if (ev.kind === "episode" || ev.class === "situation") return typeof p.session === "string" ? p.session : null;
   if (!ev.situation) return null;
@@ -40,7 +40,7 @@ export function episodeText(p: { text: string; felt?: string }): string {
 
 export const experienceProjector: Projector = {
   name: "experience",
-  version: 4,
+  version: 5,
   setup(db: Database) {
     // 旧版表没有 session / covered：派生数据，直接丢掉，版本号变了会重放
     const cols = db.query(`PRAGMA table_info(p_experience)`).all() as { name: string }[];

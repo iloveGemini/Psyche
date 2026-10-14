@@ -7,7 +7,7 @@
  * 2. 大块内容自动转进资料库：工具返回超过阈值时，payload 里只留哈希（原文完整存，但不撑大事件表）。
  */
 import type { EventStore, LinkInput, PsycheEvent } from "../store/events.ts";
-import { validate } from "./kinds.ts";
+import { IntakeError, validate } from "./kinds.ts";
 
 export const INLINE_LIMIT = 2000;
 
@@ -20,7 +20,11 @@ export interface IntakeItem {
   links?: LinkInput[];
 }
 
+/** 带系统闸的记忆：只能从热写 / 冷写的口子进，不能绕过校验直接上报 */
+const GATED = /^(episode|semantic\..+|coldwrite\.done)$/;
+
 export function intake(store: EventStore, item: IntakeItem): PsycheEvent {
+  if (GATED.test(item.kind)) throw new IntakeError(`${item.kind} 要经热写 / 冷写的口子写，不走上报`);
   const spec = validate(item.kind, item.payload, item.links);
   let payload = item.payload;
   if (item.kind === "tool.result" && typeof payload.text === "string" && payload.text.length > INLINE_LIMIT) {

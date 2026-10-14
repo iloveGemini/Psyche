@@ -1,6 +1,6 @@
 /**
  * REST 入口（门户的最小一版）：harness 上报事实、取经历、查档号、存取资料；
- * 它自己用的：热写、recall、<now>、提示词（m1.md §二 §四，MCP 转调这里）。
+ * 它自己用的：热写、冷写、书架、recall、<now>、提示词（m1.md §二 §四、m2.md §三，MCP 转调这里）。
  *
  * harness 只负责上报它独有的事实（对话发生了、调用了什么工具）；处境变化单独报。
  * 鉴权：配置了 token 就要求 Bearer。
@@ -16,6 +16,8 @@ import { readExperience } from "../archive/experience.ts";
 import { recall } from "../archive/recall.ts";
 import { renderNow } from "../archive/now.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
+import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
+import { readShelf, renderEntry } from "../reading/shelf.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
 
@@ -37,7 +39,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -106,6 +108,26 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
     return c.json(reviseEpisode(store, body));
   });
 
+  // 冷写：取材料 + 书架 + 候选证据；交回书架条目（m2.md §三）
+  app.get("/v1/coldwrite", (c) => {
+    const prompt = readPrompt("cold-write.md", promptsDir);
+    return c.json({ ...readColdwrite(store), prompt: prompt.text, promptVersion: prompt.version });
+  });
+
+  app.post("/v1/coldwrite", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new ColdwriteError("body 必须是对象");
+    const version = typeof body.promptVersion === "number" ? body.promptVersion : readPrompt("cold-write.md", promptsDir).version;
+    return c.json(writeColdwrite(store, body, version));
+  });
+
+  // 书架：现行条目 + 证据计数
+  app.get("/v1/shelf", (c) => {
+    const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
+    const entries = readShelf(store.db, { shelf: c.req.query("shelf") || undefined, q: c.req.query("q") || undefined });
+    return c.json({ entries: entries.map(({ root, current, ...e }) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year) })) });
+  });
+
   // 全文检索可见经历；from / to 收毫秒、日期或 ISO 时间
   app.get("/v1/recall", (c) => {
     const q = c.req.query();
@@ -118,7 +140,9 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
     const session = q.session || (typeof cur === "string" ? cur : undefined);
     const lines = recall(store.db, { q: q.q, from, to, limit: num(q.limit), session });
     const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
-    return c.json({ lines: lines.map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
+    // 书架上的条目（它冷写时整理的）排在前面；时间范围只管经历
+    const shelf = from === undefined && to === undefined ? readShelf(store.db, { q: q.q }).map((e) => ({ archiveNo: e.archiveNo, at: e.at, kind: "semantic", text: renderEntry(e) })) : [];
+    return c.json({ lines: [...shelf, ...lines].map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
   });
 
   app.get("/v1/now", (c) => c.json({ text: renderNow(store, c.req.query("session") || undefined) }));

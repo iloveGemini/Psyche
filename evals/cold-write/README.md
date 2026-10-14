@@ -7,16 +7,20 @@
 | `key.md` | 剧本大纲与答案要点。**只给出题人和判卷人看，不进它的输入** |
 | `criteria.md` | 判据：系统闸 / 对答案要点 / 人判 |
 | `script.json` | 剧本：虚构的「阿禾」，双方台词都是写好的；每行 `[时刻, her/me, 正文]`，时刻倒退 = 过了零点 |
-| `build.ts` | 入临时库到某次入睡为止（幂等，测试在 `tests/coldwrite-build.test.ts`） |
+| `build.ts` | 入临时库（`out/psyche.db`）到某次入睡为止（幂等，测试在 `tests/coldwrite-build.test.ts`） |
 | `out/` | 临时库与产出，gitignore |
 
-## 跑法
+## 跑法（花 Joy 的额度，手动跑）
 
 ```sh
-bun evals/cold-write/build.ts --until s1 --fresh   # D1–D3 入 out/exam.db
-# 睡 1：src/sleep.ts（待写，m2 §六）对着 out/exam.db 起 Psyche，它调 coldwrite
-bun evals/cold-write/build.ts --until s2           # 接着入 D4–D6，睡 1 的书架留着
-# 睡 2：同上
+bun evals/cold-write/build.ts --until s1 --fresh
+PSYCHE_DATA_DIR=evals/cold-write/out PSYCHE_PORT=7451 bun run src/main.ts   # 另开一个终端，跑着别关
+PSYCHE_URL=http://127.0.0.1:7451 bun run src/sleep.ts --model <Soma 用的模型> --at "2026-10-08 03:00" --log evals/cold-write/out/s1.jsonl
+bun evals/cold-write/build.ts --until s2   # 接着入 D4–D6，睡 1 的书架留着（Psyche 不用停）
+PSYCHE_URL=http://127.0.0.1:7451 bun run src/sleep.ts --model <同上> --at "2026-10-11 03:00" --log evals/cold-write/out/s2.jsonl
+curl -s http://127.0.0.1:7451/v1/shelf | jq     # 看书架；每次判了什么在 GET /v1/events?kinds=semantic.evidence
 ```
+
+然后对 `key.md` 的答案要点、`criteria.md` 人判。`s*.jsonl` 是无头会话的全程（它 recall 了什么、被拒过几次）。
 
 **剧本不是它的经历**：它那一侧的台词是我们写的（镜子要埋"它的做法"），只进临时库，绝不进 `~/.psyche/test`。

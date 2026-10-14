@@ -49,12 +49,18 @@ export const KINDS: Record<string, KindSpec> = {
   "mail.out": { class: "self", required: { to: "string", text: "string" } },
   "entity.merged": { class: "self", required: { into: "string", from: "array" } },
   "fonds.claimed": { class: "self", required: { fonds: "string" } },
+  // 冷写的书架条目（m2.md §一）：它睡觉时写，系统只数证据。经冷写口子写入（catalog/coldwrite.ts）
+  "semantic.proposed": { class: "self", required: { shelf: "string", text: "string" }, rels: ["evidence"] },
+  "semantic.evidence": { class: "self", required: { target: "string", stance: "string" }, rels: ["evidence"] },
+  "semantic.revised": { class: "self", required: { target: "string", why: "string" }, rels: ["evidence", "revises"] },
+  "semantic.retired": { class: "self", required: { target: "string", why: "string" }, rels: ["evidence"] },
+  "coldwrite.done": { class: "self", required: { upTo: "string", unjudged: "array" } },
 
   // ── 处境 ──
   situation: { class: "situation", required: { harness: "string" } }, // + model?, harnessPrompt?: hash, selfPromptVersion?
 };
 
-/** 梦类的 kind 由编目写（scene / semantic.* / lesson.* / entity / alias / thread.*），不走入库口 */
+/** episode / semantic.* / coldwrite.done 由热写、冷写的口子写（带系统闸）；登记在这里是为了 kind 清单只有一份 */
 
 export class IntakeError extends Error {}
 

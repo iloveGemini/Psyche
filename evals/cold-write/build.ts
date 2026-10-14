@@ -81,7 +81,7 @@ if (import.meta.main) {
   };
   const until = opt("--until");
   if (!until) throw new Error("要 --until s1 | s2");
-  const db = opt("--db") ?? join(HERE, "out", "exam.db");
+  const db = opt("--db") ?? join(HERE, "out", "psyche.db");
   mkdirSync(dirname(db), { recursive: true });
   if (args.includes("--fresh")) for (const suf of ["", "-wal", "-shm"]) rmSync(db + suf, { force: true });
   const script = loadScript();

@@ -12,7 +12,7 @@
 |---|---|---|
 | A | Psyche 核心：事件库、入库、经历投影（episode 覆盖原始行）、recall（FTS5 trigram）、`/v1/now`、`/v1/prompt`、情节改写（revises） | ✅ |
 | B | Soma 接入：上报、注入 `<now>`、挂 MCP、收尾热写再压缩、历史跨压缩读全 | ✅（Soma 仓库 9071b8e、8651644） |
-| C | MCP 工具（recall / detail / hotwrite_segment / hotwrite / revise_episode）、热写提示词 `prompts/hot-write.md` v1、考卷工具 `evals/hot-write/` | 🟡 考卷首跑完（见 §3.1），提示词 v1 暂不用改 |
+| C | MCP 工具（recall / detail / hotwrite_segment / hotwrite / revise_episode；M2 加 coldwrite_material / coldwrite / shelf）、热写提示词 `prompts/hot-write.md` v1、考卷工具 `evals/hot-write/` | 🟡 考卷首跑完（见 §3.1），提示词 v1 暂不用改 |
 
 测试库 `~/.psyche/test` = 10-14 验收那两段会话（旧冒烟数据挪到 `~/.psyche/test.bak-1014-1358`）。
 
@@ -40,9 +40,11 @@
      b. ✅ **recall 回声**（61c2868）：不搜记忆工具自己的调用行，也不搜本会话这一轮（`m1.md` §四）。
      c. 阈值按 token 数在新会话会每轮收尾：基础上下文约 2.1 万，`SOMA_COMPACT_AT` 低于它就每轮触发。真实缺省 0.75 没问题；`soma-e2e` 为 27000，只够验收用。
      d. 10-14 Joy 定：`/compact` 的系统摘要没办法，不管；✅ 收尾在界面上只显示「整理记忆：记下了 N 条 / 没写成 / 这次没写」。
-3. **M2「会归纳」（冷写 + 阅览室）起步（10-14）**：契约草案 `notes/plan/m2.md`、考卷 `evals/cold-write/`（`key.md` 答案要点、`criteria.md`、`script.json` 剧本、`build.ts` 入库），Joy 10-14 认可。
-   范围：事实 / 明说的规矩 / 规律 / 镜子；证据计数读时算；隐式强度、经验、线索卷后置。考卷用虚构的「阿禾」6 天剧本、双方台词都是剧本写的，只进临时库。
-   下一步：冷写提示词 `prompts/cold-write.md` → 代码（`semantic.*` 入库与闸、`/v1/coldwrite`、`shelf` 投影、MCP、`src/sleep.ts`）→ 跑考卷。
+3. **M2「会归纳」（冷写 + 阅览室）**（契约 `notes/plan/m2.md`）：代码齐了，**考卷还没跑**。
+   - 书架四种：事实 / 明说的规矩 / 规律 / 镜子（`semantic.*` 事件，`src/reading/shelf.ts` 投影现行版 + 证据计数）；冷写口子 `GET|POST /v1/coldwrite`（`src/catalog/coldwrite.ts`，系统闸见 m2 §二）；`/v1/shelf`；recall 带书架；MCP 加 `coldwrite_material` / `coldwrite` / `shelf`；手动入睡 `src/sleep.ts`（无头 `claude -p`）；提示词 `prompts/cold-write.md` v1。
+   - 考卷 `evals/cold-write/`：虚构「阿禾」6 天剧本（双方台词都是写的，只进 `out/` 临时库），两次入睡；`key.md` 答案要点不进它的输入。
+   - 提示词里"条件没满足的是无关，不是反例"正好对着陷阱 H：这是 reading-room 的判据，不是范文，但判 H 时要记得它被提示过。
+   - 下一步：Joy 手动跑考卷（README 跑法）→ 对答案要点人判 → 改提示词或闸。之后：Soma 空闲自动入睡、隐式强度。
 4. 之后：联想（隐式）。
 
 ## 4. 已知问题
@@ -56,4 +58,4 @@
 
 ## 6. 验证
 
-2026-10-14：热写考卷见 §3.1；`bun test` 102 pass / 0 fail；`tsc --noEmit` 0 错误。
+2026-10-14：热写考卷见 §3.1；`bun test` 114 pass / 0 fail；`tsc --noEmit` 0 错误。
