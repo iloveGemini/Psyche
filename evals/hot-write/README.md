@@ -35,15 +35,17 @@ bun evals/hot-write/sample.ts --per 2 \
 SEG=evals/hot-write/out/workspace-Psyche-c8d3fb8b-0.json
 OUT=${SEG%.json}.entries.json
 
-bun evals/hot-write/input.ts "$SEG" | claude -p \
+SELF="$(bun evals/hot-write/input.ts --self)"; IN="$(bun evals/hot-write/input.ts "$SEG")"; EMPTY=$(mktemp -d)
+(cd "$EMPTY" && printf '%s' "$IN" | claude -p \
   --model <Soma 用的模型> \
-  --append-system-prompt "$(bun evals/hot-write/input.ts --self)" \
-  --tools "" --strict-mcp-config --setting-sources project --no-session-persistence \
+  --append-system-prompt "$SELF" \
+  --tools "" --strict-mcp-config --setting-sources project --no-session-persistence) \
   > "$OUT"
 
 bun evals/hot-write/check.ts "$SEG" "$OUT" > "${SEG%.json}.report.json"
 ```
 
+- **要在空目录里跑**：在仓库里跑会读到项目 `CLAUDE.md` 和 git status（提交信息），它会把这些当成自己知道的事写进情节（10-14 首跑就这样编出了一条）。
 - `check.ts` 容忍模型输出里的 ```json 围栏和前后闲话；系统闸不过时退出码为 1。
 - 跑一批：对 `out/*.json`（排除 `index.json`、`*.entries.json`、`*.report.json`）循环上面两步。
 - 报告怎么看：`gate` 非空 = REST 会 400，提示词或格式有问题；`suspect` 是线索，逐条对原文看；`stats.uncited` 列出没被引用的行，用来查"该写的有没有漏"（R5）。然后按 `criteria.md` §二 人判。
