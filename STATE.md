@@ -54,7 +54,8 @@
    - `src/association/surface.ts`：回忆 / 预期 / 预感 + 刚回来时"上次怎么散的"；`GET /v1/now` 带「想起」一块并记 `surfaced`；`GET /v1/surface?dry=1` 看分项。
    - 向量：`src/archive/vectors.ts`（`p_vec`，后台补齐，换模型重算）；recall 改成字面 + 向量混合。测试用硅基流动 bge-m3（launch 的 `psyche-test` 已带上）。
    - 考卷 `evals/surfacing/`：4 周基线 + 阿禾 D1–D10；书架用冷写 run2 它自己写的原样重放。只用字面 6/7（耳机接不上）。
-   - 下一步：考卷 B（有 / 无浮现，冷战、经验复用、自然接上）→ 看噪声（A6 第二轮浮出不相干的行）。
+   - 噪声（10-14 借 ASCM）：回忆只给情节不给原话；空档输入（"嗯 在吗"）不拿内容匹配，只认书架留意词；实词按 IDF。考卷底库的情节由 Opus 无头补写（`episodes.json`）。A 仍 7/7。
+   - 下一步：考卷 B（有 / 无浮现，冷战、经验复用、自然接上）。
 
 ## 4. 已知问题
 
@@ -67,4 +68,4 @@
 
 ## 6. 验证
 
-2026-10-14：热写考卷见 §3.1；`bun test` 123 pass / 0 fail；`tsc --noEmit` 0 错误。
+2026-10-14：热写考卷见 §3.1；`bun test` 125 pass / 0 fail；`tsc --noEmit` 0 错误。

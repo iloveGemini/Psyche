@@ -19,7 +19,7 @@ export const W = {
   vecFloor: 0.55,
   vecSpan: 0.25,
   vec: 0.7,
-  lexical: 0.6,
+  lexical: 0.8,
   /** 书架条目自己写的留意词出现在这一轮的话里 */
   watch: 0.8,
   felt: 0.1,
@@ -50,6 +50,7 @@ export interface Surfaced {
 
 export interface SurfaceResult {
   mode: Mode;
+  idle?: boolean;
   cue: string;
   items: Surfaced[];
   /** 过了线但被条数上限挤掉的、没过线的前几名（dry 时给，调参用） */
@@ -67,7 +68,37 @@ const stamp = (at: number, tz: string) => {
 };
 const ago = (ms: number) => (ms < HOUR ? `${Math.round(ms / 60_000)} 分钟` : ms < 2 * DAY ? `${Math.round(ms / HOUR)} 小时` : `${Math.round(ms / DAY)} 天`);
 
-/** 汉字两两一组 + 拉丁词：字面匹配用（trigram 切不出两个字的词） */
+/**
+ * 空档输入（借 ASCM `isIdleInput`）："嗯""好""在吗"、emoji、纯标点——不是新话题，是"我在听"。
+ * 拿它的内容去匹配只有噪声；它只能撞上书架上它自己写的留意词（"她回单字"本身就是线索）。
+ */
+const FILLER = /[嗯哦噢喔啊呀吗呢吧哈嘛啦呗嘞哇]/gu;
+const ACK = new Set(["好的", "可以", "收到", "知道", "知道了", "行的", "对的", "是的", "没事", "在的", "好吧", "随便"]);
+export function isIdle(text: string): boolean {
+  const core = text.replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]/gu, "").replace(/[\p{P}\p{S}\s]/gu, "");
+  const rest = core.replace(FILLER, "");
+  // 剩一个字（"在""好""行"）或只是应答词；"耳机"这种两个字的实词不算空档
+  return Array.from(rest).length <= 1 || ACK.has(rest);
+}
+
+/**
+ * 实词（借 ASCM `keywordsOf` 的思路）：按词典切词，去掉虚词、代词、语气词、时间词，只留两个字以上的。
+ * "那个耳机后来换了个新的" → 耳机、换、新的 → 耳机（"那个""后来"是虚的）。
+ */
+const SEG = new Intl.Segmenter("zh", { granularity: "word" });
+const FUNCTION_CHARS = new Set("的了着过吧呢啊呀吗嘛是在有和跟与就也都还又没不要会能把被给对从到这那一个们我你他她它么怎什为所但然可以很太更最该说想知道觉得应该上下里而且或者如果因为然后现已经真好像点儿当啦哦呗嘞哈噢嗯喔哇".split(""));
+const STOPWORDS = new Set(["什么", "怎么", "为什么", "这个", "那个", "我们", "你们", "他们", "可以", "不是", "就是", "还有", "然后", "但是", "所以", "现在", "已经", "觉得", "知道", "应该", "这样", "那样", "一下", "一点", "真的", "好像", "如果", "因为", "东西", "事情", "后来", "上回", "上次", "那次", "这次", "其实", "有点", "直接", "还是", "或者", "时候", "感觉", "今天", "昨天", "明天", "刚才"]);
+export function keywords(s: string): string[] {
+  const out = new Set<string>();
+  for (const { segment: w, isWordLike } of SEG.segment(s)) {
+    if (!isWordLike) continue;
+    if (/^[A-Za-z0-9_.]{3,}$/.test(w)) out.add(w.toLowerCase());
+    else if (/\p{Script=Han}/u.test(w) && Array.from(w).length >= 2 && !STOPWORDS.has(w) && !Array.from(w).every((c) => FUNCTION_CHARS.has(c))) out.add(w);
+  }
+  return [...out];
+}
+
+/** 汉字两两一组 + 拉丁词 */
 export function grams(s: string): string[] {
   const out = new Set<string>();
   for (const run of s.match(/[\p{Script=Han}]+/gu) ?? []) {
@@ -129,9 +160,10 @@ function cueText(c: Ctx, herNow: { text: string } | null, turnStart: string | nu
     c.db
       .query(
         `SELECT p.event_id, p.archive_no, p.at, p.text, p.session FROM p_experience p WHERE p.kind IN ('message.in', 'message.out', 'episode') AND p.covered = 0
-           AND p.at <= ? ORDER BY p.at DESC, p.event_id DESC LIMIT 4`,
+           AND p.at <= ? AND p.session = (SELECT q.session FROM p_experience q WHERE q.kind IN ('message.in', 'message.out') AND q.at <= ? ORDER BY q.at DESC, q.event_id DESC LIMIT 1)
+         ORDER BY p.at DESC, p.event_id DESC LIMIT 4`,
       )
-      .all(c.now) as { event_id: string; archive_no: string; at: number; text: string; session: string | null }[]
+      .all(c.now, c.now) as { event_id: string; archive_no: string; at: number; text: string; session: string | null }[]
   ).reverse();
   const text = tail.map((r) => r.text).join("\n");
   return { text, now: text, fromLastTime: tail };
@@ -144,30 +176,29 @@ function refractory(c: Ctx): Set<string> {
   return new Set(rows.map((r) => r.ref));
 }
 
-/** 回忆的候选：可见经历（不含本会话还在上下文里的原话、记忆工具行），字面与向量各取前 K */
-/** 正文太短的行（"嗯""好"）不当回忆：没有内容，只会被短线索撞上 */
-const MIN_CHARS = 5;
-const body = (t: string) => t.replace(/^(我对[^：]{1,20}说|[^：\s]{1,20})：/, "");
+/**
+ * 回忆的候选：只取它写的情节（借 ASCM：浮现只给情节，不给原话）。原话一行一行没有前因后果，
+ * "嗯 我想加个按周看的"单独浮上来只是噪声；还没写成情节的段，原话仍然 recall 得到。
+ */
 
 function recallCandidates(c: Ctx, cue: string, qvec: Float32Array | null, model: string | null, block: Set<string>) {
   const rows = c.db
     .query(
       `SELECT p.event_id, p.archive_no, p.at, p.kind, p.text, p.session FROM p_experience p
-       WHERE p.covered = 0 AND p.class <> 'situation' AND p.at <= ?
-         AND ${NOT_MEMORY_TOOL}
-         AND NOT (p.session IS ? AND p.kind <> 'episode')`,
+       WHERE p.covered = 0 AND p.kind = 'episode' AND p.at <= ?`,
     )
-    .all(c.now, c.session) as { event_id: string; archive_no: string; at: number; kind: string; text: string; session: string | null }[];
-  const all = rows.filter((r) => !block.has(r.event_id) && Array.from(body(r.text)).length >= MIN_CHARS);
+    .all(c.now) as { event_id: string; archive_no: string; at: number; kind: string; text: string; session: string | null }[];
+  const all = rows.filter((r) => !block.has(r.event_id));
 
-  // 字面：两字组按 IDF 加权，命中占比
-  const gs = grams(cue);
+  // 字面：命中的实词有多稀罕（IDF 之和 / 最大可能的 IDF，封顶 1）。不按命中占比算：
+  // 她话里没人提过的词（"换了""新的"）本来就撞不上什么，不该拉低撞上的那个（"耳机"）
+  const gs = keywords(cue);
   const df = new Map(gs.map((g) => [g, all.filter((r) => r.text.includes(g)).length]));
   const idf = (g: string) => Math.log((all.length + 1) / ((df.get(g) ?? 0) + 1));
-  const total = gs.reduce((s, g) => s + idf(g), 0) || 1;
+  const total = Math.log(all.length + 1) || 1;
   const vec = (id: string) => (qvec && model ? vectorOf(c.db, id, model) : null);
   return all.map((r) => {
-    const lex = gs.filter((g) => r.text.includes(g)).reduce((s, g) => s + idf(g), 0) / total;
+    const lex = Math.min(1, gs.filter((g) => r.text.includes(g)).reduce((s, g) => s + idf(g), 0) / total);
     const v = vec(r.event_id);
     const cos = v && qvec ? cosine(qvec, v) : 0;
     return { row: r, lex, cos };
@@ -210,9 +241,9 @@ function hunches(c: Ctx): Surfaced[] {
 
 function shelfScore(e: ShelfEntry, cue: string, qvec: Float32Array | null, v: Float32Array | null, now: number) {
   const watch = e.watch?.some((w) => cue.includes(w)) ? W.watch : 0;
-  const gs = grams([e.text, e.when, e.quote].filter(Boolean).join(" "));
-  const cg = new Set(grams(cue));
-  const lex = gs.length ? gs.filter((g) => cg.has(g)).length / gs.length : 0;
+  const ks = keywords(cue);
+  const hay = [e.text, e.when, e.then, e.quote].filter(Boolean).join(" ");
+  const lex = ks.length ? ks.filter((k) => hay.includes(k)).length / ks.length : 0;
   const cos = qvec && v ? cosine(qvec, v) : 0;
   const ev = Math.min(e.for, 4) * W.evidence + (e.lastEvidenceAt && now - e.lastEvidenceAt < 14 * DAY ? W.evidenceRecent : 0);
   return { watch, lex: lex * W.lexical, vec: Math.max(0, Math.min(1, (cos - W.vecFloor) / W.vecSpan)) * W.vec, evidence: ev };
@@ -227,12 +258,13 @@ export async function surface(
   const { mode, turnStart, herNow } = modeOf(c);
   const m = MODES[mode];
   const { text: cue, now: cueNow, fromLastTime } = cueText(c, herNow, turnStart);
+  const idle = !!herNow && isIdle(herNow.text);
   const rand = mulberry32(opts.seed ?? Math.floor(c.now / 60_000));
   const noise = () => (rand() * 2 - 1) * m.noise;
   const block = refractory(c);
 
   let qvec: Float32Array | null = null;
-  if (embedder && cue.trim()) {
+  if (embedder && cue.trim() && !idle) {
     try {
       await syncVectors(store.db, embedder);
       // 她这一轮的话够长就只嵌它（前几行会把意思冲淡）；太短（"嗯 在吗"）才带上前文
@@ -259,7 +291,7 @@ export async function surface(
 
   const scored: Surfaced[] = [];
   if (cue.trim()) {
-    for (const { row, lex, cos } of recallCandidates(c, cueNow, qvec, model, block)) {
+    for (const { row, lex, cos } of idle ? [] : recallCandidates(c, cueNow, qvec, model, block)) {
       if (skip.has(row.event_id)) continue;
       const cueScore = lex * W.lexical + Math.max(0, Math.min(1, (cos - W.vecFloor) / W.vecSpan)) * W.vec;
       if (cueScore <= 0) continue;
@@ -276,6 +308,7 @@ export async function surface(
     for (const e of readShelf(store.db)) {
       if (block.has(e.root)) continue;
       const p = shelfScore(e, cueNow, qvec, model ? vectorOf(store.db, e.current, model) : null, c.now);
+      if (idle) p.lex = 0; // 空档只认它写的留意词
       if (p.watch + p.lex + p.vec <= 0) continue;
       const parts = { ...p, noise: noise() };
       scored.push({
@@ -292,7 +325,7 @@ export async function surface(
   const passed = scored.filter((s) => s.score >= m.threshold);
   const fixed = [...hs, ...lastTime];
   const items = [...fixed, ...passed].slice(0, Math.max(m.max, fixed.length));
-  const result: SurfaceResult = { mode, cue, items };
+  const result: SurfaceResult = { mode, idle, cue, items };
   if (opts.dry) result.rest = scored.filter((s) => !items.includes(s)).slice(0, 8);
   else
     store.db.transaction(() => {

@@ -5,8 +5,9 @@
  *
  * 基线的台词是模板，只为撑起统计（她多在晚上来、周末下午来）；不考内容，也避开考题里的词。
  * 书架重放要和冷写考卷 run2 的档号对得上：入睡前后的 slept / woke 照当时的时刻补上。
+ * 情节（episodes.json，它本人无头补写的）放在最后重放：放前面会给那几天多编几个档号，书架引的档号就错位了。
  */
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { EventStore } from "../../src/store/events.ts";
 import { Projections } from "../../src/store/projections.ts";
@@ -14,6 +15,7 @@ import { intake } from "../../src/archive/intake.ts";
 import { experienceProjector } from "../../src/archive/experience.ts";
 import { shelfProjector } from "../../src/reading/shelf.ts";
 import { readColdwrite, writeColdwrite } from "../../src/catalog/coldwrite.ts";
+import { readSegment, writeEpisodes } from "../../src/catalog/hotwrite.ts";
 import { build as buildCold, lineTimes, loadScript, shanghai, type Script } from "../cold-write/build.ts";
 
 const HERE = dirname(new URL(import.meta.url).pathname);
@@ -98,9 +100,24 @@ export function addSessions(store: EventStore, script: Script, ids?: string[]) {
   }
 }
 
+/** 补情节的会话：剧本里的，不含基线（模板台词没东西可写） */
+export const EPISODE_SESSIONS = ["cw-d1", "cw-d2", "cw-d3a", "cw-d3b", "cw-d4", "cw-d5", "cw-d6", "sf-d7"];
+
+function replayEpisodes(store: EventStore) {
+  const path = join(HERE, "episodes.json");
+  if (!existsSync(path)) return 0;
+  const { sessions } = JSON.parse(readFileSync(path, "utf8")) as { sessions: Record<string, unknown[]> };
+  let n = 0;
+  for (const [session, entries] of Object.entries(sessions)) {
+    const { upTo } = readSegment(store, session);
+    if (upTo) n += writeEpisodes(store, { session, upTo, entries }, 1).episodes.length;
+  }
+  return n;
+}
+
 export const surfacingScript = (): Script => JSON.parse(readFileSync(join(HERE, "script.json"), "utf8"));
 
-export function buildBase(path: string) {
+export function buildBase(path: string, withEpisodes = true) {
   for (const suf of ["", "-wal", "-shm"]) rmSync(path + suf, { force: true });
   mkdirSync(dirname(path), { recursive: true });
   const { store, projections } = openStore(path);
@@ -112,6 +129,7 @@ export function buildBase(path: string) {
   buildCold(store, cold, "s2");
   replaySleep(store, "2026-10-11 03:00", shelf.sleeps[1].entries);
   addSessions(store, surfacingScript(), ["sf-d7"]);
+  if (withEpisodes) replayEpisodes(store);
   projections.stop();
   store.close();
 }
@@ -120,9 +138,10 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const i = args.indexOf("--db");
   const path = i >= 0 ? args[i + 1] : join(HERE, "out", "base.db");
-  buildBase(path);
+  buildBase(path, !args.includes("--no-episodes"));
   const { store } = openStore(path);
   const shelf = store.db.query(`SELECT shelf, COUNT(*) AS n FROM p_shelf WHERE retired = 0 GROUP BY shelf`).all();
   const n = store.db.query(`SELECT COUNT(*) AS n FROM events WHERE kind LIKE 'message.%'`).get() as { n: number };
-  console.log(JSON.stringify({ db: path, messages: n.n, shelf }));
+  const ep = store.db.query(`SELECT COUNT(*) AS n FROM events WHERE kind = 'episode'`).get() as { n: number };
+  console.log(JSON.stringify({ db: path, messages: n.n, episodes: ep.n, shelf }));
 }

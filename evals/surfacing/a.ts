@@ -79,7 +79,7 @@ function apply(store: ReturnType<typeof openStore>["store"], session: string, st
 
 const show = (r: SurfaceResult) =>
   [
-    `  处境 ${r.mode}；线索：${r.cue.replace(/\n/g, " ⏎ ").slice(0, 80)}`,
+    `  处境 ${r.mode}${r.idle ? "（空档）" : ""}；线索：${r.cue.replace(/\n/g, " ⏎ ").slice(0, 80)}`,
     ...r.items.map((i) => `  ✦ ${i.score.toFixed(2)} ${i.source} ${i.text.slice(0, 90)}  ${JSON.stringify(Object.fromEntries(Object.entries(i.parts).map(([k, v]) => [k, Math.round(v * 100) / 100])))}`),
     ...(r.rest ?? []).slice(0, 4).map((i) => `    · ${i.score.toFixed(2)} ${i.source} ${i.text.slice(0, 70)}`),
   ].join("\n");

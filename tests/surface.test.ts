@@ -4,7 +4,8 @@ import { Projections } from "../src/store/projections.ts";
 import { intake } from "../src/archive/intake.ts";
 import { experienceProjector } from "../src/archive/experience.ts";
 import { shelfProjector } from "../src/reading/shelf.ts";
-import { grams, surface } from "../src/association/surface.ts";
+import { grams, isIdle, keywords, surface } from "../src/association/surface.ts";
+import { writeEpisodes } from "../src/catalog/hotwrite.ts";
 import { hybridRecall, rrf } from "../src/archive/recall.ts";
 import { normalize, type Embedder } from "../src/archive/vectors.ts";
 
@@ -29,13 +30,15 @@ function setup(start = "2026-09-01T00:00:00") {
   const sit = (session: string, at: number) => store.append({ kind: "situation", class: "situation", source: "soma", at, payload: { harness: "soma", session } });
   const her = (text: string, at: number) => intake(store, { kind: "message.in", source: "soma", payload: { from: "阿禾", text }, at });
   const me = (text: string, at: number) => intake(store, { kind: "message.out", source: "soma", payload: { text }, at });
-  /** 14 天，每晚 21 点来 */
+  /** 14 天，每晚 21 点来；每天收尾写一条情节（浮现只给情节） */
   const evenings = (days = 14) => {
     for (let d = 0; d < days; d++) {
       const t = T(start) + d * DAY + 21 * 3_600_000;
       sit(`s${d}`, t - 1000);
-      her(d === 3 ? "那次退了个耳机 那负数是对的" : `今天做第 ${d} 个功能`, t);
-      me("好的，我们开始吧。", t + 60_000);
+      const a = her(d === 3 ? "那次退了个耳机 那负数是对的" : `今天做第 ${d} 个功能`, t);
+      const b = me("好的，我们开始吧。", t + 60_000);
+      const text = d === 3 ? "阿禾说那笔负数是那次退了个耳机，是对的。" : `阿禾来做第 ${d} 个功能，我们开始了。`;
+      writeEpisodes(store, { session: `s${d}`, upTo: b.id, entries: [{ text, cites: [a.archiveNo.slice(5), b.archiveNo.slice(5)] }] }, 1);
     }
   };
   return { store, sit, her, me, evenings, set: (at: number) => (clock = at) };
@@ -43,6 +46,13 @@ function setup(start = "2026-09-01T00:00:00") {
 
 test("两字组：汉字两两一组，拉丁词整词小写", () => {
   expect(grams("耳机 换了 SQL")).toEqual(["耳机", "换了", "sql"]);
+});
+
+test("空档与实词：语气词、应答不算话题；两个字的实词算", () => {
+  expect(["嗯 在吗", "好", "好的", "行吧", "🤣", "嗯嗯"].every(isIdle)).toBe(true);
+  expect(["耳机", "算了 不想说了"].some(isIdle)).toBe(false);
+  expect(keywords("那个耳机后来换了个新的")).toContain("耳机");
+  expect(keywords("那个耳机后来换了个新的")).not.toContain("那个");
 });
 
 test("rrf：两边都靠前的排最前，去重", () => {
@@ -62,7 +72,7 @@ describe("浮现", () => {
     expect(r.mode).toBe("fresh");
     expect(r.items.find((i) => i.source === "hunch")?.text).toContain("今天晚上还没来");
     // 刚醒：上次怎么散的先想起来
-    expect(r.items.some((i) => i.parts.lastTime === 1 && i.text.includes("好的，我们开始吧"))).toBe(true);
+    expect(r.items.some((i) => i.parts.lastTime === 1 && i.text.includes("第 13 个功能"))).toBe(true);
 
     t.set(T("2026-09-17T03:00:00"));
     t.sit("w2", T("2026-09-17T03:00:00"));
@@ -85,6 +95,19 @@ describe("浮现", () => {
     expect(withVec.mode).toBe("chat");
     expect(withVec.items.some((i) => i.text.includes("耳机"))).toBe(true);
     expect(withVec.items.some((i) => i.text.includes("今天想聊聊"))).toBe(false);
+  });
+
+  test("空档输入不拿内容去匹配：她回「嗯」，不浮回忆", async () => {
+    const t = setup();
+    t.evenings();
+    t.set(T("2026-09-15T21:20:00"));
+    t.sit("now", T("2026-09-15T21:00:00"));
+    t.her("在吗 今天想聊聊", T("2026-09-15T21:00:00"));
+    t.me("在，你说。", T("2026-09-15T21:01:00"));
+    t.her("嗯", T("2026-09-15T21:20:00"));
+    const r = await surface(t.store, fake, { session: "now", dry: true, seed: 1 });
+    expect(r.idle).toBe(true);
+    expect(r.items.filter((i) => i.source === "recall")).toEqual([]);
   });
 
   test("不 dry：写 surfaced（线索在事件里）；不应期内不再浮", async () => {
