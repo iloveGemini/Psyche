@@ -9,6 +9,7 @@ import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
 import { sessionOf } from "../archive/experience.ts";
+import { computeStats } from "../reading/stats.ts";
 import { ENTRY_FIELDS, SHELVES, countedEvidence, readShelf, rootOf, type ShelfEntry } from "../reading/shelf.ts";
 
 export class ColdwriteError extends Error {}
@@ -80,9 +81,14 @@ export function readColdwrite(store: EventStore) {
   const year = refYear(store);
   const shown = (e: ShelfEntry) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year) });
   const candidates = candidatesFor(store, shelf, groups.flatMap((g) => g.lines));
+  // 统计：这段 = 上次整理那一刻到这次材料最后一条（按发生时间）；第一次从最早一条算
+  const first = store.db.query(`SELECT MIN(at) AS at FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out')`).get() as { at: number | null };
+  const periodFrom = since ? store.get(since)!.at : (first.at ?? 0);
+  const stats = upTo ? computeStats(store.db, { from: periodFrom, to: store.get(upTo)!.at + 1, timeZone: store.timeZone }) : null;
   return {
     upTo,
     since,
+    stats,
     material: groups.map((g) => ({ session: g.session, from: g.lines[0].at, to: g.lines.at(-1)!.at, lines: g.lines.map(({ eventId, ...l }) => l) })),
     shelf: shelf.map(shown),
     candidates: candidates.map((c) => ({ target: shown(c.entry).archiveNo, lines: c.lines.map(({ eventId, ...l }) => l) })),

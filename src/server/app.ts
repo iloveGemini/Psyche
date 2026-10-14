@@ -18,6 +18,7 @@ import { renderNow } from "../archive/now.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
 import { readShelf, renderEntry } from "../reading/shelf.ts";
+import { computeStats } from "../reading/stats.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
 
@@ -126,6 +127,15 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
     const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
     const entries = readShelf(store.db, { shelf: c.req.query("shelf") || undefined, q: c.req.query("q") || undefined });
     return c.json({ entries: entries.map(({ root, current, ...e }) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year) })) });
+  });
+
+  // 统计：from / to 收毫秒、日期或 ISO 时间；缺省最近 7 天
+  app.get("/v1/stats", (c) => {
+    const q = c.req.query();
+    const to = q.to ? parseTime(q.to, store.timeZone, true) : store.now();
+    const from = q.from ? parseTime(q.from, store.timeZone) : (to ?? store.now()) - 7 * 86_400_000;
+    if (from === null || to === null) return c.json({ error: `看不懂的时间：${from === null ? q.from : q.to}` }, 400);
+    return c.json(computeStats(store.db, { from, to, now: store.now(), timeZone: store.timeZone }));
   });
 
   // 全文检索可见经历；from / to 收毫秒、日期或 ISO 时间

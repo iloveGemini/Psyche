@@ -23,6 +23,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { renderStats, type Stats } from "./reading/stats.ts";
 
 export interface McpOptions {
   url?: string;
@@ -247,7 +248,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "coldwrite_material",
     {
       description: [
-        "睡前整理用：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、以及按你留意的词找到的候选证据。",
+        "睡前整理用：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、按你留意的词找到的候选证据，以及这段时间和之前的互动统计（系统数的，只有数，没有结论）。",
         "同时给你写法说明和 upTo。看完用 coldwrite 写回。",
       ].join("\n"),
       inputSchema: {},
@@ -260,6 +261,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         material: { session: string | null; lines: { archiveNo: string; at: number; text: string }[] }[];
         shelf: Entry[];
         candidates: { target: string; lines: { archiveNo: string; at: number; text: string; hit: string }[] }[];
+        stats: Stats | null;
       };
       if (m.upTo === null) return text("上次整理之后没有新的经历，不用整理。");
       return text(
@@ -272,6 +274,10 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
           "<shelf>",
           ...(m.shelf.length ? m.shelf.map(entryLine) : ["（书架还是空的）"]),
           "</shelf>",
+          "",
+          "<stats>",
+          ...(m.stats?.people.length ? renderStats(m.stats) : ["（这段没有对话）"]),
+          "</stats>",
           "",
           "<candidates>",
           ...(m.candidates.length ? m.candidates.flatMap((c) => [`关于 ${c.target}：`, ...c.lines.map((l) => `${line(l)}　〔命中「${l.hit}」〕`)]) : ["（没有）"]),
