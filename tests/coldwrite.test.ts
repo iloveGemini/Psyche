@@ -191,6 +191,25 @@ describe("第二次睡：候选、判断、改写、作废", () => {
     expect(after.map((x: any) => x.shelf)).toEqual(["rule"]);
   });
 
+  test("计数按次不按行：首批按会话数，一次判断挂几行都算 1 次；改写的依据不计印证", async () => {
+    const t = setup();
+    const e = twoDays(t);
+    await t.post({ upTo: e.b2.id, entries: [rule([t.no(e.a1), t.no(e.a2), t.no(e.b1), t.no(e.b2)])] });
+    const shelf = async () => (await (await t.app.request("/v1/shelf")).json()).entries[0];
+    expect(await shelf()).toMatchObject({ for: 2 });
+    t.session("d3", "2026-10-09T00:30:00");
+    const n1 = t.her("好", "2026-10-09T00:40:00");
+    const n2 = t.me("要不要两种都写个草稿？", "2026-10-09T00:40:30");
+    const n3 = t.her("眼睛睁不开了 晚安~", "2026-10-09T00:42:00");
+    const no = (await shelf()).archiveNo;
+    await t.post({ upTo: n3.id, entries: [{ op: "evidence", target: no, stance: "against", cites: [t.no(n1), t.no(n2), t.no(n3)] }] });
+    expect(await shelf()).toMatchObject({ for: 2, against: 1 });
+    t.session("d4", "2026-10-10T00:30:00");
+    const m = t.her("嗯 困了", "2026-10-10T00:40:00");
+    await t.post({ upTo: m.id, entries: [{ op: "revise", target: no, when: "白天她回单字，我接着追问", why: "深夜的两次她只是困了", cites: [t.no(m)] }] });
+    expect(await shelf()).toMatchObject({ for: 2, against: 1 });
+  });
+
   test("重试同一个 upTo：拿回同一批，不重复写", async () => {
     const t = setup();
     const e = twoDays(t);

@@ -2,11 +2,12 @@
  * 书架投影（m2.md §四，reading-room.md §一 §二）：阅览室里它写的条目，现行版 + 证据计数。
  *
  * 一条书架条目 = 一串 semantic.* 事件：proposed 起头，revised 换新版，evidence 记判断，retired 收起。
- * 计数从证据链接数出来，不让它自评；强弱曲线（敏感化 / 钝化）后置，读时另算。
+ * 计数从证据链接数出来（按次，不按行），不让它自评；强弱曲线（敏感化 / 钝化）后置，读时另算。
  */
 import type { Database } from "bun:sqlite";
 import type { PsycheEvent } from "../store/events.ts";
 import type { Projector } from "../store/projections.ts";
+import { sessionOf } from "../archive/experience.ts";
 
 export const SHELVES = ["fact", "told", "rule", "mirror"] as const;
 export type Shelf = (typeof SHELVES)[number];
@@ -34,6 +35,11 @@ export interface ShelfEntry {
   at: number;
 }
 
+const ev_ = (db: Database, id: string) => {
+  const r = db.query(`SELECT * FROM events WHERE id = ?`).get(id) as Record<string, any>;
+  return { ...r, payload: JSON.parse(r.payload) } as PsycheEvent;
+};
+
 const evidenceOf = (db: Database, id: string) =>
   db.query(`SELECT l.to_id AS id, e.at AS at FROM links l JOIN events e ON e.id = l.to_id WHERE l.from_id = ? AND l.rel = 'evidence'`).all(id) as {
     id: string;
@@ -47,7 +53,7 @@ export function rootOf(db: Database, versionId: string): string | null {
 
 export const shelfProjector: Projector = {
   name: "shelf",
-  version: 1,
+  version: 2,
   kinds: ["semantic.proposed", "semantic.revised", "semantic.evidence", "semantic.retired"],
   setup(db) {
     db.run(`CREATE TABLE IF NOT EXISTS p_shelf (
@@ -75,19 +81,24 @@ export const shelfProjector: Projector = {
   apply(db, ev: PsycheEvent) {
     if (ev.fonds) return;
     const p = ev.payload as Record<string, any>;
-    const count = (root: string, stance: string, evs: { id: string; at: number }[]) => {
-      for (const e of evs) {
-        const fresh = db.query(`INSERT OR IGNORE INTO p_shelf_ev (root, event_id, stance) VALUES (?, ?, ?)`).run(root, e.id, stance).changes;
-        if (!fresh) continue;
-        const col = stance === "against" ? "n_against" : stance === "irrelevant" ? "n_irrelevant" : "n_for";
-        db.run(`UPDATE p_shelf SET ${col} = ${col} + 1 ${stance === "irrelevant" ? "" : ", last_evidence_at = MAX(COALESCE(last_evidence_at, 0), ?)"} WHERE root = ?`, stance === "irrelevant" ? [root] : [e.at, root]);
-      }
+    /**
+     * 计数按"几次发生"，不按挂了几行（10-14 Joy 定）：一次判断 = 1 次；首批证据按来自几个会话算。
+     * 同一事件对同一条目只登记一次；登记过的不再算。
+     */
+    const count = (root: string, stance: string, evs: { id: string; at: number }[], times: (fresh: { id: string; at: number }[]) => number) => {
+      const fresh = evs.filter((e) => db.query(`INSERT OR IGNORE INTO p_shelf_ev (root, event_id, stance) VALUES (?, ?, ?)`).run(root, e.id, stance).changes);
+      const n = fresh.length ? times(fresh) : 0;
+      if (!n) return;
+      const col = stance === "against" ? "n_against" : stance === "irrelevant" ? "n_irrelevant" : "n_for";
+      if (stance === "irrelevant") db.run(`UPDATE p_shelf SET ${col} = ${col} + ? WHERE root = ?`, [n, root]);
+      else db.run(`UPDATE p_shelf SET ${col} = ${col} + ?, last_evidence_at = MAX(COALESCE(last_evidence_at, 0), ?) WHERE root = ?`, [n, Math.max(...fresh.map((e) => e.at)), root]);
     };
+    const bySessions = (fresh: { id: string }[]) => new Set(fresh.map((e) => sessionOf(db, ev_(db, e.id)) ?? e.id)).size;
     if (ev.kind === "semantic.proposed") {
       const fields = Object.fromEntries(ENTRY_FIELDS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]]));
       db.run(`INSERT INTO p_shelf (root, current, archive_no, shelf, fields, at) VALUES (?, ?, ?, ?, ?, ?)`, [ev.id, ev.id, ev.archiveNo, p.shelf, JSON.stringify(fields), ev.at]);
       db.run(`INSERT INTO p_shelf_ver (id, root) VALUES (?, ?)`, [ev.id, ev.id]);
-      count(ev.id, "for", evidenceOf(db, ev.id));
+      count(ev.id, "for", evidenceOf(db, ev.id), bySessions);
       return;
     }
     const root = typeof p.target === "string" ? rootOf(db, p.target) : null;
@@ -97,9 +108,10 @@ export const shelfProjector: Projector = {
       const fields = { ...JSON.parse(old.fields), ...Object.fromEntries(ENTRY_FIELDS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]])) };
       db.run(`UPDATE p_shelf SET current = ?, archive_no = ?, fields = ?, at = ? WHERE root = ?`, [ev.id, ev.archiveNo, JSON.stringify(fields), ev.at, root]);
       db.run(`INSERT INTO p_shelf_ver (id, root) VALUES (?, ?)`, [ev.id, root]);
-      count(root, "for", evidenceOf(db, ev.id));
+      // 促成修改的事件只登记（不再当新证据），不计印证
+      count(root, "revise", evidenceOf(db, ev.id), () => 0);
     } else if (ev.kind === "semantic.evidence") {
-      count(root, String(p.stance), evidenceOf(db, ev.id));
+      count(root, String(p.stance), evidenceOf(db, ev.id), () => 1);
     } else if (ev.kind === "semantic.retired") {
       db.run(`UPDATE p_shelf SET retired = 1 WHERE root = ?`, [root]);
     }
