@@ -204,6 +204,26 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
+  server.registerTool(
+    "revise_episode",
+    {
+      description: [
+        "改写你自己写过的一条情节：写错了、说法不对、后来理解变了，都可以改。",
+        "旧的那条留着（原来的说法还在），以后想起这件事时读到的是新的。只能改最新的那版。",
+      ].join("\n"),
+      inputSchema: {
+        target: z.string().min(1).describe("要改的那条情节的档号，如 10-14#13"),
+        text: z.string().min(1).describe("改写后的这件事，用你自己的话"),
+        felt: z.string().optional().describe("当时的感受（可选）"),
+        why: z.string().optional().describe("为什么改（可选）"),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/episodes/revise", args)) as { archiveNo: string };
+      return text(`改好了：${args.target} → ${r.archiveNo}`);
+    }),
+  );
+
   return server;
 }
 

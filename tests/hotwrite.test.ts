@@ -234,3 +234,25 @@ test("翻记忆：调用记一笔，翻出来的内容不再记成经历", async
   expect(renderExperience(ev("tool.result", { name: "mcp__psyche__recall", callId: "1", ok: true, text: "[10-14#2] …" }))).toBeNull();
   expect(renderExperience(ev("tool.result", { name: "mcp__psyche__detail", callId: "2", ok: true, text: "{}" }))).toBeNull();
 });
+
+describe("改写情节", () => {
+  test("新条 revises 旧条：旧条留着、经历里显示新的；只能改最新版；recall 搜不到旧说法", async () => {
+    const { reviseEpisode } = await import("../src/catalog/hotwrite.ts");
+    const { readExperience } = await import("../src/archive/experience.ts");
+    const { recall } = await import("../src/archive/recall.ts");
+    const { store, say, post } = setup();
+    store.setSituation({ harness: "soma", model: "opus", session: "S1" });
+    const a = say("早");
+    const res = await post({ upTo: a.id, entries: [{ text: "他跟我说了早安", cites: [a.archiveNo] }] });
+    const [{ archiveNo }] = ((await res.json()) as { episodes: { archiveNo: string }[] }).episodes;
+    const r = reviseEpisode(store, { target: archiveNo, text: "测试的人跟我说了早安", why: "不该替别人定性别" });
+    const texts = readExperience(store.db).map((l) => l.text);
+    expect(texts).toContain("测试的人跟我说了早安");
+    expect(texts).not.toContain("他跟我说了早安");
+    expect(recall(store.db, { q: "他跟我说" })).toEqual([]);
+    const rev = store.byArchiveNo(r.archiveNo)!;
+    expect(store.linksFrom(rev.id).map((l) => l.rel).sort()).toEqual(["cites", "revises"]);
+    expect(() => reviseEpisode(store, { target: archiveNo, text: "再改" })).toThrow(/已经改写过了/);
+    expect(() => reviseEpisode(store, { target: a.archiveNo, text: "x" })).toThrow(/不是你的情节/);
+  });
+});

@@ -46,10 +46,10 @@ describe("时间参数", () => {
 });
 
 describe("MCP 工具 → REST", () => {
-  test("列出四个工具，描述是中文", async () => {
+  test("列出五个工具，描述是中文", async () => {
     const client = await connect({ fetch: async () => Response.json({}) });
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["detail", "hotwrite", "hotwrite_segment", "recall"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["detail", "hotwrite", "hotwrite_segment", "recall", "revise_episode"]);
     expect(tools.find((t) => t.name === "hotwrite")!.description).toContain("情节是你自己写的记忆");
   });
 

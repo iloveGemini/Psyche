@@ -26,6 +26,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
       // 写记忆本身：情节正文已经是 episode 了，参数里的全文不再抄一遍
       if (/(^|__)hotwrite$/.test(p.name)) return `我把这一段写成了 ${Array.isArray(p.args?.entries) ? p.args.entries.length : "?"} 条情节`;
       if (/(^|__)hotwrite_segment$/.test(p.name)) return "我翻出这一段，准备写进记忆";
+      if (/^mcp__psyche__revise_episode$/.test(p.name)) return `我改写了 ${p.args?.target ?? "?"} 这条情节`;
       if (/^mcp__psyche__recall$/.test(p.name)) return `我翻了翻记忆，找「${p.args?.query ?? ""}」`;
       if (/^mcp__psyche__detail$/.test(p.name)) return `我翻出 ${p.args?.archiveNo ?? "?"} 的原件看了看`;
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;

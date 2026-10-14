@@ -15,7 +15,7 @@ import { IntakeError } from "../archive/kinds.ts";
 import { readExperience } from "../archive/experience.ts";
 import { recall } from "../archive/recall.ts";
 import { renderNow } from "../archive/now.ts";
-import { HotwriteError, readSegment, writeEpisodes } from "../catalog/hotwrite.ts";
+import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
 
@@ -97,6 +97,13 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
     // 版本以 GET 时拿到的为准（中间提示词改了版也记得对）；没带就取当前文件的
     const version = typeof body.promptVersion === "number" ? body.promptVersion : readPrompt("hot-write.md", promptsDir).version;
     return c.json(writeEpisodes(store, body, version));
+  });
+
+  // 改写一条情节：{ target: 档号, text, felt?, why? }
+  app.post("/v1/episodes/revise", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new HotwriteError("body 必须是对象");
+    return c.json(reviseEpisode(store, body));
   });
 
   // 全文检索可见经历；from / to 收毫秒、日期或 ISO 时间

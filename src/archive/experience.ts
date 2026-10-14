@@ -40,7 +40,7 @@ export function episodeText(p: { text: string; felt?: string }): string {
 
 export const experienceProjector: Projector = {
   name: "experience",
-  version: 3,
+  version: 4,
   setup(db: Database) {
     // 旧版表没有 session / covered：派生数据，直接丢掉，版本号变了会重放
     const cols = db.query(`PRAGMA table_info(p_experience)`).all() as { name: string }[];
@@ -89,6 +89,12 @@ export const experienceProjector: Projector = {
         `UPDATE p_experience SET covered = 1
          WHERE session = ? AND event_id <= ? AND kind <> 'episode' AND class <> 'situation'`,
         [session, p.upTo],
+      );
+    // 改写：旧的那版不再默认展示
+    if (ev.kind === "episode")
+      db.run(
+        `UPDATE p_experience SET covered = 1 WHERE event_id IN (SELECT to_id FROM links WHERE from_id = ? AND rel = 'revises')`,
+        [ev.id],
       );
   },
 };

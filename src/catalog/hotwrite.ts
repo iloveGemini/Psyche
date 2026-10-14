@@ -157,3 +157,45 @@ export function writeEpisodes(
   )();
   return out(written);
 }
+
+/**
+ * 改写一条情节（10-14）：写一条新情节，revises 指向旧的；旧条留着，经历里显示新的。
+ * 人重讲一件事，原来的说法还在，只是现在讲的不一样了。只能改最新的那版。
+ */
+export function reviseEpisode(
+  store: EventStore,
+  input: { target?: unknown; text?: unknown; felt?: unknown; why?: unknown },
+): { id: string; archiveNo: string } {
+  if (!nonEmpty(input.target)) throw new HotwriteError("缺 target（要改的那条情节的档号）");
+  if (!nonEmpty(input.text)) throw new HotwriteError("text 是空的");
+  if (input.felt !== undefined && typeof input.felt !== "string") throw new HotwriteError("felt 应为字符串");
+  if (input.why !== undefined && typeof input.why !== "string") throw new HotwriteError("why 应为字符串");
+  const old = store.byArchiveNo(input.target);
+  if (!old || old.kind !== "episode" || old.fonds) throw new HotwriteError(`${input.target} 不是你的情节`);
+  const year = refYear(store);
+  const idem = `rev:${old.id}`;
+  const again = store.db.query(`SELECT id FROM events WHERE source = 'agent' AND idem = ?`).get(idem) as { id: string } | null;
+  if (again) {
+    const newer = store.get(again.id)!;
+    throw new HotwriteError(`${input.target} 已经改写过了，新的是 ${displayArchiveNo(newer.archiveNo, year)}；要改就改那条`);
+  }
+  const p = old.payload as { session?: string; upTo?: string };
+  const cites = store.linksFrom(old.id).filter((l) => l.rel === "cites").map((l) => ({ to: l.to, rel: "cites" }));
+  const ev = store.append({
+    kind: "episode",
+    class: "self",
+    source: "agent",
+    producer: "revise",
+    at: old.at,
+    payload: {
+      text: input.text,
+      ...(input.felt ? { felt: input.felt } : {}),
+      ...(input.why ? { why: input.why } : {}),
+      session: p.session,
+      upTo: p.upTo,
+    },
+    links: [...cites, { to: old.id, rel: "revises" }],
+    idem,
+  });
+  return { id: ev.id, archiveNo: displayArchiveNo(ev.archiveNo, year) };
+}
