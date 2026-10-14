@@ -129,7 +129,8 @@ export type Listener = (ev: PsycheEvent) => void;
 export class EventStore {
   readonly db: Database;
   readonly timeZone: string;
-  private readonly now: () => number;
+  /** 此刻（测试可注入固定时钟） */
+  readonly now: () => number;
   private currentSituation: PsycheEvent | null;
   private listeners: Listener[] = [];
 

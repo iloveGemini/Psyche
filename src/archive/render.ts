@@ -6,7 +6,11 @@
  */
 import type { PsycheEvent } from "../store/events.ts";
 
-const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
+/** 按码点截，不把 emoji 切成半个代理对 */
+const cut = (s: string, n: number) => {
+  const cps = Array.from(s);
+  return cps.length > n ? `${cps.slice(0, n).join("")}…` : s;
+};
 const ref = (r: { hash?: string } | undefined) => (r?.hash ? `[^${r.hash.slice(0, 8)}]` : "");
 
 export function renderExperience(ev: PsycheEvent): string | null {
@@ -35,7 +39,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "named":
       return `我给自己取名「${p.name}」`;
     case "episode":
-      return null; // 情节条目替换它所写的那段原话，不作为一行再出现（archive.md §三，待接）
+      return null; // 情节不走模板：经历投影直接用它写的正文（experience.ts），热写清单里也不列
     case "diary":
       return `我写了日记${ref(p.doc)}`;
     case "focus.changed":
