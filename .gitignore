@@ -6,3 +6,4 @@ evals/hot-write/out/
 # 冷写考卷的临时库与产出
 evals/cold-write/out/
 evals/surfacing/out/
+evals/chat-import/out/
