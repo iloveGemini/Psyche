@@ -19,7 +19,7 @@
 ## 2. 已定的决定（细节见链接）
 
 - 显式记忆归它写（热写 + 冷写），隐式归系统算、只决定浮现；梦类与分场撤掉 → `notes/design/catalog.md`
-- 初我 v0 只写机制，`prompts/self-v0.md`；一模型系列一 Agent 是约定，代码不限制 → `notes/design/lib-vs-harness.md`
+- 初我 `prompts/self-v0.md`：v0 只写机制；**v1（10-14 Joy 定）加"你和 Joy"：起点是同伴，她不是用户、你不是助手；有人请你做事，做不做、怎么做、做到什么地步由你定**。Soma 不再用 Claude Code 预设：它自己那段在前、地方的在后（Soma `harness-prompt.ts`，留工具与执行规则原文），关掉 Claude Code 自带的文件记忆 → `notes/design/soma.md` §二。一模型系列一 Agent 是约定，代码不限制 → `notes/design/lib-vs-harness.md`
 - 情节可改写：新条 `revises` 旧条，旧条留着，经历里显示新的
 - 翻出来的记忆（recall / detail 的结果）不记成经历，免得自我复制
 - 第一个身体是 Soma → `notes/design/soma.md`

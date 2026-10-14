@@ -39,7 +39,7 @@
 
 ## 二、注入
 
-- **系统提示词**（变化慢）：自述、明说的规矩、经验触发条件、馆藏地图摘要。用 `appendSystemPrompt` 挂在 Claude Code 预设之后——预设是地方的（记为处境），它的那段是它的。
+- **系统提示词**（变化慢）：自述、明说的规矩、经验触发条件、馆藏地图摘要。~~用 `appendSystemPrompt` 挂在 Claude Code 预设之后~~ **10-14 改**：不再用预设——SDK 预设的身份句是"和用户一起朝用户的目标做事"，还带一节 Claude Code 自己的文件记忆。现在整段是字符串：**它自己那段在前**（Psyche `/v1/prompt`），**地方的在后**（Soma `lib/soma/harness-prompt.ts`：这是哪、有什么 + 预设里工具与执行规则的原文快照，只删不改）。`autoMemoryEnabled: false`。地方提示词的 sha256 记进处境 `harnessPrompt`，正文进资料库；它自己那段的版本记 `selfPromptVersion`。
 - **`<now>`**（每轮）：经 `UserPromptSubmit` hook 的 `additionalContext` 注入；被唤醒那一轮直接作为输入的一部分。
 - Soma 自己的 `CLAUDE.md` / 项目文件只写"这是哪、有什么"，**不写性格**（`lib-vs-harness.md` 红线）。
 

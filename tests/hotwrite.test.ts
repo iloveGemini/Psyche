@@ -212,8 +212,9 @@ describe("提示词", () => {
     const store = new EventStore(":memory:");
     const app = createApp({ store, projections: new Projections(store) });
     const p = await (await app.request("/v1/prompt")).json();
-    expect(p.version).toBe(0);
+    expect(p.version).toBeGreaterThanOrEqual(1);
     expect(p.text.startsWith("# 你的记忆")).toBe(true);
+    expect(p.text).toContain("你们的起点是同伴");
   });
 });
 
