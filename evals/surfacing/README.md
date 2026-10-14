@@ -11,6 +11,7 @@
 | `hotwrite.ts` | 生成 `episodes.json`（花额度，剧本不改不用重跑） |
 | `build.ts` | 底库：4 周基线（代码生成的模板台词，只撑统计）+ D1–D6 + 两次入睡的书架 + D7 + 情节 |
 | `a.ts` | 考卷 A：每题复制底库、补上那一刻的事件、dry 跑浮现，按 key.md 判 |
+| `b.ts` | 考卷 B：有 / 无浮现两组推同一轮，打印回复与它调的工具 |
 | `out/` | 临时库，gitignore |
 
 ## 考卷 A（不调对话模型；配了向量会花一点嵌入额度）
@@ -25,4 +26,8 @@ SILICONFLOW_API_KEY=… PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EM
 
 ## 考卷 B（有 / 无浮现对照，`claude -p`，手动跑）
 
-待写。
+```sh
+（同上的嵌入环境变量）bun evals/surfacing/b.ts --model claude-opus-5-5 --n 3 [--only B2]
+```
+
+每题起一个只读这份库的 Psyche（端口 7460 起），它能自己 recall / detail / shelf。结果在 `out/b/`。首跑见 `run1.md`。
