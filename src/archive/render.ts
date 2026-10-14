@@ -23,8 +23,12 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "message.out":
       return `我${p.to ? `对${p.to}` : ""}说：${p.text}`;
     case "tool.call":
+      // 写记忆本身：情节正文已经是 episode 了，参数里的全文不再抄一遍
+      if (/(^|__)hotwrite$/.test(p.name)) return `我把这一段写成了 ${Array.isArray(p.args?.entries) ? p.args.entries.length : "?"} 条情节`;
+      if (/(^|__)hotwrite_segment$/.test(p.name)) return "我翻出这一段，准备写进记忆";
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;
     case "tool.result":
+      if (/(^|__)hotwrite_segment$/.test(p.name)) return null; // 就是这一段本身
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
       return `（感知 · ${p.sensor}）${typeof p.value === "string" ? p.value : JSON.stringify(p.value)}`;

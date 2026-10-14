@@ -177,3 +177,13 @@ test("ULID 同一毫秒内单调递增", () => {
   expect([...ids].sort()).toEqual(ids);
   expect(new Set(ids).size).toBe(1000);
 });
+
+test("处境可以带 at：晚报的处境只给那段时间的事件挂，不顶替当前的", () => {
+  let now = T("2026-10-13T10:00:00+08:00");
+  const s = open(() => now);
+  const cur = s.setSituation({ harness: "soma", session: "B" });
+  const early = s.setSituation({ harness: "soma", session: "A" }, "soma", T("2026-10-13T09:00:00+08:00"));
+  expect(s.situation?.id).toBe(cur.id);
+  expect(s.append(msg({ at: T("2026-10-13T09:30:00+08:00") })).situation).toBe(early.id);
+  expect(s.append(msg()).situation).toBe(cur.id);
+});

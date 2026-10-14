@@ -54,7 +54,9 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
   app.post("/v1/situation", async (c) => {
     const body = await c.req.json();
     if (typeof body?.harness !== "string") throw new IntakeError("situation 缺字段 harness");
-    const ev = store.setSituation(body, body.source ?? body.harness);
+    // at：处境从何时起（缺省 = 收到时）；source 不进 payload
+    const { at, source, ...payload } = body;
+    const ev = store.setSituation(payload, typeof source === "string" ? source : body.harness, typeof at === "number" ? at : undefined);
     return c.json({ id: ev.id, archiveNo: ev.archiveNo });
   });
 

@@ -216,3 +216,13 @@ describe("提示词", () => {
     expect(p.text.startsWith("# 你的记忆")).toBe(true);
   });
 });
+
+describe("写记忆本身怎么进经历", () => {
+  test("hotwrite 调用不抄情节全文；取段的返回不进清单", async () => {
+    const { renderExperience } = await import("../src/archive/render.ts");
+    const ev = (kind: string, payload: object) => ({ kind, payload }) as Parameters<typeof renderExperience>[0];
+    expect(renderExperience(ev("tool.call", { name: "mcp__psyche__hotwrite", callId: "1", args: { upTo: "x", entries: [{}, {}] } }))).toBe("我把这一段写成了 2 条情节");
+    expect(renderExperience(ev("tool.call", { name: "mcp__psyche__hotwrite_segment", callId: "2", args: {} }))).toBe("我翻出这一段，准备写进记忆");
+    expect(renderExperience(ev("tool.result", { name: "mcp__psyche__hotwrite_segment", callId: "2", ok: true, text: "……" }))).toBeNull();
+  });
+});

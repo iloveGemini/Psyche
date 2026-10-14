@@ -188,15 +188,16 @@ export class EventStore {
     tx();
 
     const ev = this.get(id)!;
-    if (ev.class === "situation" && !fonds) this.currentSituation = ev;
+    // 晚报的处境（at 比当前的还早）不顶替当前处境，只给那段时间的事件挂
+    if (ev.class === "situation" && !fonds && (!this.currentSituation || ev.at >= this.currentSituation.at)) this.currentSituation = ev;
     for (const fn of this.listeners) fn(ev);
     return ev;
   }
 
   /** 处境只在变化时写一条（events.md §三）；没变就返回当前那条 */
-  setSituation(payload: Record<string, unknown>, source = "psyche"): PsycheEvent {
+  setSituation(payload: Record<string, unknown>, source = "psyche", at?: number): PsycheEvent {
     if (this.currentSituation && stable(this.currentSituation.payload) === stable(payload)) return this.currentSituation;
-    return this.append({ kind: "situation", class: "situation", source, payload });
+    return this.append({ kind: "situation", class: "situation", source, payload, at });
   }
 
   get situation(): PsycheEvent | null {
