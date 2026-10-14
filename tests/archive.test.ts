@@ -283,3 +283,23 @@ describe("REST", () => {
     expect(await res.text()).toBe("# 日记");
   });
 });
+
+describe("recall 不搜回声", () => {
+  test("记忆工具的调用行、本会话这一轮的话都不搜；别的会话照搜", async () => {
+    const { store, projections } = setup(() => T("2026-10-14T14:00:00+08:00"));
+    store.setSituation({ harness: "soma", session: "S1" });
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "午饭吃了面" }, at: T("2026-10-14T12:00:00+08:00") });
+    store.setSituation({ harness: "soma", session: "S2" });
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "我午饭吃了什么？" }, at: T("2026-10-14T14:00:00+08:00") });
+    intake(store, { kind: "tool.call", source: "soma", payload: { name: "mcp__psyche__recall", callId: "c1", args: { query: "午饭" } }, at: T("2026-10-14T14:00:01+08:00") });
+    intake(store, { kind: "tool.call", source: "soma", payload: { name: "Bash", callId: "c2", args: { command: "echo 午饭" } }, at: T("2026-10-14T14:00:02+08:00") });
+
+    expect(recall(store.db, { q: "午饭", session: "S2" }).map((l) => l.text)).toEqual(["Joy：午饭吃了面"]);
+    // 不给会话：这一轮也搜得到，但记忆工具行仍不搜
+    expect(recall(store.db, { q: "午饭" }).map((l) => l.kind)).toEqual(["tool.call", "message.in", "message.in"]);
+    // REST 省略 session = 当前处境的会话
+    const app = createApp({ store, projections });
+    const r = await (await app.request(`/v1/recall?q=${encodeURIComponent("午饭")}`)).json();
+    expect(r.lines.map((l: { text: string }) => l.text)).toEqual(["Joy：午饭吃了面"]);
+  });
+});

@@ -113,7 +113,10 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
     const from = q.from ? parseTime(q.from, store.timeZone) : undefined;
     const to = q.to ? parseTime(q.to, store.timeZone, true) : undefined;
     if (from === null || to === null) return c.json({ error: `看不懂的时间：${from === null ? q.from : q.to}` }, 400);
-    const lines = recall(store.db, { q: q.q, from, to, limit: num(q.limit) });
+    // 这一轮的话不搜：会话省略 = 当前处境的会话
+    const cur = (store.situation?.payload as { session?: unknown } | undefined)?.session;
+    const session = q.session || (typeof cur === "string" ? cur : undefined);
+    const lines = recall(store.db, { q: q.q, from, to, limit: num(q.limit), session });
     const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
     return c.json({ lines: lines.map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
   });
