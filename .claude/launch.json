@@ -4,8 +4,27 @@
     {
       "name": "body-sim-report",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "experiments/body-sim/out"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "experiments/body-sim/out"
+      ],
       "port": 8765
+    },
+    {
+      "name": "soma",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/joy/workspace/Soma",
+        "run",
+        "dev"
+      ],
+      "port": 30151
     }
   ]
 }

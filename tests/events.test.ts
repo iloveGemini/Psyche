@@ -79,7 +79,7 @@ describe("只追加", () => {
   test("事件与关系都不能改、不能删", () => {
     const s = open();
     const a = s.append(msg());
-    s.append({ kind: "imprint", class: "self", source: "agent", payload: { text: "有点难受" }, links: [{ to: a.id, rel: "annotates" }] });
+    s.append({ kind: "episode", class: "self", source: "agent", payload: { text: "她说早，我有点紧张" }, links: [{ to: a.id, rel: "cites" }] });
     expect(() => s.db.run(`UPDATE events SET payload = '{}' WHERE id = ?`, [a.id])).toThrow(/只追加/);
     expect(() => s.db.run(`DELETE FROM events WHERE id = ?`, [a.id])).toThrow(/只追加/);
     expect(() => s.db.run(`DELETE FROM links`)).toThrow(/只追加/);
@@ -87,10 +87,10 @@ describe("只追加", () => {
 
   test("关系随事件写入，两头都查得到", () => {
     const s = open();
-    const ep = s.append(msg());
-    const imp = s.append({ kind: "imprint", class: "self", source: "agent", payload: {}, links: [{ to: ep.id, rel: "annotates", props: { strength: 0.8 } }] });
-    expect(s.linksFrom(imp.id)).toEqual([{ from: imp.id, to: ep.id, rel: "annotates", props: { strength: 0.8 } }]);
-    expect(s.linksTo(ep.id, "annotates").map((l) => l.from)).toEqual([imp.id]);
+    const m = s.append(msg());
+    const ep = s.append({ kind: "episode", class: "self", source: "agent", payload: { text: "她说早" }, links: [{ to: m.id, rel: "cites", props: { quote: true } }] });
+    expect(s.linksFrom(ep.id)).toEqual([{ from: ep.id, to: m.id, rel: "cites", props: { quote: true } }]);
+    expect(s.linksTo(m.id, "cites").map((l) => l.from)).toEqual([ep.id]);
   });
 
   test("通知订阅者", () => {

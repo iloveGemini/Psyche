@@ -34,8 +34,8 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return "（睡了）";
     case "named":
       return `我给自己取名「${p.name}」`;
-    case "imprint":
-      return `（我的批注）${p.text}`;
+    case "episode":
+      return null; // 情节条目替换它所写的那段原话，不作为一行再出现（archive.md §三，待接）
     case "diary":
       return `我写了日记${ref(p.doc)}`;
     case "focus.changed":

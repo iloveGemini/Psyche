@@ -34,7 +34,8 @@ export const KINDS: Record<string, KindSpec> = {
 
   // ── 自我：它自己做的选择 ──
   named: { class: "self", required: { name: "string" } },
-  imprint: { class: "self", required: { text: "string" }, rels: ["annotates"] },
+  // 热写的情节条目（catalog.md §二）：正文 + 感受（原 imprint），cites 指向本段原件
+  episode: { class: "self", required: { text: "string" }, rels: ["cites"] },
   diary: { class: "self", required: { doc: "object" } }, // doc: MaterialRef（+ path?）
   "focus.changed": { class: "self", required: { items: "array" } },
   loaded: { class: "self", required: { refs: "array" } },

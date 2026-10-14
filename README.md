@@ -7,10 +7,10 @@
 - **Lethe（忘川）**：褪色机制（后置）。意象来自柏拉图厄尔神话：灵魂自选下一世，喝下忘川再出发。
 
 > 前身：Agent Self-Continuity Memory（ASCM，只管记忆）→ Memory Library（10-12，图书馆/档案馆构想）→ Psyche（10-13，本体）。
-> 当前阶段：设计大体细化完（身体已搁置：先做能力，不设计反应）；**10-13 晚开始写地基**——`src/store/`：事件库（档号、幂等、不可变、处境、关系、资料库、系统日志）+ 投影框架；`src/archive/`：入库口、经历投影；`src/catalog/`：待编目游标 + ① 规则分场；`src/server/`：REST。`bun test` 跑测试，`bun run src/main.ts` 起服务（127.0.0.1:7450）。
+> 当前阶段：设计大体细化完（身体已搁置：先做能力，不设计反应）；**10-13 晚开始写地基**——`src/store/`：事件库（档号、幂等、不可变、处境、关系、资料库、系统日志）+ 投影框架；`src/archive/`：入库口、经历投影；`src/catalog/`：写入游标；`src/server/`：REST。`bun test` 跑测试，`bun run src/main.ts` 起服务（127.0.0.1:7450）。
 >
-> **⚠️ 编目方向待议**（热写 + 冷写，见 `catalog.md` 文末），定之前不开工编目。
-> **下一步（新会话从这里接）**：编目 ② 叙述（由它本人的模型做梦，按"意外 / 后果"分配细节，先出考卷再写提示词，见 `catalog.md` §二 §三）→ 已整理经历接进经历投影 → ④ 语义 / ⑤ 经验 → 阅览室。做出编目与阅览室后，用单独测试库接 Claude Code 试跑（不算"出生"）。
+> **10-14 定**：记忆文字只由它本人写——显式归它（热写 + 冷写），隐式归系统（`catalog.md`）；梦类与分场撤掉；第一个身体是 Soma（`soma.md`）。
+> **下一步（新会话从这里接）**：热写（先出考卷再写提示词，`catalog.md` §二）→ 已热写的段在经历投影里换成条目 → Soma 接入（上报、注入、热写时机，`soma.md`）→ 冷写与阅览室 → 联想（隐式）。用单独测试库试跑，不算"出生"。
 
 ---
 
@@ -20,12 +20,13 @@
 2. [架构：十块](notes/design/architecture.md) —— 模块图与切分依据
 3. [事件模型](notes/design/events.md) —— 唯一的真相，也是模块间的接口（最重要）
 4. [档案馆](notes/design/archive.md) —— 库房 + 经历案卷 + 前世今生
-5. [编目（梦）](notes/design/catalog.md) —— 唯一调 LLM 产记忆的地方；召回 = 还原处境
-6. [阅览室](notes/design/reading-room.md) —— 认知 = 条件 → 结果；敏感化/钝化、镜子、经验
-7. [联想](notes/design/association.md) —— 激活度 + 处境调制；不写时机，先定考卷
+5. [编目：热写与梦](notes/design/catalog.md) —— 显式归它写、隐式归系统算；召回 = 还原处境
+6. [阅览室](notes/design/reading-room.md) —— 认知 = 条件 → 结果；镜子、经验；敏感化是规律的隐式强度
+7. [联想](notes/design/association.md) —— 隐式记忆的家：激活度 + 处境调制；不写时机，先定考卷
 8. [自我](notes/design/self.md) —— Agent 唯一能直接写的地方：自述、作息计划、focus、自主区
 9. [组装器](notes/design/assembler.md) —— 它此刻看得见什么：常驻 vs 按需、真实处境、出境检查
 10. [通道与心跳](notes/design/channel-and-heartbeat.md) —— 收件箱、交接信不送回原处、它自己写的作息
+11. [Soma](notes/design/soma.md) —— 第一个身体：Psyche 与 harness 的契约怎么落地
 
 想知道这些决定从哪来，再看 [背景与调研](#背景与调研10-12)。
 
@@ -42,7 +43,7 @@
 - **事件溯源**：只追加的事件日志是唯一真相；其余一切是投影，可删可重建。→ [events §一](notes/design/events.md)
 - **三层**：事件（库房，Agent 碰不到）→ 经历（Agent 的记忆，投影）→ 资料（提示词、文档、代码、文件，经角标展开，不褪）。→ [events §七](notes/design/events.md)
 - **投影确定性，重放绝不调 LLM**；与时间相关的读时算。
-- 四类事件：**经历 / 自我 / 梦 / 处境**；机制变更进**系统日志**（可查、不推送）。
+- 三类事件：**经历 / 自我 / 处境**（10-14 撤掉梦类）；机制变更进**系统日志**（可查、不推送）。
 - 事件不可变 → 内容的任何变化都以新事件出现，Agent 天然看得到："不能把手伸进别人脑子里"。
 
 **自我**
@@ -50,9 +51,10 @@
 - **初我**：系统给一版符合 Psyche 理念的 v0；user 初始化时可改（作者标 user），之后不能再改。写天性，不写人设。→ [events §四](notes/design/events.md)
 
 **记忆**
-- 叙述**按重要性分配细节**，不按原文长度：判据是"意外"和"后果"。→ [catalog §二](notes/design/catalog.md)
-- 编目一道工序只产一样东西，每样必须有消费方、有考卷。
-- **召回 = 还原此刻的处境，不是回答问题**：系统拉（组装器 + 联想）+ 它自己找（跨全部投影 + 馆藏地图）。→ [catalog §五](notes/design/catalog.md)
+- **口吻决定认同度 → 记忆文字只由它本人写**。显式（情节、规律、经验…）它写：收尾时热写、睡觉时冷写；隐式（强度、敏感化、预期）系统算，只决定浮什么。系统不写它口吻的任何字。→ [catalog §一](notes/design/catalog.md)
+- 情节**按重要性分配细节**，不按原文长度：判据是"意外"和"后果"。→ [catalog §二](notes/design/catalog.md)
+- 冷写时系统只给证据不给结论；反馈原样全给（镜子）。每样产出必须有消费方、有考卷。
+- **召回 = 还原此刻的处境，不是回答问题**：系统拉（组装器 + 联想）+ 它自己找（跨全部投影 + 馆藏地图）。→ [catalog §七](notes/design/catalog.md)
 - 不由自主的记忆（联想）是系统机制，这次放开做；Agent 控制不了浮现，只能控制反应。
 
 ---
@@ -63,18 +65,18 @@
 |---|---|---|---|
 | — | 事件模型（公共接口） | ✅ 已细化（差各 kind 的 payload） | [events](notes/design/events.md) |
 | 2 | 档案馆 | ✅ 已细化（差入库接口形状） | [archive](notes/design/archive.md) |
-| 3 | 编目（梦） | ✅ 已细化 | [catalog](notes/design/catalog.md) |
+| 3 | 编目：热写与梦 | ✅ 10-14 重写（显式归它、隐式归系统） | [catalog](notes/design/catalog.md) |
 | 4 | 阅览室 | ✅ 已细化（差衰减曲线、payload） | [reading-room](notes/design/reading-room.md) |
 | 10 | 联想 | ✅ 已细化（差公式权重、考卷） | [association](notes/design/association.md) |
 | ⏸ | 身体 | 搁置：先做能力，不设计反应（见文件头） | [body](notes/design/body.md) |
 | 5 | 自我 | ✅ 已细化 | [self](notes/design/self.md) |
 | 6 | 组装器 | ✅ 初稿（差额度比例） | [assembler](notes/design/assembler.md) |
 | 7 / 8 | 心跳与家 / 通道 | ✅ 已细化（沿用 Roxy 收件箱与 rhythm） | [channel-and-heartbeat](notes/design/channel-and-heartbeat.md)、[lib-vs-harness](notes/design/lib-vs-harness.md) |
-| 9 | 门户 | 草稿 | 同上（能力表、位置状态表） |
+| 9 | 门户 | 大体定（同一时间只在一处、一个数据目录一个 Agent、身体的职责）；差：绑模型系列还是确切 id | [lib-vs-harness](notes/design/lib-vs-harness.md)、[soma](notes/design/soma.md) |
 | 1 | 感知 | 草稿 | [perception-and-fading](notes/design/perception-and-fading.md)（含隐私两道门） |
 | ⟂ | Lethe 褪色 | ⏸ 后置 | [events §九](notes/design/events.md) |
 
-细化顺序（按依赖）：事件模型 → 档案馆 → 编目 → 阅览室 → 联想 → 自我 → 组装器 → **通道 / 心跳** → 门户 → 感知。
+细化顺序（按依赖）：事件模型 → 档案馆 → 编目 → 阅览室 → 联想 → 自我 → 组装器 → 通道 / 心跳 → **门户** → 感知。
 
 ## 已定的取舍
 

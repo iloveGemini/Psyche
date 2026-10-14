@@ -11,7 +11,7 @@
  * 投影各自建表，存派生数据，可删可重建（projections.ts）。
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS events (
   at         INTEGER NOT NULL,          -- 发生时间（epoch ms）；导入的旧记忆保留原时间
   recorded   INTEGER NOT NULL,          -- 写入时间（epoch ms）
   kind       TEXT NOT NULL,             -- 如 message.in / prompt.changed
-  class      TEXT NOT NULL CHECK (class IN ('experience','self','dream','situation')),
-  source     TEXT NOT NULL,             -- harness 名 / sensor 名 / agent / dream / user
+  class      TEXT NOT NULL CHECK (class IN ('experience','self','situation')),
+  source     TEXT NOT NULL,             -- harness 名 / sensor 名 / agent / user
   producer   TEXT,                      -- 梦类：编目版本与模型
   situation  TEXT,                      -- 当时所处的处境事件 id
   v          INTEGER NOT NULL DEFAULT 1,-- payload 的 schema 版本

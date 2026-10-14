@@ -13,7 +13,7 @@ import { ulid } from "../core/ulid.ts";
 import { localDay } from "../core/time.ts";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 
-export type EventClass = "experience" | "self" | "dream" | "situation";
+export type EventClass = "experience" | "self" | "situation";
 
 export interface LinkInput {
   to: string;
