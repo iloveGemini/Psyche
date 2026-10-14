@@ -13,8 +13,10 @@ import type { Projections } from "../store/projections.ts";
 import { intake, type IntakeItem } from "../archive/intake.ts";
 import { IntakeError } from "../archive/kinds.ts";
 import { readExperience } from "../archive/experience.ts";
-import { recall } from "../archive/recall.ts";
+import { hybridRecall } from "../archive/recall.ts";
+import type { Embedder } from "../archive/vectors.ts";
 import { renderNow } from "../archive/now.ts";
+import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
 import { readShelf, renderEntry } from "../reading/shelf.ts";
@@ -28,11 +30,13 @@ export interface AppDeps {
   token?: string;
   /** 提示词目录，缺省仓库里的 prompts/（测试换成临时目录） */
   promptsDir?: string;
+  /** 嵌入服务：没有就只用字面（recall、浮现） */
+  embedder?: Embedder;
 }
 
 const num = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
 
-export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
+export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: AppDeps) {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -139,7 +143,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
   });
 
   // 全文检索可见经历；from / to 收毫秒、日期或 ISO 时间
-  app.get("/v1/recall", (c) => {
+  app.get("/v1/recall", async (c) => {
     const q = c.req.query();
     if (!q.q?.trim()) return c.json({ error: "缺 q" }, 400);
     const from = q.from ? parseTime(q.from, store.timeZone) : undefined;
@@ -148,14 +152,26 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR }: AppDeps) {
     // 这一轮的话不搜：会话省略 = 当前处境的会话
     const cur = (store.situation?.payload as { session?: unknown } | undefined)?.session;
     const session = q.session || (typeof cur === "string" ? cur : undefined);
-    const lines = recall(store.db, { q: q.q, from, to, limit: num(q.limit), session });
+    const lines = await hybridRecall(store.db, embedder, { q: q.q, from, to, limit: num(q.limit), session });
     const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
     // 书架上的条目（它冷写时整理的）排在前面；时间范围只管经历
     const shelf = from === undefined && to === undefined ? readShelf(store.db, { q: q.q }).map((e) => ({ archiveNo: e.archiveNo, at: e.at, kind: "semantic", text: renderEntry(e) })) : [];
     return c.json({ lines: [...shelf, ...lines].map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
   });
 
-  app.get("/v1/now", (c) => c.json({ text: renderNow(store, c.req.query("session") || undefined) }));
+  // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
+  app.get("/v1/now", async (c) => {
+    const session = c.req.query("session") || undefined;
+    const base = renderNow(store, session);
+    const s = renderSurfaced(await surface(store, embedder, { session }));
+    return c.json({ text: s ? base.replace(/\n<\/now>$/, `\n\n${s}\n</now>`) : base });
+  });
+
+  // 只算不写：考卷与调试，带各候选的分项
+  app.get("/v1/surface", async (c) => {
+    const q = c.req.query();
+    return c.json(await surface(store, embedder, { session: q.session || undefined, dry: q.dry !== "0", seed: num(q.seed) }));
+  });
 
   app.get("/v1/prompt", (c) => c.json(readPrompt("self-v0.md", promptsDir)));
 
