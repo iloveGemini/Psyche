@@ -81,6 +81,17 @@ describe("浮现", () => {
     expect(r2.items.some((i) => i.source === "hunch")).toBe(false);
   });
 
+  test("隔了很久她回来、开口说话：她的话是线索，上次怎么散的也先想起来", async () => {
+    const t = setup();
+    t.evenings();
+    t.set(T("2026-09-15T21:00:01"));
+    t.sit("back", T("2026-09-15T21:00:00"));
+    t.her("咳咳 看看这是哪里", T("2026-09-15T21:00:00"));
+    const r = await surface(t.store, undefined, { session: "back", dry: true, seed: 1 });
+    expect(r.mode).toBe("fresh");
+    expect(r.items.some((i) => i.parts.lastTime === 1 && i.text.includes("第 13 个功能"))).toBe(true);
+  });
+
   test("字面接不上、向量接得上：她说耳机，想起退款那次；本会话的原话不算", async () => {
     const t = setup();
     t.evenings();

@@ -147,24 +147,31 @@ function modeOf(c: Ctx): { mode: Mode; turnStart: string | null; herNow: { text:
 }
 
 /** 线索的话：她这一轮的话 + 本会话前几行；刚回来没有她的话 → 上次和她对话的最后几行 */
-function cueText(c: Ctx, herNow: { text: string } | null, turnStart: string | null): { text: string; now: string; fromLastTime: { event_id: string; archive_no: string; at: number; text: string; session: string | null }[] } {
+/** 上次和她对话的最后几行：另一个会话里最近的那段（有情节给情节） */
+function lastTimeTail(c: Ctx) {
+  return (
+    c.db
+      .query(
+        `SELECT p.event_id, p.archive_no, p.at, p.text, p.session FROM p_experience p WHERE p.kind IN ('message.in', 'message.out', 'episode') AND p.covered = 0
+           AND p.at <= ? AND p.session = (SELECT q.session FROM p_experience q WHERE q.kind IN ('message.in', 'message.out', 'episode') AND q.at <= ?
+                                          AND q.session IS NOT ? ORDER BY q.at DESC, q.event_id DESC LIMIT 1)
+         ORDER BY p.at DESC, p.event_id DESC LIMIT 4`,
+      )
+      .all(c.now, c.now, c.session) as { event_id: string; archive_no: string; at: number; text: string; session: string | null }[]
+  ).reverse();
+}
+
+function cueText(c: Ctx, herNow: { text: string } | null, turnStart: string | null, fresh: boolean): { text: string; now: string; fromLastTime: { event_id: string; archive_no: string; at: number; text: string; session: string | null }[] } {
   if (herNow && turnStart) {
     const prev = c.session
       ? (c.db
           .query(`SELECT text FROM p_experience WHERE session = ? AND covered = 0 AND class <> 'situation' AND event_id < ? ORDER BY event_id DESC LIMIT 3`)
           .all(c.session, turnStart) as { text: string }[])
       : [];
-    return { text: [herNow.text, ...prev.map((r) => r.text)].join("\n"), now: herNow.text, fromLastTime: [] };
+    // 隔了很久她回来：她这一轮的话是线索，上次怎么散的照样先想起来
+    return { text: [herNow.text, ...prev.map((r) => r.text)].join("\n"), now: herNow.text, fromLastTime: fresh ? lastTimeTail(c) : [] };
   }
-  const tail = (
-    c.db
-      .query(
-        `SELECT p.event_id, p.archive_no, p.at, p.text, p.session FROM p_experience p WHERE p.kind IN ('message.in', 'message.out', 'episode') AND p.covered = 0
-           AND p.at <= ? AND p.session = (SELECT q.session FROM p_experience q WHERE q.kind IN ('message.in', 'message.out') AND q.at <= ? ORDER BY q.at DESC, q.event_id DESC LIMIT 1)
-         ORDER BY p.at DESC, p.event_id DESC LIMIT 4`,
-      )
-      .all(c.now, c.now) as { event_id: string; archive_no: string; at: number; text: string; session: string | null }[]
-  ).reverse();
+  const tail = lastTimeTail(c);
   const text = tail.map((r) => r.text).join("\n");
   return { text, now: text, fromLastTime: tail };
 }
@@ -257,7 +264,7 @@ export async function surface(
   const c: Ctx = { db: store.db, store, now: store.now(), session: opts.session ?? ((store.situation?.payload as { session?: string } | undefined)?.session ?? null) };
   const { mode, turnStart, herNow } = modeOf(c);
   const m = MODES[mode];
-  const { text: cue, now: cueNow, fromLastTime } = cueText(c, herNow, turnStart);
+  const { text: cue, now: cueNow, fromLastTime } = cueText(c, herNow, turnStart, mode === "fresh");
   const idle = !!herNow && isIdle(herNow.text);
   const rand = mulberry32(opts.seed ?? Math.floor(c.now / 60_000));
   const noise = () => (rand() * 2 - 1) * m.noise;
