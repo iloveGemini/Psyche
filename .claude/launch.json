@@ -55,6 +55,18 @@
         "cd /Users/joy/workspace/Soma && SOMA_HOME=/Users/joy/.soma-test SOMA_CLAUDE_CONFIG_DIR=/Users/joy/.soma/claude PSYCHE_URL=http://127.0.0.1:7450 SOMA_COMPACT_AT=27000 SOMA_DIST_DIR=.next-test exec npx next dev -H 127.0.0.1 -p 30152"
       ],
       "port": 30152
+    },
+    {
+      "name": "psyche-coldwrite-exam",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PSYCHE_DATA_DIR=/Users/joy/workspace/Psyche/evals/cold-write/out",
+        "PSYCHE_PORT=7451",
+        "bun",
+        "run",
+        "src/main.ts"
+      ],
+      "port": 7451
     }
   ]
 }
