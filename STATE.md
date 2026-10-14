@@ -67,7 +67,7 @@
 ## 5. 运行备忘
 
 - `bun test`（含 `tests/hotwrite-check.test.ts`）· `bun run typecheck` · `bun run src/main.ts`（127.0.0.1:7450）
-- launch.json：`psyche-test`（7450，测试库）/ `soma-test`（30152，连测试 Psyche）
+- launch.json：`psyche-test`（7450，测试库）/ `soma-test`（30152，连测试 Psyche；监听 0.0.0.0，手机走 `http://192.168.2.80:30152`，Soma 无登录，只在家里网络用）。Soma 顶栏有临时观测面板（用量、`<now>`、提示词、Psyche 连通，快照存 `~/.soma-test/debug.json`）
 
 ## 6. 验证
 
