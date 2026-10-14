@@ -2,3 +2,6 @@ node_modules/
 
 # 热写考卷的样本：Joy 的私人对话，不进仓库
 evals/hot-write/out/
+
+# 冷写考卷的临时库与产出
+evals/cold-write/out/
