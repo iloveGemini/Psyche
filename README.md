@@ -18,8 +18,8 @@
 3. [事件模型](notes/design/events.md) —— 唯一的真相，也是模块间的接口（最重要）
 4. [档案馆](notes/design/archive.md) —— 库房 + 经历案卷 + 前世今生
 5. [编目：热写与梦](notes/design/catalog.md) —— 显式归它写、隐式归系统算；召回 = 还原处境
-6. [阅览室](notes/design/reading-room.md) —— 认知 = 条件 → 结果；镜子、经验；敏感化是规律的隐式强度
-7. [联想](notes/design/association.md) —— 隐式记忆的家：激活度 + 处境调制；不写时机，先定考卷
+6. [阅览室](notes/design/reading-room.md) —— 认知 = 条件 → 结果；镜子、经验；规律该多当真它看证据自己推
+7. [联想](notes/design/association.md) —— 隐式记忆的家，只管浮现：激活度 + 处境调制；不写时机，先定考卷
 8. [自我](notes/design/self.md) —— Agent 唯一能直接写的地方：自述、作息计划、focus、自主区
 9. [组装器](notes/design/assembler.md) —— 它此刻看得见什么：常驻 vs 按需、真实处境、出境检查
 10. [通道与心跳](notes/design/channel-and-heartbeat.md) —— 收件箱、交接信不送回原处、它自己写的作息
@@ -48,7 +48,7 @@
 - **初我**：系统给一版符合 Psyche 理念的 v0；user 初始化时可改（作者标 user），之后不能再改。写天性，不写人设。→ [events §四](notes/design/events.md)
 
 **记忆**
-- **口吻决定认同度 → 记忆文字只由它本人写**。显式（情节、规律、经验…）它写：收尾时热写、睡觉时冷写；隐式（强度、敏感化、预期）系统算，只决定浮什么。系统不写它口吻的任何字。→ [catalog §一](notes/design/catalog.md)
+- **口吻决定认同度 → 记忆文字只由它本人写**。显式（情节、规律、经验…）它写：收尾时热写、睡觉时冷写；隐式（强度、证据近因、预期）系统算，只决定浮什么；规律该多当真，它看证据自己推。系统不写它口吻的任何字。→ [catalog §一](notes/design/catalog.md)
 - 情节**按重要性分配细节**，不按原文长度：判据是"意外"和"后果"。→ [catalog §二](notes/design/catalog.md)
 - 冷写时系统只给证据不给结论；反馈原样全给（镜子）。每样产出必须有消费方、有考卷。
 - **召回 = 还原此刻的处境，不是回答问题**：系统拉（组装器 + 联想）+ 它自己找（跨全部投影 + 馆藏地图）。→ [catalog §七](notes/design/catalog.md)
