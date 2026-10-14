@@ -72,7 +72,7 @@
 | 5 | 自我 | ✅ 已细化 | [self](notes/design/self.md) |
 | 6 | 组装器 | ✅ 初稿（差额度比例） | [assembler](notes/design/assembler.md) |
 | 7 / 8 | 心跳与家 / 通道 | ✅ 已细化（沿用 Roxy 收件箱与 rhythm） | [channel-and-heartbeat](notes/design/channel-and-heartbeat.md)、[lib-vs-harness](notes/design/lib-vs-harness.md) |
-| 9 | 门户 | 大体定（同一时间只在一处、一个数据目录一个 Agent、身体的职责）；差：绑模型系列还是确切 id | [lib-vs-harness](notes/design/lib-vs-harness.md)、[soma](notes/design/soma.md) |
+| 9 | 门户 | ✅ 已细化（同一时间只在一处、身体的职责；一模型系列一 Agent 是约定，代码不限制） | [lib-vs-harness](notes/design/lib-vs-harness.md)、[soma](notes/design/soma.md) |
 | 1 | 感知 | 草稿 | [perception-and-fading](notes/design/perception-and-fading.md)（含隐私两道门） |
 | ⟂ | Lethe 褪色 | ⏸ 后置 | [events §九](notes/design/events.md) |
 
