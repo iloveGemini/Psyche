@@ -258,7 +258,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         upTo: string | null;
         prompt: string;
         promptVersion: number;
-        material: { session: string | null; lines: { archiveNo: string; at: number; text: string }[] }[];
+        material: { session: string | null; harness: string | null; lines: { archiveNo: string; at: number; text: string }[] }[];
         shelf: Entry[];
         candidates: { target: string; lines: { archiveNo: string; at: number; text: string; hit: string }[] }[];
         stats: Stats | null;
@@ -284,7 +284,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
           "</candidates>",
           "",
           "<material>",
-          ...m.material.flatMap((g) => [`── 会话 ${g.session ?? "（不在会话里）"} ──`, ...g.lines.map(line)]),
+          ...m.material.flatMap((g) => [`── 会话 ${g.session ?? "（不在会话里）"}${g.harness ? `（在 ${g.harness}）` : ""} ──`, ...g.lines.map(line)]),
           "</material>",
         ].join("\n"),
       );
@@ -298,7 +298,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       description: [
         "睡前整理，写回你的书架。书架上的字都是你写的；证据数、强弱由系统从你挂的档号数，不用自评。",
         "op：propose 新条目（shelf: fact 事实 / told 明说的规矩 / rule 规律 / mirror 镜子）· evidence 对现行条目判一条证据（for 印证 / against 反例 / irrelevant 无关）· revise 改写 · retire 作废。",
-        "规律和镜子要写 when（条件）、then（结果）、observe（结果怎么观察），首批证据至少 2 条、来自不同会话；明说的规矩 quote 逐字照录她的原话。",
+        "规律和镜子要写 when（条件）、then（结果）、observe（结果怎么观察），首批证据至少 2 条、来自不同时间（不同会话、不同的天或相隔 6 小时以上）；明说的规矩 quote 逐字照录她的原话。",
         "upTo 原样传回。entries 可以是空的（看过了，没什么要写）。整批要么全收、要么全拒；被拒时会告诉你原因，改了再交。",
       ].join("\n"),
       inputSchema: {

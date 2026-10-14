@@ -84,12 +84,33 @@ describe("系统闸", () => {
     const e = twoDays(t);
     const r1 = await t.post({ upTo: e.b2.id, entries: [rule([t.no(e.a1), t.no(e.a2)])] });
     expect(r1.status).toBe(400);
-    expect((await r1.json()).error).toContain("2 个不同的会话");
+    expect((await r1.json()).error).toContain("来自不同时间");
     const r2 = await t.post({ upTo: e.b2.id, entries: [rule([t.no(e.a2), t.no(e.b2)])] });
     expect(r2.status).toBe(200);
     const { entries } = await (await t.app.request("/v1/shelf")).json();
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ shelf: "rule", for: 2, against: 0, when: "她回单字，我接着追问" });
+  });
+
+  test("同一会话也行：跨天、或相隔 6 小时以上", async () => {
+    const t = setup();
+    t.session("long", "2026-10-05T09:00:00");
+    const a = t.her("嗯", "2026-10-05T09:10:00");
+    const b = t.her("烦", "2026-10-05T10:00:00");
+    const c = t.her("烦 别问了", "2026-10-05T16:30:00");
+    const near = await t.post({ upTo: c.id, entries: [rule([t.no(a), t.no(b)])] });
+    expect(near.status).toBe(400);
+    expect((await t.post({ upTo: c.id, entries: [rule([t.no(a), t.no(c)])] })).status).toBe(200);
+  });
+
+  test("明说的规矩引情节：去情节挂的原件里找原话", async () => {
+    const t = setup();
+    const e = twoDays(t);
+    const { writeEpisodes } = await import("../src/catalog/hotwrite.ts");
+    const ep = writeEpisodes(t.store, { session: "d1", upTo: e.told.id, entries: [{ text: "她让我在她回单字时别追问", cites: [t.no(e.told)] }] }, 1).episodes[0];
+    const told = { op: "propose", shelf: "told", text: "她回单字时别追问", quote: "我回一个字的时候你别追着问", cites: [ep.archiveNo] };
+    const r = await t.post({ upTo: ep.id, entries: [told] });
+    expect(await r.json()).toMatchObject({ written: [{ op: "propose" }] });
   });
 
   test("规律缺观察方式 → 拒", async () => {

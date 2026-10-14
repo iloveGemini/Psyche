@@ -12,6 +12,8 @@ import { localDay, wallClock } from "../core/time.ts";
 import { cosine, fromBlob, syncVectors, vectorOf, type Embedder } from "../archive/vectors.ts";
 import { readShelf, renderEntry, type ShelfEntry } from "../reading/shelf.ts";
 import { NOT_MEMORY_TOOL } from "../archive/recall.ts";
+import { sessionOf } from "../archive/experience.ts";
+import { harnessOf } from "../catalog/coldwrite.ts";
 import { keywords } from "../core/words.ts";
 export { keywords };
 
@@ -29,6 +31,8 @@ export const W = {
   /** 书架条目：每次印证（封顶 4 次）、最近 14 天内有证据 */
   evidence: 0.04,
   evidenceRecent: 0.1,
+  /** 书架条目的证据里有发生在此刻这个地方的（m3 线索"地方"） */
+  place: 0.1,
   refractoryMs: 72 * 3_600_000,
   /** 预感：最近 28 天里这个时段来过的天数占比 */
   hunchShare: 0.5,
@@ -231,6 +235,18 @@ function hunches(c: Ctx): Surfaced[] {
   return out;
 }
 
+/** 条目的证据发生在哪些地方：经所在会话的处境查（情节按它记的会话） */
+function evidencePlaces(c: Ctx, root: string): Set<string> {
+  const ids = c.db.query(`SELECT event_id FROM p_shelf_ev WHERE root = ? AND stance IN ('for', 'against')`).all(root) as { event_id: string }[];
+  const out = new Set<string>();
+  for (const { event_id } of ids) {
+    const ev = c.store.get(event_id);
+    const h = ev ? harnessOf(c.store, sessionOf(c.db, ev)) : null;
+    if (h) out.add(h);
+  }
+  return out;
+}
+
 function shelfScore(e: ShelfEntry, cue: string, qvec: Float32Array | null, v: Float32Array | null, now: number) {
   const watch = e.watch?.some((w) => cue.includes(w)) ? W.watch : 0;
   const ks = keywords(cue);
@@ -266,6 +282,7 @@ export async function surface(
     }
   }
   const model = qvec ? embedder!.model : null;
+  const here = (store.situation?.payload as { harness?: string } | undefined)?.harness ?? null;
   const year = Number(localDay(c.now, store.timeZone).slice(0, 4));
 
   // 刚回来：上次怎么散的（另一个会话里和她的最后几行）先想起来，不和别的比分
@@ -299,7 +316,8 @@ export async function surface(
     }
     for (const e of readShelf(store.db)) {
       if (block.has(e.root)) continue;
-      const p = shelfScore(e, cueNow, qvec, model ? vectorOf(store.db, e.current, model) : null, c.now);
+      const p: Record<string, number> = shelfScore(e, cueNow, qvec, model ? vectorOf(store.db, e.current, model) : null, c.now);
+      if (here && evidencePlaces(c, e.root).has(here)) p.place = W.place;
       if (idle) p.lex = 0; // 空档只认它写的留意词
       if (p.watch + p.lex + p.vec <= 0) continue;
       const parts = { ...p, noise: noise() };

@@ -39,7 +39,16 @@ function lastMaterialId(store: EventStore): string | null {
 }
 
 /** (since, upTo] 内的可见经历（有情节的给情节，没写情节的给原话），按会话分组，组按首行时间、行按 at 排 */
-export function materialLines(store: EventStore, since: string, upTo: string): { session: string | null; lines: MaterialLine[] }[] {
+/** 会话在哪个地方（处境的 harness） */
+export function harnessOf(store: EventStore, session: string | null): string | null {
+  if (!session) return null;
+  const r = store.db
+    .query(`SELECT json_extract(payload, '$.harness') AS h FROM events WHERE class = 'situation' AND json_extract(payload, '$.session') = ? ORDER BY id LIMIT 1`)
+    .get(session) as { h: string | null } | null;
+  return r?.h ?? null;
+}
+
+export function materialLines(store: EventStore, since: string, upTo: string): { session: string | null; harness: string | null; lines: MaterialLine[] }[] {
   const rows = store.db
     .query(
       `SELECT event_id, archive_no, at, kind, text, session FROM p_experience
@@ -53,7 +62,7 @@ export function materialLines(store: EventStore, since: string, upTo: string): {
     g.push({ eventId: r.event_id, archiveNo: displayArchiveNo(r.archive_no, year), at: r.at, kind: r.kind, text: r.text });
     groups.set(r.session, g);
   }
-  return [...groups].map(([session, lines]) => ({ session, lines })).sort((a, b) => a.lines[0].at - b.lines[0].at);
+  return [...groups].map(([session, lines]) => ({ session, harness: harnessOf(store, session), lines })).sort((a, b) => a.lines[0].at - b.lines[0].at);
 }
 
 /** 候选证据：现行规律 / 镜子按它的 watch 词在材料里命中、还没计过的行 */
@@ -89,7 +98,7 @@ export function readColdwrite(store: EventStore) {
     upTo,
     since,
     stats,
-    material: groups.map((g) => ({ session: g.session, from: g.lines[0].at, to: g.lines.at(-1)!.at, lines: g.lines.map(({ eventId, ...l }) => l) })),
+    material: groups.map((g) => ({ session: g.session, harness: g.harness, from: g.lines[0].at, to: g.lines.at(-1)!.at, lines: g.lines.map(({ eventId, ...l }) => l) })),
     shelf: shelf.map(shown),
     candidates: candidates.map((c) => ({ target: shown(c.entry).archiveNo, lines: c.lines.map(({ eventId, ...l }) => l) })),
   };
@@ -151,6 +160,20 @@ function fieldsOf(e: Record<string, unknown>, at: string): Record<string, unknow
 
 const sessionsOf = (store: EventStore, evs: PsycheEvent[]) => new Set(evs.map((e) => sessionOf(store.db, e)).filter((s) => s !== null));
 
+/** 两次独立的发生之间至少隔这么久，才算"不同时间"（同一会话里跨天、或隔了大半天也算） */
+export const DISTINCT_GAP_MS = 6 * 3_600_000;
+
+/**
+ * 证据是不是来自"不同时间的独立发生"（reading-room §二）：分属不同会话、不同自然日、或相隔 6 小时以上，满足一条就算。
+ * 原来只认不同会话——claude.ai 一个对话连着三天，跨天反复出现的事全写不成规律（10-14 真实数据撞出）。
+ */
+export function distinctTimes(store: EventStore, evs: PsycheEvent[]): boolean {
+  if (sessionsOf(store, evs).size >= 2) return true;
+  if (new Set(evs.map((e) => e.day)).size >= 2) return true;
+  const ats = evs.map((e) => e.at);
+  return Math.max(...ats) - Math.min(...ats) >= DISTINCT_GAP_MS;
+}
+
 /** 条目的规则：规律 / 镜子要条件、结果、观察方式；明说的规矩原话要逐字出现在所引的她的话里 */
 function checkEntryShape(store: EventStore, shelf: string, f: Record<string, unknown>, cited: PsycheEvent[], at: string) {
   if (!nonEmpty(f.text)) throw new ColdwriteError(`${at}的 text 是空的`);
@@ -160,8 +183,12 @@ function checkEntryShape(store: EventStore, shelf: string, f: Record<string, unk
   if (shelf === "told") {
     if (!nonEmpty(f.quote)) throw new ColdwriteError(`${at}是明说的规矩，缺 quote（原话）`);
     const q = (f.quote as string).trim();
-    if (!cited.some((e) => e.kind === "message.in" && typeof (e.payload as { text?: unknown }).text === "string" && ((e.payload as { text: string }).text).includes(q)))
-      throw new ColdwriteError(`${at}的原话「${q}」在所引的消息里找不到（要逐字）`);
+    // 引的是情节时，顺着情节挂的档号往下找一层：热写后原话被情节覆盖，材料里只剩情节（10-14 撞出）
+    const msgs = cited.flatMap((e) =>
+      e.kind === "episode" ? store.linksFrom(e.id).filter((l) => l.rel === "cites").map((l) => store.get(l.to)!).filter(Boolean) : [e],
+    );
+    if (!msgs.some((e) => e.kind === "message.in" && typeof (e.payload as { text?: unknown }).text === "string" && ((e.payload as { text: string }).text).includes(q)))
+      throw new ColdwriteError(`${at}的原话「${q}」在所引的消息里找不到（要逐字；引情节的话，会去情节挂的原件里找）`);
   }
 }
 
@@ -179,8 +206,8 @@ function checkOp(store: EventStore, e: unknown, i: number, upTo: string): Checke
     const f = fieldsOf(o, at);
     checkEntryShape(store, o.shelf as string, f, cited, at);
     if (!cited.length) throw new ColdwriteError(`${at}没有证据（cites）`);
-    if ((o.shelf === "rule" || o.shelf === "mirror") && (cited.length < 2 || sessionsOf(store, cited).size < 2))
-      throw new ColdwriteError(`${at}是${o.shelf === "rule" ? "规律" : "镜子"}：证据至少 2 条、来自至少 2 个不同的会话（单次不是规律）`);
+    if ((o.shelf === "rule" || o.shelf === "mirror") && (cited.length < 2 || !distinctTimes(store, cited)))
+      throw new ColdwriteError(`${at}是${o.shelf === "rule" ? "规律" : "镜子"}：证据至少 2 条、来自不同时间（不同会话、不同的天、或相隔 6 小时以上；单次不是规律）`);
     return { op, kind: OP_KIND[op], payload: { shelf: o.shelf, ...f }, links: evidence({ stance: "for" }), cited };
   }
 
