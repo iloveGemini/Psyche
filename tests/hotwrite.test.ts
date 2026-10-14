@@ -226,3 +226,11 @@ describe("写记忆本身怎么进经历", () => {
     expect(renderExperience(ev("tool.result", { name: "mcp__psyche__hotwrite_segment", callId: "2", ok: true, text: "……" }))).toBeNull();
   });
 });
+
+test("翻记忆：调用记一笔，翻出来的内容不再记成经历", async () => {
+  const { renderExperience } = await import("../src/archive/render.ts");
+  const ev = (kind: string, payload: object) => ({ kind, payload }) as Parameters<typeof renderExperience>[0];
+  expect(renderExperience(ev("tool.call", { name: "mcp__psyche__recall", callId: "1", args: { query: "测试" } }))).toBe("我翻了翻记忆，找「测试」");
+  expect(renderExperience(ev("tool.result", { name: "mcp__psyche__recall", callId: "1", ok: true, text: "[10-14#2] …" }))).toBeNull();
+  expect(renderExperience(ev("tool.result", { name: "mcp__psyche__detail", callId: "2", ok: true, text: "{}" }))).toBeNull();
+});
