@@ -227,5 +227,9 @@ describe("第二次睡：候选、判断、改写、作废", () => {
     expect(lines[0]).toMatchObject({ kind: "semantic" });
     expect(lines[0].text).toContain("（规律）");
     expect(lines.slice(1).every((l: any) => l.kind !== "semantic")).toBe(true);
+    // 带依据的档号；查询里只要有一个实词撞上就算（原来要求每个词都出现）
+    expect(lines[0].text).toMatch(/依据：10-0[57]#\d+/);
+    const any = await (await t.app.request(`/v1/recall?q=${encodeURIComponent("得分 追问 记一分")}`)).json();
+    expect(any.lines[0]).toMatchObject({ kind: "semantic" });
   });
 });

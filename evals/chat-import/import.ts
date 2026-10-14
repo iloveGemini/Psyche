@@ -81,8 +81,9 @@ if (import.meta.main) {
   const items = itemsOf(conv);
   const session = `chat-${conv.uuid.slice(0, 8)}`;
   store.db.transaction(() => {
-    store.append({ kind: "situation", class: "situation", source: "claude-chat", at: items[0].at! - 1000, payload: { harness: "claude-chat", session }, idem: `chat:${conv.uuid}:sit` });
-    for (const it of items) intake(store, it);
+    const sit = store.append({ kind: "situation", class: "situation", source: "claude-chat", at: items[0].at! - 1000, payload: { harness: "claude-chat", session }, idem: `chat:${conv.uuid}:sit` });
+    // 显式挂在这个对话的处境上：按发生时间找"当时生效的处境"，会挂到库里同一时段别的会话上（10-14 撞过）
+    for (const it of items) intake(store, { ...it, situation: sit.id });
   })();
   const kinds = new Map<string, number>();
   for (const it of items) kinds.set(it.kind, (kinds.get(it.kind) ?? 0) + 1);

@@ -18,6 +18,8 @@ export interface IntakeItem {
   at?: number;
   idem?: string;
   links?: LinkInput[];
+  /** 显式指定所挂处境（导入用）：缺省按发生时间找当时生效的那条 */
+  situation?: string;
 }
 
 /** 带系统闸的记忆：只能从热写 / 冷写的口子进，不能绕过校验直接上报 */
@@ -38,5 +40,5 @@ export function intake(store: EventStore, item: IntakeItem): PsycheEvent {
       payload = { ...rest, argsRef: { hash: store.putMaterial(json, "application/json"), mime: "application/json" } };
     }
   }
-  return store.append({ kind: item.kind, class: spec.class, source: item.source, payload, at: item.at, idem: item.idem, links: item.links });
+  return store.append({ kind: item.kind, class: spec.class, source: item.source, payload, at: item.at, idem: item.idem, links: item.links, situation: item.situation });
 }

@@ -13,7 +13,7 @@ import type { Projections } from "../store/projections.ts";
 import { intake, type IntakeItem } from "../archive/intake.ts";
 import { IntakeError } from "../archive/kinds.ts";
 import { readExperience } from "../archive/experience.ts";
-import { hybridRecall } from "../archive/recall.ts";
+import { hybridRecall, queryVector, renderShelfHit, shelfRecall } from "../archive/recall.ts";
 import type { Embedder } from "../archive/vectors.ts";
 import { renderNow } from "../archive/now.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
@@ -152,10 +152,15 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
     // 这一轮的话不搜：会话省略 = 当前处境的会话
     const cur = (store.situation?.payload as { session?: unknown } | undefined)?.session;
     const session = q.session || (typeof cur === "string" ? cur : undefined);
-    const lines = await hybridRecall(store.db, embedder, { q: q.q, from, to, limit: num(q.limit), session });
+    const qvec = await queryVector(store.db, embedder, q.q);
+    const lines = await hybridRecall(store.db, embedder, { q: q.q, from, to, limit: num(q.limit), session }, qvec);
     const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
-    // 书架上的条目（它冷写时整理的）排在前面；时间范围只管经历
-    const shelf = from === undefined && to === undefined ? readShelf(store.db, { q: q.q }).map((e) => ({ archiveNo: e.archiveNo, at: e.at, kind: "semantic", text: renderEntry(e) })) : [];
+    // 书架上的条目（它冷写时整理的）排在前面，带依据的档号；时间范围只管经历
+    const show = (no: string) => displayArchiveNo(no, year);
+    const shelf =
+      from === undefined && to === undefined
+        ? shelfRecall(store.db, q.q, qvec, qvec ? embedder!.model : null).map((e) => ({ archiveNo: e.archiveNo, at: e.at, kind: "semantic", text: renderShelfHit(e, show) }))
+        : [];
     return c.json({ lines: [...shelf, ...lines].map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
   });
 

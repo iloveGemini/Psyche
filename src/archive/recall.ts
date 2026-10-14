@@ -13,7 +13,9 @@
  */
 import type { Database } from "bun:sqlite";
 import { hasFts } from "./experience.ts";
-import { cosine, fromBlob, syncVectors, type Embedder } from "./vectors.ts";
+import { cosine, fromBlob, syncVectors, vectorOf, type Embedder } from "./vectors.ts";
+import { keywords } from "../core/words.ts";
+import { readShelf, renderEntry, type ShelfEntry } from "../reading/shelf.ts";
 
 export interface RecallQuery {
   q: string;
@@ -96,20 +98,59 @@ export function rrf<T extends { eventId: string }>(lists: T[][], limit: number, 
   return [...score.values()].sort((a, b) => b.s - a.s).slice(0, limit).map((x) => x.item);
 }
 
-/** 混合检索：先补齐向量（失败就只用字面），再两份合并 */
-export async function hybridRecall(db: Database, embedder: Embedder | undefined, query: RecallQuery): Promise<RecallLine[]> {
-  const limit = Math.min(Math.max(1, query.limit ?? RECALL_LIMIT), RECALL_MAX);
-  const lexical = recall(db, { ...query, limit });
-  if (!embedder || !query.q.trim()) return lexical;
+/** 查询的向量：先补齐库里的向量；没配或失败 = null（只用字面） */
+export async function queryVector(db: Database, embedder: Embedder | undefined, q: string): Promise<Float32Array | null> {
+  if (!embedder || !q.trim()) return null;
   try {
     await syncVectors(db, embedder);
-    const [qvec] = await embedder.embed([query.q]);
-    return rrf([lexical, semanticRecall(db, qvec, embedder.model, query, limit)], limit);
+    return (await embedder.embed([q]))[0];
   } catch (e) {
     console.error(`向量检索失败，只用字面：${e instanceof Error ? e.message : e}`);
-    return lexical;
+    return null;
   }
 }
+
+/** 混合检索：字面一份、向量一份（有的话），按名次合并 */
+export async function hybridRecall(db: Database, embedder: Embedder | undefined, query: RecallQuery, qvec?: Float32Array | null): Promise<RecallLine[]> {
+  const limit = Math.min(Math.max(1, query.limit ?? RECALL_LIMIT), RECALL_MAX);
+  const lexical = recall(db, { ...query, limit });
+  const v = qvec === undefined ? await queryVector(db, embedder, query.q) : qvec;
+  if (!v || !embedder) return lexical;
+  return rrf([lexical, semanticRecall(db, v, embedder.model, query, limit)], limit);
+}
+
+export const SHELF_LIMIT = 5;
+
+/**
+ * 书架上的条目（10-14 改）：查询里的实词任一出现、或向量够近，就算命中——原来要求每个词都出现，
+ * "得分 积分 记一分"翻不到"Joy 9 分"那条。每条带上依据的档号，想回到现场可以顺着 detail 过去。
+ */
+export function shelfRecall(db: Database, q: string, qvec: Float32Array | null, model: string | null, limit = SHELF_LIMIT): (ShelfEntry & { evidence: string[] })[] {
+  const entries = readShelf(db);
+  if (!entries.length) return []; // 没注册书架投影的库，或者书架是空的
+  const ks = keywords(q);
+  const terms = ks.length ? ks : q.trim().split(/\s+/).filter(Boolean);
+  const scored = entries.flatMap((e) => {
+    const hay = [e.text, e.when, e.then, e.observe, e.quote, ...(e.watch ?? [])].filter(Boolean).join("\n");
+    const lex = terms.length ? terms.filter((t) => hay.includes(t)).length / terms.length : 0;
+    const v = qvec && model ? vectorOf(db, e.current, model) : null;
+    const cos = v && qvec ? cosine(qvec, v) : 0;
+    const score = lex + Math.max(0, (cos - 0.55) / 0.25);
+    return lex > 0 || cos >= 0.6 ? [{ e, score }] : [];
+  });
+  const evidence = db.query(
+    `SELECT ev.day || '#' || ev.seq AS no FROM p_shelf_ev s JOIN events ev ON ev.id = s.event_id
+     WHERE s.root = ? AND s.stance IN ('for', 'against') ORDER BY ev.at DESC LIMIT 6`,
+  );
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ e }) => ({ ...e, evidence: (evidence.all(e.root) as { no: string }[]).map((r) => r.no) }));
+}
+
+/** recall 里书架那一行：条目 + 依据 */
+export const renderShelfHit = (e: ShelfEntry & { evidence: string[] }, show: (no: string) => string) =>
+  renderEntry(e) + (e.evidence.length ? `；依据：${e.evidence.map(show).join("、")}` : "");
 
 export function recall(db: Database, query: RecallQuery): RecallLine[] {
   const ts = terms(query.q);

@@ -14,7 +14,7 @@
 | B | Soma 接入：上报、注入 `<now>`、挂 MCP、收尾热写再压缩、历史跨压缩读全 | ✅（Soma 仓库 9071b8e、8651644） |
 | C | MCP 工具（recall / detail / hotwrite_segment / hotwrite / revise_episode；M2 加 coldwrite_material / coldwrite / shelf）、热写提示词 `prompts/hot-write.md` v1、考卷工具 `evals/hot-write/` | 🟡 考卷首跑完（见 §3.1），提示词 v1 暂不用改 |
 
-测试库 `~/.psyche/test` = 10-14 验收那两段会话 + claude.ai「闲聊直到睡着」（10-11–10-14，Joy 和那边的 Claude 都同意，当 `claude-chat` 会话导入，`evals/chat-import/`；Opus 无头补写 43 条情节、冷写睡过一次写了 10 条书架）。导入前备份 `~/.psyche/test.bak-1014-chat.db`。
+测试库 `~/.psyche/test` = 10-14 验收那两段会话 + claude.ai「闲聊直到睡着」（10-11–10-14，Joy 和那边的 Claude 都同意，当 `claude-chat` 会话导入，`evals/chat-import/`；10-14 晚重导（原导入按发生时间挂处境，10-14 下午的话挂到了验收会话上；现在显式挂 chat 的处境）：Opus 补写 53 条情节、冷写写了 13 条书架。导入前备份 `~/.psyche/test.bak-1014-chat.db`，错的那份在 `test.bad-1014-chat.db`）。看浮现：`bun evals/chat-import/peek.ts`。
 
 ## 2. 已定的决定（细节见链接）
 
@@ -60,7 +60,7 @@
 
 ## 4. 已知问题
 
-- 真实数据冷写撞出（10-14）：①规律要"≥2 个会话"，可 claude.ai 一个对话跨 3 天只算一个会话，跨天的规律全写不进去——"不同时间"该按天 / 间隔算？②明说的规矩要原话出现在所引的消息里，热写后原话被情节覆盖、材料里只剩情节，它只好降成事实——闸可以顺着情节的 cites 往下找一层。待 Joy 定。
+- 真实数据冷写撞出（10-14）：①规律要"≥2 个会话"，可 claude.ai 一个对话跨 3 天只算一个会话，跨天的规律全写不进去——"不同时间"该按天 / 间隔算？②明说的规矩要原话出现在所引的消息里，热写后原话被情节覆盖、材料里只剩情节，它只好降成事实（重导后又撞一次：「你不许按！」）——闸可以顺着情节的 cites 往下找一层。待 Joy 定。
 
 - **正式库出生前要定**：向量用硅基流动时，算向量会把记忆原文发出去（10-14 Joy：测试先这样，有顾虑再换本地）。
 
@@ -71,4 +71,4 @@
 
 ## 6. 验证
 
-2026-10-14：热写考卷见 §3.1；`bun test` 125 pass / 0 fail；`tsc --noEmit` 0 错误。
+2026-10-14：热写考卷见 §3.1；`bun test` 126 pass / 0 fail；`tsc --noEmit` 0 错误。
