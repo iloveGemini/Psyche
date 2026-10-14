@@ -133,7 +133,7 @@ describe("经历投影：情节覆盖原话", () => {
     store.db.run(`INSERT INTO projection_cursors (name, version, last_id) VALUES ('experience', 1, '')`);
     new Projections(store).register(experienceProjector);
     expect(readExperience(store.db).map((l) => l.text)).toEqual(["（此后：在 soma）", "Joy：旧"]);
-    expect(store.readSyslog({ kind: "projection.rebuilt" })[0].detail).toMatchObject({ name: "experience", version: 2 });
+    expect(store.readSyslog({ kind: "projection.rebuilt" })[0].detail).toMatchObject({ name: "experience", version: experienceProjector.version });
   });
 });
 
