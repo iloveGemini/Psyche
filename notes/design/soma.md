@@ -8,6 +8,7 @@
 - 用 Agent SDK 常驻**一个** Claude Code 会话（streaming input，进程挂了按 `resume` 接回同一会话）。
 - 前端从 Roxy 拷出聊天部分；事件总线协议同 Roxy 的 line-events。
 - 独立配置目录 `CLAUDE_CONFIG_DIR=~/.soma/claude`：Joy 自己 Claude Code 的全局 hook、插件（包括 ASCM continuity）不在这里跑，Soma 的会话也不出现在那边。**Psyche 是它唯一的记忆**。
+  - 试跑（launch.json 的 `soma-test`）也指向这个目录，为的是共用登录和 `settings.json`；会话记录按工作目录分开（`~/.soma/home` / `~/.soma-test/home` 各一个 `projects/` 子目录），状态跟 `SOMA_HOME` 走，记忆连测试库，所以不串。共用的只有设置、skills 和输入历史。
 - 名字：Soma（希腊语"身体"）与 Psyche 成对。不是被搁置的那个"身体"（`body.md` 模拟生理）——这里的身体就是能力：Claude Code 的工具。
 
 ## 分工
