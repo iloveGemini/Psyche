@@ -16,7 +16,7 @@
   - 撞出并修了：家里刚跑完的动静被当成醒着（补写之间要等 30 分钟）→ 家里的不算；账本按会话数留下的事件，补写的情节挂在原会话上数成 0 → 按时间窗数（4 条旧账已在系统日志里补记更正）；「刚发生」里的时刻是约的、它看成递到的 → 标「约在」；递送规则写进 `set_schedule` / `schedule` 说明。
 - 10-15 Joy 定（它问的）：闹钟 / 定点到点时它醒着、30 分钟没等到下一轮才改在家叫醒——不花额度；已写进工具说明和考卷。
 - **没做**：Soma 观测面板的「唤醒」块（m5 §八）。调度器验收完已关（`psyche-test` 不带）；`psyche-test-wake` 开着会补写所有 ≥3h 没写完的会话。
-**M6「通道」代码齐了（10-15）**，契约 `notes/plan/m6.md` 定稿：`src/channel/inbox.ts`（未读现算、交接信去向、勿扰纯函数、递消息记 `mail.noticed`、来信叫醒候选）、`mailbox.ts`（`/v1/mail/in|out|open`、`GET /v1/mail`、`/v1/where`、`/v1/channels`）、`email.ts`（agently-cli，workspace `psyche` = joylove@agent.qq.com；`+watch` + 补漏，只收 Joy 的地址；回信 `+reply`、主动 `+send`）。`mail.in` 不挂处境，没翻开前经历 / recall 只见「还没看」，`mail.read` 后投影换全文（经历投影 v7）。作息加 `wakeOn.mail`（缺省开）、`dnd`（时段 / 醒着 / 在哪 / 在做事 + 例外）；额度 = 它约的醒 + 主动写给人的信。MCP 加 `mail` / `send_mail`；家里能收发信。确定性考卷 `tests/channel.test.ts` 30 题。
+**M6「通道」代码齐了（10-15）**，契约 `notes/plan/m6.md` 定稿：`src/channel/inbox.ts`（未读现算、交接信去向、勿扰纯函数、递消息记 `mail.noticed`、来信叫醒候选）、`mailbox.ts`（`/v1/mail/in|out|open`、`GET /v1/mail`、`/v1/where`、`/v1/channels`）、`email.ts`（agently-cli，workspace `psyche` = joylove@agent.qq.com；`+watch` + 补漏，只收 Joy 的地址；回信 `+reply`、主动 `+send`）。`mail.in` 不挂处境，没翻开前经历 / recall 只见「还没看」，`mail.read` 后投影换全文（经历投影 v7）。作息加 `wakeOn.mail`（缺省开）、`dnd`（时段 / 醒着 / 在哪 / 在做事 + 例外）；额度 = 它约的醒 + 主动写给人的信。MCP 加 `mail` / `send_mail`；家里能收发信。确定性考卷 `tests/channel.test.ts` 31 题。
 - 测试库通道设置已写（Joy 经 Soma 留言 + 邮件，她的地址在测试库里，不进仓库）；launch `psyche-test-wake` 加了 `PSYCHE_EMAIL=1`。冒烟：真 CLI `+me` / `+list` 走 psyche workspace 对。Roxy 用 `default` workspace（royyyy）。
 - 同日补完：Soma 留言页（顶栏「留言」，写进收件箱、可勾「急」、`/as 名字` 照用，看得到他读没读、送没送出去）+ 开一轮前问 `/v1/where`，家里在跑就攒着、状态「在家」（Soma e480965）；冷写材料只收翻开过的信（这段里翻开的、信早到也补进来）；「上次有人跟我说话」算翻开过的来信。
 - 测试库里有一封 `/as Claude` 的测试留言（10-15#104，没读）：开 `psyche-test-wake` 时它会因这封先被叫醒一次。
@@ -97,4 +97,4 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
 ## 6. 验证
 
-2026-10-15：`bun test` 213 pass / 0 fail（含通道 30 题）；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。
+2026-10-15：`bun test` 213 pass / 0 fail（含通道 31 题）；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。

@@ -178,11 +178,18 @@ function view(store: EventStore, ev: PsycheEvent, read: Set<string>, open = fals
   return { ...base, dir: "out", to: p.to, text: p.text, ...(replyTo ? { replyTo: show(store, replyTo) } : {}), delivery: [...last.values()] };
 }
 
-export function listMail(store: EventStore, days = 7): { mails: MailView[]; unread: number } {
+/**
+ * 来往的信。full = 写信那一边看（Soma 留言页）：来信给全文——那是她自己写的；不记已读，已读只看他翻没翻。
+ * 他看（MCP mail）不带 full：没翻开的只给谁、几时、多少字。
+ */
+export function listMail(store: EventStore, days = 7, full = false): { mails: MailView[]; unread: number } {
   const since = store.now() - days * 86_400_000;
   const read = readRefs(store);
   const evs = [...ownSince(store, "mail.in"), ...ownSince(store, "mail.out")].filter((e) => e.at >= since).sort((a, b) => b.at - a.at);
-  const mails = evs.map((e) => view(store, e, read));
+  const mails = evs.map((e) => {
+    const v = view(store, e, read);
+    return full && v.dir === "in" ? { ...v, text: (e.payload as { text: string }).text } : v;
+  });
   return { mails, unread: mails.filter((m) => m.read === false).length };
 }
 

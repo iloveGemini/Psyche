@@ -252,7 +252,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     if ((ev.payload as { to: string }).to !== "self") outbox?.(ev);
     return c.json(r);
   });
-  app.get("/v1/mail", (c) => c.json(listMail(store, num(c.req.query("days")) ?? 7)));
+  app.get("/v1/mail", (c) => c.json(listMail(store, num(c.req.query("days")) ?? 7, c.req.query("full") === "1")));
   app.post("/v1/mail/open", async (c) => c.json(openMail(store, (await body(c)).refs)));
   app.get("/v1/where", (c) => c.json(where(store, homeRunning?.() ?? false)));
   app.get("/v1/channels", (c) => c.json(getChannels(store)));

@@ -468,3 +468,13 @@ describe("和别处的接线", () => {
     expect(texts.join("\n")).not.toContain("还没看");
   });
 });
+
+describe("写信那一边看（Soma 留言页）", () => {
+  test("full=1：来信给全文、read 照旧是他翻没翻；不带 full 照旧不给", async () => {
+    const h = setup();
+    await h.mail("留给你的话");
+    expect((await h.get("/v1/mail?full=1")).mails[0]).toMatchObject({ text: "留给你的话", read: false });
+    expect((await h.get("/v1/mail")).mails[0].text).toBeUndefined();
+    expect(h.store.list({ kinds: ["mail.read"] })).toHaveLength(0);
+  });
+});
