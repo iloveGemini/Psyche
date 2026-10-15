@@ -434,3 +434,37 @@ describe("邮箱通道（agently-cli，不跑 CLI）", () => {
 });
 
 void DAY;
+
+describe("和别处的接线", () => {
+  test("「上次有人跟我说话」算翻开过的来信；没翻开的不算", async () => {
+    const h = setup();
+    quiet(h, "2026-10-15T08:00:00");
+    h.set("2026-10-15T12:00:00");
+    const m = await h.mail("中午好");
+    h.set("2026-10-15T13:00:00");
+    h.sit("S2");
+    h.her("在吗");
+    expect(await h.now("S2")).toContain("上次有人跟我说话：Joy，5 小时前");
+    await h.ok("/v1/mail/open", { refs: [m.id] });
+    expect(await h.now("S2")).toContain("上次有人跟我说话：Joy，1 小时前（来信）");
+  });
+
+  test("冷写材料：没翻开的信不进；这段里翻开的、哪怕信到得早也补进来", async () => {
+    const { readColdwrite } = await import("../src/catalog/coldwrite.ts");
+    const h = setup();
+    quiet(h, "2026-10-15T08:00:00");
+    h.set("2026-10-15T09:00:00");
+    const early = await h.mail("早上那封");
+    await h.mail("没看的那封");
+    h.sit("S2");
+    h.her("在吗");
+    const last = h.store.db.query(`SELECT MAX(id) AS id FROM events`).get() as { id: string };
+    h.store.append({ kind: "coldwrite.done", class: "self", source: "agent", payload: { upTo: last.id, unjudged: [] } });
+    h.set("2026-10-15T10:00:00");
+    await h.ok("/v1/mail/open", { refs: [early.id] });
+    const texts = readColdwrite(h.store).material.flatMap((g) => g.lines.map((l) => l.text));
+    expect(texts).toContain("（来信 · Joy，经邮件）早上那封");
+    expect(texts.join("\n")).not.toContain("没看的那封");
+    expect(texts.join("\n")).not.toContain("还没看");
+  });
+});

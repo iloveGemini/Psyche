@@ -49,13 +49,30 @@ export function harnessOf(store: EventStore, session: string | null): string | n
   return r?.h ?? null;
 }
 
+/**
+ * 信（m6.md §六）：来信不挂会话，自成一组（session null）。没翻开的不进材料（它还不知道写了什么）；
+ * 这段里翻开的，哪怕信是上次整理前到的，也补进来——不然翻开得晚的信永远进不了材料。
+ */
 export function materialLines(store: EventStore, since: string, upTo: string): { session: string | null; harness: string | null; lines: MaterialLine[] }[] {
-  const rows = store.db
+  type Row = { event_id: string; archive_no: string; at: number; kind: string; text: string; session: string | null };
+  const inRange = store.db
     .query(
       `SELECT event_id, archive_no, at, kind, text, session FROM p_experience
        WHERE covered = 0 AND class <> 'situation' AND event_id > ? AND event_id <= ? ORDER BY at, event_id`,
     )
-    .all(since, upTo) as { event_id: string; archive_no: string; at: number; kind: string; text: string; session: string | null }[];
+    .all(since, upTo) as Row[];
+  const readAll = new Set(
+    (store.db.query(`SELECT payload FROM events WHERE kind = 'mail.read' AND fonds = '' AND id <= ?`).all(upTo) as { payload: string }[]).flatMap((r) => JSON.parse(r.payload).refs as string[]),
+  );
+  const readNow = (store.db.query(`SELECT payload FROM events WHERE kind = 'mail.read' AND fonds = '' AND id > ? AND id <= ?`).all(since, upTo) as { payload: string }[]).flatMap(
+    (r) => JSON.parse(r.payload).refs as string[],
+  );
+  const have = new Set(inRange.map((r) => r.event_id));
+  const late = readNow
+    .filter((id) => !have.has(id))
+    .map((id) => store.db.query(`SELECT event_id, archive_no, at, kind, text, session FROM p_experience WHERE event_id = ? AND kind = 'mail.in'`).get(id) as Row | null)
+    .filter((r): r is Row => !!r);
+  const rows = [...inRange.filter((r) => r.kind !== "mail.in" || readAll.has(r.event_id)), ...late].sort((a, b) => a.at - b.at || (a.event_id < b.event_id ? -1 : 1));
   const year = refYear(store);
   const groups = new Map<string | null, MaterialLine[]>();
   for (const r of rows) {

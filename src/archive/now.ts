@@ -47,11 +47,20 @@ export function renderNow(store: EventStore, session?: string): string {
     lines.push(`在：${sit.harness}${start !== null ? `，本会话从 ${stamp(start, tz, w.year)} 起` : ""}`);
   }
 
-  // 最近一条 message.in 是这一轮正在说的话；"上次"是它之前那条
-  const prev = store.db
+  // 最近一条 message.in 是这一轮正在说的话；"上次"是它之前那条。翻开过的来信也算有人找我（m6.md §六），取两者较晚的
+  const prevMsg = store.db
     .query(`SELECT json_extract(payload, '$.from') AS who, at FROM events WHERE kind = 'message.in' AND fonds = '' ORDER BY at DESC, id DESC LIMIT 1 OFFSET 1`)
     .get() as { who: string; at: number } | null;
-  if (prev) lines.push(`上次有人跟我说话：${prev.who}，${ago(now - prev.at)}`);
+  const lastMail = store.db
+    // 只算翻开过的：没看的信在收件箱那行，勿扰挡着的不该从这里漏出来
+    .query(
+      `SELECT json_extract(e.payload, '$.from') AS who, e.at FROM events e WHERE e.kind = 'mail.in' AND e.fonds = ''
+         AND EXISTS (SELECT 1 FROM events r, json_each(json_extract(r.payload, '$.refs')) j WHERE r.kind = 'mail.read' AND r.fonds = '' AND j.value = e.id)
+       ORDER BY e.at DESC, e.id DESC LIMIT 1`,
+    )
+    .get() as { who: string; at: number } | null;
+  const prev = lastMail && (!prevMsg || lastMail.at > prevMsg.at) ? { ...lastMail, mail: true } : prevMsg;
+  if (prev) lines.push(`上次有人跟我说话：${prev.who}，${ago(now - prev.at)}${"mail" in prev ? "（来信）" : ""}`);
 
   if (s) lines.push(`还没写进记忆的：${readSegment(store, s).lines.length} 条`);
   return `<now>\n${lines.join("\n")}\n</now>`;
