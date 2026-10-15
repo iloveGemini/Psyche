@@ -14,7 +14,7 @@ import { intake } from "../../src/archive/intake.ts";
 import { embedderFromEnv } from "../../src/archive/vectors.ts";
 import { renderNow } from "../../src/archive/now.ts";
 import { renderSurfaced, surface } from "../../src/association/surface.ts";
-import { readPrompt } from "../../src/core/prompts.ts";
+import { filePrompt } from "../../src/self/self.ts";
 import { shanghai } from "../cold-write/build.ts";
 import { openStore, surfacingScript } from "./build.ts";
 
@@ -101,7 +101,7 @@ async function run(input: string, port: number) {
   const mcp = { mcpServers: { psyche: { type: "stdio", command: "bun", args: ["run", join(ROOT, "src/mcp.ts")], env: { PSYCHE_URL: `http://127.0.0.1:${port}` } } } };
   const tools = ["recall", "detail", "shelf"].map((t) => `mcp__psyche__${t}`);
   const proc = Bun.spawn(
-    ["claude", "-p", "--model", model!, "--append-system-prompt", readPrompt("self-v0.md").text, "--mcp-config", JSON.stringify(mcp), "--strict-mcp-config",
+    ["claude", "-p", "--model", model!, "--append-system-prompt", filePrompt(), "--mcp-config", JSON.stringify(mcp), "--strict-mcp-config",
       "--tools", "", "--allowedTools", tools.join(" "), "--setting-sources", "project", "--no-session-persistence", "--output-format", "stream-json", "--verbose"],
     { cwd: mkdtempSync(join(tmpdir(), "psyche-b-")), stdin: new TextEncoder().encode(input), stdout: "pipe", stderr: "inherit" },
   );

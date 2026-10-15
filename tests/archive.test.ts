@@ -30,7 +30,7 @@ describe("入库口", () => {
 
   test("class 由 kind 决定，调用方不用操心", () => {
     const { store } = setup();
-    expect(intake(store, { kind: "named", source: "agent", payload: { name: "某某" } }).class).toBe("self");
+    expect(intake(store, { kind: "diary", source: "agent", payload: { doc: { hash: "x" } } }).class).toBe("self");
     expect(intake(store, { kind: "woke", source: "psyche", payload: { by: "心跳" } }).class).toBe("experience");
   });
 
@@ -61,8 +61,8 @@ describe("经历投影", () => {
   test("提示词改动：角标指向资料，带上为什么", () => {
     const { store } = setup();
     const hash = store.putMaterial("别先道歉");
-    intake(store, { kind: "prompt.changed", source: "agent", payload: { doc: { hash }, version: 3, why: "她说我太卑微" } });
-    expect(readExperience(store.db)[0].text).toBe(`我改了自己的提示词（第 3 版）[^${hash.slice(0, 8)}]，因为她说我太卑微`);
+    store.append({ kind: "prompt.changed", class: "self", source: "agent", payload: { doc: { hash }, version: 3, why: "她说我太卑微" } });
+    expect(readExperience(store.db)[0].text).toBe(`我改写了自己那段提示词（第 3 版）[^${hash.slice(0, 8)}]：她说我太卑微`);
   });
 
   test("重建后一字不差", () => {

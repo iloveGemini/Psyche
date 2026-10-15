@@ -22,11 +22,11 @@ export interface IntakeItem {
   situation?: string;
 }
 
-/** 带系统闸的记忆：只能从热写 / 冷写的口子进，不能绕过校验直接上报 */
-const GATED = /^(episode|semantic\..+|coldwrite\.done)$/;
+/** 带系统闸的记忆与自我：只能从热写 / 冷写 / 自我的口子进，不能绕过校验直接上报 */
+const GATED = /^(episode|semantic\..+|coldwrite\.done|prompt\.changed|named)$/;
 
 export function intake(store: EventStore, item: IntakeItem): PsycheEvent {
-  if (GATED.test(item.kind)) throw new IntakeError(`${item.kind} 要经热写 / 冷写的口子写，不走上报`);
+  if (GATED.test(item.kind)) throw new IntakeError(`${item.kind} 要经热写 / 冷写 / 自我的口子写，不走上报`);
   const spec = validate(item.kind, item.payload, item.links);
   let payload = item.payload;
   if (item.kind === "tool.result" && typeof payload.text === "string" && payload.text.length > INLINE_LIMIT) {

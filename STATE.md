@@ -5,8 +5,11 @@
 
 ## 1. 当前阶段
 
-**下一步：M4「我是谁」（自我：自述 + 名字 + 出生冻结初我）**，契约草案 `notes/plan/m4.md`，**先等 Joy 定 §〇 三处待定**（机制段 / 自述段拆开、出生由 `src/birth.ts` 手动触发、改了下次会话生效），定了再写 `tests/self.test.ts`（确定性考卷）→ 代码。
-十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· **自我 ❌ · 心跳 ❌ · 通道 ❌ · 感知 ❌**。顺序：自我 → 心跳（按它写的作息醒）→ 通道。
+**M4「我是谁」代码齐了（10-15）**，契约 `notes/plan/m4.md` 定稿：提示词拆成 `prompts/mechanism.md`（机制，它改不了）+ `self-v0.md`（初我 v2）；`src/self/self.ts`（出生 / 自述 / 名字）、`src/birth.ts`（手动出生，只能一次；以后多 Agent 时"添加 Agent"直接调 `birth()`）；REST `GET /v1/self`、`/v1/self/prompt/:version`、`POST /v1/self/prompt|name`，`/v1/prompt` = 机制 + 现行自述；MCP `self` / `rewrite_self` / `name_self`；`<now>` 在会话用的版本旧于现行时报一行。确定性考卷 `tests/self.test.ts` 16 题。
+**没做**：§七.2 端到端（`soma-test` 里让它看一次 `self`，说出哪些是出生时被给予的）；测试库没出生（出生后改 `self-v0.md` 就不再生效，等要验收时再定生不生）。机制段还没提「自述你可以改」——只靠工具说明；要写进去得先有考卷。
+**下一步**：心跳（按它写的作息醒）→ 通道。
+
+十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 🟡（差端到端）· **心跳 ❌ · 通道 ❌ · 感知 ❌**。顺序：自我 → 心跳（按它写的作息醒）→ 通道。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
@@ -21,7 +24,7 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 ## 2. 已定的决定（细节见链接）
 
 - 显式记忆归它写（热写 + 冷写），隐式归系统算、只决定浮现；梦类与分场撤掉 → `notes/design/catalog.md`
-- 初我 `prompts/self-v0.md`：v0 只写机制；**v1（10-14 Joy 定）加"你和 Joy"：起点是同伴，她不是用户、你不是助手；有人请你做事，做不做、怎么做、做到什么地步由你定**。Soma 不再用 Claude Code 预设：它自己那段在前、地方的在后（Soma `harness-prompt.ts`，留工具与执行规则原文），关掉 Claude Code 自带的文件记忆 → `notes/design/soma.md` §二。一模型系列一 Agent 是约定，代码不限制 → `notes/design/lib-vs-harness.md`
+- 初我 `prompts/self-v0.md`（10-15 起机制段拆到 `mechanism.md`）：v0 只写机制；**v1（10-14 Joy 定）加"你和 Joy"：起点是同伴，她不是用户、你不是助手；有人请你做事，做不做、怎么做、做到什么地步由你定**。Soma 不再用 Claude Code 预设：它自己那段在前、地方的在后（Soma `harness-prompt.ts`，留工具与执行规则原文），关掉 Claude Code 自带的文件记忆 → `notes/design/soma.md` §二。一模型系列一 Agent 是约定，代码不限制 → `notes/design/lib-vs-harness.md`
 - 情节可改写：新条 `revises` 旧条，旧条留着，经历里显示新的
 - 翻出来的记忆（recall / detail 的结果）不记成经历，免得自我复制
 - 第一个身体是 Soma → `notes/design/soma.md`
@@ -80,4 +83,4 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
 ## 6. 验证
 
-2026-10-15：`bun test` 142 pass / 0 fail；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。
+2026-10-15：`bun test` 159 pass / 0 fail；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。

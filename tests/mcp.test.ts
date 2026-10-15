@@ -49,7 +49,7 @@ describe("MCP 工具 → REST", () => {
   test("列出全部工具，描述是中文", async () => {
     const client = await connect({ fetch: async () => Response.json({}) });
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["coldwrite", "coldwrite_material", "detail", "hotwrite", "hotwrite_segment", "recall", "revise_episode", "shelf", "stats"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["coldwrite", "coldwrite_material", "detail", "hotwrite", "hotwrite_segment", "name_self", "recall", "revise_episode", "rewrite_self", "self", "shelf", "stats"]);
     expect(tools.find((t) => t.name === "hotwrite")!.description).toContain("情节是你自己写的记忆");
   });
 
@@ -151,5 +151,27 @@ describe("MCP 工具 → REST", () => {
     const r = await client.callTool({ name: "hotwrite_segment", arguments: {} });
     expect(r.isError).toBe(true);
     expect(textOf(r)).toContain("连不上 Psyche（http://127.0.0.1:1）");
+  });
+
+  test("self / rewrite_self / name_self：接真 REST", async () => {
+    const store = new EventStore(":memory:");
+    const projections = new Projections(store);
+    projections.register(experienceProjector);
+    projections.live();
+    store.setSituation({ harness: "soma", session: "S1" });
+    const ev = store.append({ kind: "message.in", class: "experience", source: "soma", payload: { from: "Joy", text: "你太客气了" } });
+    const app = createApp({ store, projections });
+    const client = await connect({ fetch: async (req) => app.fetch(req) });
+    const no = ev.archiveNo.replace(/^\d{4}-/, "");
+    expect(textOf(await client.callTool({ name: "self", arguments: {} }))).toContain("自述：第 0 版");
+    const r = await client.callTool({ name: "rewrite_self", arguments: { text: "## 我\n直接。", why: "她说我太客气", cites: [no], baseVersion: 0 } });
+    expect(textOf(r)).toContain("自述第 1 版");
+    const rej = await client.callTool({ name: "rewrite_self", arguments: { text: "又改", why: "w", cites: [no], baseVersion: 0 } });
+    expect([rej.isError, textOf(rej)]).toEqual([true, expect.stringContaining("现行是第 1 版")]);
+    await client.callTool({ name: "name_self", arguments: { name: "阿一" } });
+    const s = textOf(await client.callTool({ name: "self", arguments: {} }));
+    expect(s).toContain("名字：阿一");
+    expect(s).toContain("<self>\n## 我\n直接。\n</self>");
+    expect(s).toContain("第 1 版");
   });
 });

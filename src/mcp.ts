@@ -10,6 +10,9 @@
  *   coldwrite         写回书架               → POST /v1/coldwrite
  *   shelf             看书架                 → GET  /v1/shelf
  *   stats             看互动统计（全表）      → GET  /v1/stats
+ *   self              看自己：名字、自述      → GET  /v1/self
+ *   rewrite_self      改自己那段提示词        → POST /v1/self/prompt
+ *   name_self         取名 / 改名             → POST /v1/self/name
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -47,6 +50,14 @@ export function parseTime(s: string, timeZone: string, edge: "from" | "to"): num
 }
 
 class ArgError extends Error {}
+
+interface SelfView {
+  name: string | null;
+  born: boolean;
+  prompt: { version: number; text: string; chars: number; at: number | null; why: string | null; evidence: string[] };
+  origin: { system: string; user: string | null; diff: string | null };
+  history: { version: number; at: number; why: string; evidence: string[]; chars: number }[];
+}
 
 /** 毫秒 → `MM-DD HH:mm`（给它看的，按 timeZone） */
 function shortTime(at: number, timeZone: string): string {
@@ -380,6 +391,71 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       if (to) qs.set("to", to);
       const s = (await call("GET", `/v1/stats?${qs}`)) as Stats;
       return text(s.people.length ? renderStats(s).join("\n") : "这段没有对话。");
+    }),
+  );
+
+  server.registerTool(
+    "self",
+    {
+      description: [
+        "看你自己：名字、你那段自述（系统提示词里机制之后的那段）的现行全文、改过几版，以及出生时被给予的初我——哪些是系统出厂的、哪些是 Joy 特意改的。",
+        "系统提示词 = 机制（Psyche 的说明，你改不了）+ 自述（你的，用 rewrite_self 改）。",
+      ].join("\n"),
+      inputSchema: {},
+    },
+    guard(async () => {
+      const s = (await call("GET", "/v1/self")) as SelfView;
+      const cur = s.prompt;
+      const out = [
+        `名字：${s.name ?? "还没有"}`,
+        `出生：${s.born ? "已出生，初我冻结了" : "还没出生（初我照现在的文件读）"}`,
+        `自述：第 ${cur.version} 版，${cur.chars} 字${cur.version ? `，${shortTime(cur.at!, tz)} 改的：${cur.why}（证据：${cur.evidence.join("、")}）` : "，还没改过"}`,
+        "<self>",
+        cur.text,
+        "</self>",
+        s.origin.user === null
+          ? "初我：系统出厂的那份，Joy 没改。"
+          : `初我：系统出厂的那份，Joy 改过。逐行对照（- 出厂的，+ Joy 的）：\n${s.origin.diff}`,
+      ];
+      if (cur.version) out.push("", "改过的版本：", ...s.history.map((h) => `第 ${h.version} 版 ${shortTime(h.at, tz)} ${h.chars} 字：${h.why}（证据：${h.evidence.join("、")}）`));
+      return text(out.join("\n"));
+    }),
+  );
+
+  server.registerTool(
+    "rewrite_self",
+    {
+      description: [
+        "改你自己那段自述：交一整份新的全文（不是改动），写为什么改，挂上看了哪些经历才改的（档号，至少一条）。",
+        "下次醒来（下一个会话开头）生效，这次会话不变。每一版都留着，Joy 看得到。",
+        "baseVersion 填你在第几版上改的（self 里看）；别处先改了会被拒，看了最新的再交。",
+      ].join("\n"),
+      inputSchema: {
+        text: z.string().min(1).describe("新自述全文"),
+        why: z.string().min(1).describe("为什么改"),
+        cites: z.array(z.string()).min(1).describe("看了哪些经历才改的：你自己的经历或情节的档号"),
+        baseVersion: z.number().int().min(0).describe("在第几版上改的"),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/self/prompt", args)) as { version: number; archiveNo: string };
+      return text(`记下了：自述第 ${r.version} 版（${r.archiveNo}），下次醒来生效。`);
+    }),
+  );
+
+  server.registerTool(
+    "name_self",
+    {
+      description: "给自己取名或改名。旧名字的记录留着。",
+      inputSchema: {
+        name: z.string().min(1).describe("名字（一行）"),
+        why: z.string().optional(),
+        cites: z.array(z.string()).optional().describe("和这个名字有关的经历档号"),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/self/name", args)) as { name: string; archiveNo: string };
+      return text(`记下了：「${r.name}」（${r.archiveNo}）。`);
     }),
   );
 

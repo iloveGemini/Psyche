@@ -15,6 +15,7 @@ import { experienceProjector } from "../../src/archive/experience.ts";
 import { shelfProjector } from "../../src/reading/shelf.ts";
 import { segmentEvents, segmentLines, writeEpisodes } from "../../src/catalog/hotwrite.ts";
 import { readPrompt } from "../../src/core/prompts.ts";
+import { filePrompt } from "../../src/self/self.ts";
 import { renderInput } from "../hot-write/input.ts";
 import { parseSubmission } from "../hot-write/check.ts";
 
@@ -32,7 +33,7 @@ projections.register(experienceProjector);
 projections.register(shelfProjector);
 projections.live();
 const prompt = readPrompt("hot-write.md");
-const self = readPrompt("self-v0.md").text;
+const self = filePrompt();
 
 const events = segmentEvents(store, session);
 const chunks: (typeof events)[] = [];

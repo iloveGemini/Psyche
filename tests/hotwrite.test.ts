@@ -205,14 +205,14 @@ describe("提示词", () => {
     const app = createApp({ store, projections, promptsDir: mkdtempSync(join(tmpdir(), "psyche-empty-")) });
     const seg = await (await app.request("/v1/hotwrite")).json();
     expect([seg.prompt, seg.promptVersion]).toEqual(["", 0]);
-    expect(await (await app.request("/v1/prompt")).json()).toEqual({ text: "", version: 0 });
+    expect(await (await app.request("/v1/prompt")).json()).toEqual({ text: "", version: 0, mechanismVersion: 0, born: false });
   });
 
-  test("/v1/prompt 读仓库里的 self-v0.md", async () => {
+  test("/v1/prompt：仓库里的机制 + 初我", async () => {
     const store = new EventStore(":memory:");
     const app = createApp({ store, projections: new Projections(store) });
     const p = await (await app.request("/v1/prompt")).json();
-    expect(p.version).toBeGreaterThanOrEqual(1);
+    expect(p.version).toBe(0);
     expect(p.text.startsWith("# 你的记忆")).toBe(true);
     expect(p.text).toContain("你们的起点是同伴");
   });

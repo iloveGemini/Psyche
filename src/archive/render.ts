@@ -66,7 +66,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "schedule.changed":
       return `我改了作息计划`;
     case "prompt.changed":
-      return `我改了自己的提示词（第 ${p.version} 版）${ref(p.doc)}，因为${p.why}`;
+      return `我改写了自己那段提示词（第 ${p.version} 版）${ref(p.doc)}：${p.why}`;
     case "moved":
       return `我去了 ${p.to}`;
     case "mail.out":

@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { readSegment } from "../../src/catalog/hotwrite.ts";
 import { readPrompt } from "../../src/core/prompts.ts";
+import { filePrompt } from "../../src/self/self.ts";
 import { renderInput } from "../hot-write/input.ts";
 import { parseSubmission } from "../hot-write/check.ts";
 import { EPISODE_SESSIONS, openStore } from "./build.ts";
@@ -29,7 +30,7 @@ const old = only && existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) a
 
 const { store } = openStore(join(HERE, "out", "full.db"));
 const prompt = readPrompt("hot-write.md");
-const self = readPrompt("self-v0.md").text;
+const self = filePrompt();
 const out: Record<string, unknown[]> = {};
 await Promise.all(
   sessions.map(async (session) => {

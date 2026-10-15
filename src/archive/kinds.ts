@@ -33,7 +33,7 @@ export const KINDS: Record<string, KindSpec> = {
   slept: { class: "experience", required: {} },
 
   // ── 自我：它自己做的选择 ──
-  named: { class: "self", required: { name: "string" } },
+  named: { class: "self", required: { name: "string" }, rels: ["evidence"] }, // + why?
   // 热写的情节条目（catalog.md §二）：正文 + 感受（原 imprint），cites 指向本段原件
   // revises：改写自己的一条情节，旧条留着，经历里显示新的
   episode: { class: "self", required: { text: "string" }, rels: ["cites", "revises"] },
@@ -60,7 +60,7 @@ export const KINDS: Record<string, KindSpec> = {
   situation: { class: "situation", required: { harness: "string" } }, // + model?, harnessPrompt?: hash, selfPromptVersion?
 };
 
-/** episode / semantic.* / coldwrite.done 由热写、冷写的口子写（带系统闸）；登记在这里是为了 kind 清单只有一份 */
+/** episode / semantic.* / coldwrite.done / prompt.changed / named 由热写、冷写、自我的口子写（带系统闸）；登记在这里是为了 kind 清单只有一份 */
 
 export class IntakeError extends Error {}
 

@@ -1,6 +1,6 @@
 /**
  * REST 入口（门户的最小一版）：harness 上报事实、取经历、查档号、存取资料；
- * 它自己用的：热写、冷写、书架、recall、<now>、提示词（m1.md §二 §四、m2.md §三，MCP 转调这里）。
+ * 它自己用的：热写、冷写、书架、recall、<now>、提示词、自述与名字（m1.md §二 §四、m2.md §三、m4.md，MCP 转调这里）。
  *
  * harness 只负责上报它独有的事实（对话发生了、调用了什么工具）；处境变化单独报。
  * 鉴权：配置了 token 就要求 Bearer。
@@ -23,6 +23,7 @@ import { readShelf, renderEntry } from "../reading/shelf.ts";
 import { computeStats } from "../reading/stats.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
+import { composePrompt, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfError, selfVersion } from "../self/self.ts";
 
 export interface AppDeps {
   store: EventStore;
@@ -44,7 +45,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -167,7 +168,8 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
   app.get("/v1/now", async (c) => {
     const session = c.req.query("session") || undefined;
-    const base = renderNow(store, session);
+    const pending = pendingSelfLine(store, promptsDir);
+    const base = pending ? renderNow(store, session).replace(/\n<\/now>$/, `\n${pending}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session }));
     return c.json({ text: s ? base.replace(/\n<\/now>$/, `\n\n${s}\n</now>`) : base });
   });
@@ -178,7 +180,25 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
     return c.json(await surface(store, embedder, { session: q.session || undefined, dry: q.dry !== "0", seed: num(q.seed) }));
   });
 
-  app.get("/v1/prompt", (c) => c.json(readPrompt("self-v0.md", promptsDir)));
+  // 系统提示词 = 机制 + 现行自述（m4.md §四）；Soma 每会话开头取一次
+  app.get("/v1/prompt", (c) => c.json(composePrompt(store, promptsDir)));
+
+  // 自我：看自己、改自述、取名（m4.md §三 §四）
+  app.get("/v1/self", (c) => c.json(readSelf(store, promptsDir)));
+  app.get("/v1/self/prompt/:version", (c) => {
+    const t = selfVersion(store, Number(c.req.param("version")), promptsDir);
+    return t === null ? c.json({ error: "没有这一版" }, 404) : c.json({ version: Number(c.req.param("version")), text: t });
+  });
+  app.post("/v1/self/prompt", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new SelfError("body 必须是对象");
+    return c.json(rewriteSelf(store, body, promptsDir));
+  });
+  app.post("/v1/self/name", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new SelfError("body 必须是对象");
+    return c.json(nameSelf(store, body));
+  });
 
   app.post("/v1/materials", async (c) => {
     const mime = c.req.header("content-type") ?? "text/plain";
