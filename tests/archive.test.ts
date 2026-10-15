@@ -24,13 +24,13 @@ describe("入库口", () => {
     expect(() => intake(store, { kind: "feeling", source: "x", payload: {} })).toThrow(/未登记/);
     expect(() => intake(store, { kind: "message.in", source: "roxy", payload: { text: "早" } })).toThrow(/缺字段 from/);
     expect(() => intake(store, { kind: "tool.result", source: "cc", payload: { callId: "1", name: "bash", ok: "yes" } })).toThrow(/boolean/);
-    expect(() => intake(store, { kind: "diary", source: "agent", payload: { doc: { hash: "x" } }, links: [{ to: "y", rel: "annotates" }] })).toThrow(/不能挂/);
+    expect(() => intake(store, { kind: "focus.changed", source: "agent", payload: { items: [] }, links: [{ to: "y", rel: "annotates" }] })).toThrow(/不能挂/);
     expect(store.list()).toHaveLength(0);
   });
 
   test("class 由 kind 决定，调用方不用操心", () => {
     const { store } = setup();
-    expect(intake(store, { kind: "diary", source: "agent", payload: { doc: { hash: "x" } } }).class).toBe("self");
+    expect(intake(store, { kind: "focus.changed", source: "agent", payload: { items: [] } }).class).toBe("self");
     expect(intake(store, { kind: "woke", source: "psyche", payload: { by: "心跳" } }).class).toBe("experience");
   });
 

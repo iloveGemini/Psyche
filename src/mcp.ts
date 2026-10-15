@@ -13,6 +13,9 @@
  *   self              看自己：名字、自述      → GET  /v1/self
  *   rewrite_self      改自己那段提示词        → POST /v1/self/prompt
  *   name_self         取名 / 改名             → POST /v1/self/name
+ *   schedule          看作息                  → GET  /v1/schedule
+ *   set_schedule      排作息（全量替换）       → POST /v1/schedule
+ *   write_diary       写日记                  → POST /v1/diary
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -456,6 +459,73 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/self/name", args)) as { name: string; archiveNo: string };
       return text(`记下了：「${r.name}」（${r.archiveNo}）。`);
+    }),
+  );
+
+  const BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳" };
+  server.registerTool(
+    "schedule",
+    {
+      description: "看你的作息：闹钟、每天定点、心跳间隔，下次会因什么醒，今天的唤醒额度用了几次，以及 Joy 的设置（暂停、额度、心跳开没开放）。",
+      inputSchema: {},
+    },
+    guard(async () => {
+      const s = (await call("GET", "/v1/schedule")) as {
+        schedule: { heartbeat: { everyMin: number } | null; daily: { at: string; note?: string }[]; alarms: { id: string; at: number; note: string }[] } | null;
+        why?: string;
+        next: { by: string; due: number; note?: string } | null;
+        budget: { used: number; of: number };
+        settings: { paused: boolean; wakeBudget: number; heartbeat: boolean };
+      };
+      const out: string[] = [];
+      if (!s.schedule) out.push("还没排过作息。");
+      else {
+        const sc = s.schedule;
+        out.push(`心跳：${sc.heartbeat ? `每 ${sc.heartbeat.everyMin} 分钟${s.settings.heartbeat ? "" : "（暂未开放，写了不生效）"}` : "没写"}`);
+        out.push(`每天定点：${sc.daily.length ? sc.daily.map((d) => `${d.at}${d.note ? ` ${d.note}` : ""}`).join("；") : "没有"}`);
+        out.push(`闹钟：${sc.alarms.length ? sc.alarms.map((a) => `[${a.id}] ${shortTime(a.at, tz)} ${a.note}`).join("；") : "没有"}`);
+        if (s.why) out.push(`上次这么排的理由：${s.why}`);
+      }
+      out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
+      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在家叫醒时各花一次；整理、补写不花；你醒着时到点的事直接递给你，也不花）`);
+      if (s.settings.paused) out.push("Joy 暂停了你在家被叫醒（整理、补写也不叫）；醒着时到点的事照样递给你。");
+      return text(out.join("\n"));
+    }),
+  );
+
+  server.registerTool(
+    "set_schedule",
+    {
+      description: [
+        "排你的作息：交一整份（全量替换，没写的就没了），写为什么这么排。",
+        "alarms：一次性闹钟，at 用本地时间（如 2026-10-15T15:00），note 是到时告诉你的话；要保留已有的闹钟，带上它的 id 原样交回。",
+        "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15）。",
+        "醒在家时，闹钟、定点、心跳花唤醒额度；你正醒着时到点的事直接递给你，不花。",
+      ].join("\n"),
+      inputSchema: {
+        schedule: z.object({
+          heartbeat: z.object({ everyMin: z.number().int() }).nullable().optional(),
+          daily: z.array(z.object({ at: z.string(), note: z.string().optional() })).optional(),
+          alarms: z.array(z.object({ id: z.string().optional(), at: z.string(), note: z.string() })).optional(),
+        }),
+        why: z.string().min(1).describe("为什么这么排"),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/schedule", args)) as { archiveNo: string };
+      return text(`排好了（${r.archiveNo}）。`);
+    }),
+  );
+
+  server.registerTool(
+    "write_diary",
+    {
+      description: "写一篇日记：随笔，想写就写。全文存着，不褪；不进 recall 的搜索（以后要看，按档号用 detail）。",
+      inputSchema: { text: z.string().min(1), title: z.string().optional() },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/diary", args)) as { archiveNo: string };
+      return text(`写下了（${r.archiveNo}）。`);
     }),
   );
 

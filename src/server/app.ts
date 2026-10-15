@@ -23,6 +23,8 @@ import { readShelf, renderEntry } from "../reading/shelf.ts";
 import { computeStats } from "../reading/stats.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
+import { getSettings, ScheduleError, setSchedule, setSettings, writeDiary, readSchedule } from "../heartbeat/schedule.ts";
+import { deliverDue, nextWake, renderJustHappened, scheduleLine, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
 import { composePrompt, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfError, selfVersion } from "../self/self.ts";
 
 export interface AppDeps {
@@ -45,7 +47,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -168,10 +170,13 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
   app.get("/v1/now", async (c) => {
     const session = c.req.query("session") || undefined;
-    const pending = pendingSelfLine(store, promptsDir);
-    const base = pending ? renderNow(store, session).replace(/\n<\/now>$/, `\n${pending}\n</now>`) : renderNow(store, session);
+    // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）
+    const just = renderJustHappened(store, deliverDue(store));
+    const extra = [pendingSelfLine(store, promptsDir), scheduleLine(store)].filter(Boolean).join("\n");
+    let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session }));
-    return c.json({ text: s ? base.replace(/\n<\/now>$/, `\n\n${s}\n</now>`) : base });
+    for (const block of [just, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
+    return c.json({ text });
   });
 
   // 只算不写：考卷与调试，带各候选的分项
@@ -199,6 +204,30 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
     if (!body || typeof body !== "object") throw new SelfError("body 必须是对象");
     return c.json(nameSelf(store, body));
   });
+
+  // 作息、设置、日记、唤醒账本（m5.md §四 §八）
+  app.get("/v1/schedule", (c) => {
+    const cur = readSchedule(store);
+    const settings = getSettings(store);
+    return c.json({ ...(cur ?? { schedule: null }), next: nextWake(store), budget: { used: budgetUsedToday(store), of: settings.wakeBudget }, settings });
+  });
+  app.post("/v1/schedule", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new ScheduleError("body 必须是对象");
+    return c.json(setSchedule(store, body));
+  });
+  app.post("/v1/diary", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new ScheduleError("body 必须是对象");
+    return c.json(writeDiary(store, body));
+  });
+  app.get("/v1/settings", (c) => c.json(getSettings(store)));
+  app.post("/v1/settings", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new ScheduleError("body 必须是对象");
+    return c.json(setSettings(store, body));
+  });
+  app.get("/v1/wakes", (c) => c.json(wakeLedger(store, num(c.req.query("days")) ?? 7)));
 
   app.post("/v1/materials", async (c) => {
     const mime = c.req.header("content-type") ?? "text/plain";

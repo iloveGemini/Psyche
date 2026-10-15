@@ -20,6 +20,8 @@ export interface BornDetail {
   system: { hash: string; version: number };
   user: { hash: string } | null;
   mechanism: { version: number };
+  /** 这个 Agent 的模型（一个模型 = 一个 Agent）；早出生的库没记 */
+  model?: string;
 }
 
 const MIME = "text/markdown";
@@ -37,7 +39,7 @@ export function bornRecord(store: EventStore): BornDetail | null {
 }
 
 /** 出生：只能一次。userText = Joy 初始化时改过的全文（和系统的一样就当没改） */
-export function birth(store: EventStore, opts: { promptsDir?: string; userText?: string } = {}): BornDetail {
+export function birth(store: EventStore, opts: { promptsDir?: string; userText?: string; model?: string } = {}): BornDetail {
   if (bornRecord(store)) throw new SelfError("已经出生过了，只能出生一次");
   const dir = opts.promptsDir ?? PROMPTS_DIR;
   const sys = readPrompt("self-v0.md", dir);
@@ -49,13 +51,14 @@ export function birth(store: EventStore, opts: { promptsDir?: string; userText?:
     system: { hash: store.putMaterial(sys.text, MIME), version: sys.version },
     user: user && user !== sys.text ? { hash: store.putMaterial(user, MIME) } : null,
     mechanism: { version: readPrompt("mechanism.md", dir).version },
+    ...(opts.model ? { model: opts.model } : {}),
   };
   store.syslog("born", detail);
   return detail;
 }
 
 /** 出生之后（没出生 = 全部）它自己全宗里某 kind 的事件，按写入顺序 */
-function ownSince(store: EventStore, kind: string): PsycheEvent[] {
+export function ownSince(store: EventStore, kind: string): PsycheEvent[] {
   const upTo = bornRecord(store)?.upTo ?? "";
   return store.list({ kinds: [kind], fonds: "", afterId: upTo || undefined, limit: 100_000 });
 }

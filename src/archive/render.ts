@@ -11,6 +11,7 @@ const cut = (s: string, n: number) => {
   const cps = Array.from(s);
   return cps.length > n ? `${cps.slice(0, n).join("")}…` : s;
 };
+const WOKE_BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", manual: "手动" };
 const ref = (r: { hash?: string } | undefined) => (r?.hash ? `[^${r.hash.slice(0, 8)}]` : "");
 
 export function renderExperience(ev: PsycheEvent): string | null {
@@ -30,6 +31,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/(^|__)coldwrite_material$/.test(p.name)) return "我翻出上次整理之后的经历，准备整理";
       if (/^mcp__psyche__shelf$/.test(p.name)) return "我看了看自己的书架";
       if (/^mcp__psyche__self$/.test(p.name)) return "我看了看自己那段自述";
+      if (/^mcp__psyche__schedule$/.test(p.name)) return "我看了看自己的作息";
+      // 日记全文已在 diary 事件里（资料库）
+      if (/^mcp__psyche__write_diary$/.test(p.name)) return "我写了一篇日记";
       // 自述全文已在 prompt.changed 里（资料库），调用不再抄一遍
       if (/^mcp__psyche__rewrite_self$/.test(p.name)) return `我交了一版新的自述（在第 ${p.args?.baseVersion ?? "?"} 版上改）`;
       if (/^mcp__psyche__revise_episode$/.test(p.name)) return `我改写了 ${p.args?.target ?? "?"} 这条情节`;
@@ -47,7 +51,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "surfaced":
       return null; // 浮现本身不进经历文本：它冒出来时已经在上下文里了
     case "woke":
-      return `（醒来 · ${p.by}）`;
+      return `（醒来 · ${WOKE_BY[p.by] ?? p.by}）`;
+    case "due":
+      return `（${p.by === "daily" ? "定点" : "闹钟"}）${p.note ?? ""}`;
     case "slept":
       return "（睡了）";
     case "named":
@@ -55,7 +61,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "episode":
       return null; // 情节不走模板：经历投影直接用它写的正文（experience.ts），热写清单里也不列
     case "diary":
-      return `我写了日记${ref(p.doc)}`;
+      return `我写了日记${p.title ? `《${p.title}》` : ""}${ref(p.doc)}`;
     case "focus.changed":
       return p.items.length ? `我眼下关注：${p.items.join("；")}` : "我清空了眼下的关注";
     case "loaded":
@@ -67,7 +73,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "policy.changed":
       return `我改了自己的策略`;
     case "schedule.changed":
-      return `我改了作息计划`;
+      return `我改了作息${p.why ? `：${p.why}` : ""}`;
     case "prompt.changed":
       return `我改写了自己那段提示词（第 ${p.version} 版）${ref(p.doc)}：${p.why}`;
     case "moved":

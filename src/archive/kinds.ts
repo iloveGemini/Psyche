@@ -29,7 +29,9 @@ export const KINDS: Record<string, KindSpec> = {
   percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + sensitive?: string[], precision?
   "mail.in": { class: "experience", required: { from: "string", text: "string" } },
   surfaced: { class: "experience", required: { ref: "string" } }, // + clarity?；线索记在 cue 里但不渲染给它看
-  woke: { class: "experience", required: { by: "string" } },
+  woke: { class: "experience", required: { by: "string" } }, // + note?, session?（补写哪个会话）
+  // 到点的闹钟 / 定点响了（m5.md §四）：调度器写，递进它眼下的地方或叫醒在家时
+  due: { class: "experience", required: { by: "string", key: "string" } }, // + note, at（约的时刻）
   slept: { class: "experience", required: {} },
 
   // ── 自我：它自己做的选择 ──
@@ -60,7 +62,7 @@ export const KINDS: Record<string, KindSpec> = {
   situation: { class: "situation", required: { harness: "string" } }, // + model?, harnessPrompt?: hash, selfPromptVersion?
 };
 
-/** episode / semantic.* / coldwrite.done / prompt.changed / named 由热写、冷写、自我的口子写（带系统闸）；登记在这里是为了 kind 清单只有一份 */
+/** episode / semantic.* / coldwrite.done / prompt.changed / named / schedule.changed / diary / due 由热写、冷写、自我、作息的口子写（带系统闸）；登记在这里是为了 kind 清单只有一份 */
 
 export class IntakeError extends Error {}
 

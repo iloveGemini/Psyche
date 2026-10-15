@@ -8,9 +8,13 @@
 **M4「我是谁」代码齐了（10-15）**，契约 `notes/plan/m4.md` 定稿：提示词拆成 `prompts/mechanism.md`（机制，它改不了）+ `self-v0.md`（初我 v2）；`src/self/self.ts`（出生 / 自述 / 名字）、`src/birth.ts`（手动出生，只能一次；以后多 Agent 时"添加 Agent"直接调 `birth()`）；REST `GET /v1/self`、`/v1/self/prompt/:version`、`POST /v1/self/prompt|name`，`/v1/prompt` = 机制 + 现行自述；MCP `self` / `rewrite_self` / `name_self`；`<now>` 在会话用的版本旧于现行时报一行。确定性考卷 `tests/self.test.ts` 16 题。
 **端到端验收通过（10-15，Opus 5.5，`soma-test` 新会话）**：测试库已出生（初我 v2、Joy 没改；出生前备份 `~/.psyche/test.bak-1015-prebirth.db`；Joy 10-14 晚那段会话存为 `~/.soma-test/state.session4.json`，还剩 5 条没写）。我以 `/as Claude` 问它哪些是出生时被给予的：它自己调 `self`，答对「全是系统出厂的、Joy 没改、第 0 版」，并分清机制段和地方设定不算自述；没改自述也没取名（不判）。撞出并修了：`self` 的返回整份进经历 → 不记（同 `shelf`），`rewrite_self` 调用不抄全文（经历投影 v6）。
 注意：测试库出生后，改 `prompts/self-v0.md` 不再影响测试库（机制段照旧现读）；要重试初我就从备份恢复。机制段还没提「自述你可以改」——只靠工具说明；要写进去得先有考卷。
-**下一步：M5「会醒」（心跳 + 家）**，契约 `notes/plan/m5.md` 定稿（10-15）：额度只管心跳 + 闹钟；醒着就不叫、把事递进去；递的东西事件固化（`due`）、状态现算（`channel-and-heartbeat.md` §四）；每个 Agent 分别设暂停 / 额度（缺省 3）。下一步写 `tests/heartbeat.test.ts` → 代码。10-15 已定：一个模型 = 一个 Agent（Sonnet 另起一个库），harness 不绑 Agent；第一版只醒在家（无头 `claude -p` + Psyche 工具 + 日记），心跳机制做、开关先关；唤醒账本记每次醒留下了什么。之后：通道。
+**M5「会醒」代码齐了（10-15）**，契约 `notes/plan/m5.md`：`src/heartbeat/schedule.ts`（作息 `schedule.changed` 全量替换带 why、设置 `param.changed`、日记）、`scheduler.ts`（gather → decide 纯函数 → 账本 `wake` / `wake.run`；醒着就把到点的事写成 `due` 递进 `<now>`「刚发生」，不花额度）、`src/home.ts`（家：无头 `claude -p`，按 Soma 格式上报，harness = home）；REST `/v1/schedule`、`/v1/settings`、`/v1/diary`、`/v1/wakes`；MCP `schedule` / `set_schedule` / `write_diary`；`<now>` 加作息一行；`birth.ts --model` 记下模型。调度器缺省关（`PSYCHE_SCHEDULER=1`），模型取出生记录、没有用 `PSYCHE_MODEL`（launch `psyche-test` 已带）。确定性考卷 `tests/heartbeat.test.ts` 20 题。
+- 冒烟（10-15）：测试库手动叫醒一次（`bun run src/home.ts --by manual`），$0.11、10 秒，上报齐，它自己把这段写成 1 条情节。
+- **没做**：§七.2 端到端（开调度器约个闹钟看它醒在家；补写 `state.session4` 那 5 条——是 Joy 10-14 晚的聊天，跑前先问）；Soma 观测面板的「唤醒」块（m5 §八）；家里的会话不触发补写，也就是家里那段如果它自己没写，只剩原件。
+- 注意：开调度器后，测试库里所有 ≥3h 没动静、还有没写成情节的旧会话都会被补写叫醒（不花额度、但每段一次 `claude -p`）；开之前先用 `gather()` 看一眼候选。
+之后：通道（M6）。
 
-十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · **心跳 ❌ · 通道 ❌ · 感知 ❌**。顺序：自我 → 心跳（按它写的作息醒）→ 通道。
+十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · 心跳 🟡（差端到端）· **通道 ❌ · 感知 ❌**。顺序：通道 → 感知。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
@@ -85,4 +89,4 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
 ## 6. 验证
 
-2026-10-15：`bun test` 160 pass / 0 fail；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。
+2026-10-15：`bun test` 180 pass / 0 fail；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。
