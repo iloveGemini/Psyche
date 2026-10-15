@@ -35,7 +35,7 @@ export interface HomeRun {
   error?: string;
 }
 
-const PLACE = "这是家：Psyche 自带的地方，只有记忆相关的工具（看记忆、整理、写日记、看自己、排作息），没有别的。";
+const PLACE = "这是家：Psyche 自带的地方，只有记忆相关的工具（看记忆、整理、写日记、看自己、排作息、收发信），没有别的。";
 
 export async function runHome(opts: HomeOptions): Promise<HomeRun> {
   const t0 = Date.now();
@@ -65,6 +65,7 @@ export async function runHome(opts: HomeOptions): Promise<HomeRun> {
     const seg = await rest("GET", `/v1/hotwrite?session=${encodeURIComponent(opts.wake.session)}`);
     task = `会话 ${opts.wake.session} 还有 ${seg.lines.length} 条没写进记忆（那段已经散了）：用 hotwrite_segment（session: ${opts.wake.session}）取这一段，写完用 hotwrite 交（带上同一个 session）。`;
   }
+  if (opts.wake.by === "mail") task = "看信用 mail，回信用 send_mail。";
   const first = [now, task].filter(Boolean).join("\n\n");
 
   const mcp = {

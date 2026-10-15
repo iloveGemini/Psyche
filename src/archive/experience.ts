@@ -12,7 +12,7 @@
 import type { Database } from "bun:sqlite";
 import type { PsycheEvent } from "../store/events.ts";
 import type { Projector } from "../store/projections.ts";
-import { renderExperience } from "./render.ts";
+import { mailInText, renderExperience } from "./render.ts";
 
 const FTS = "p_experience_fts";
 const ftsOf = new WeakMap<Database, boolean>();
@@ -40,7 +40,7 @@ export function episodeText(p: { text: string; felt?: string }): string {
 
 export const experienceProjector: Projector = {
   name: "experience",
-  version: 6,
+  version: 7,
   setup(db: Database) {
     // 旧版表没有 session / covered：派生数据，直接丢掉，版本号变了会重放
     const cols = db.query(`PRAGMA table_info(p_experience)`).all() as { name: string }[];
@@ -90,6 +90,19 @@ export const experienceProjector: Projector = {
          WHERE session = ? AND event_id <= ? AND kind <> 'episode' AND class <> 'situation'`,
         [session, p.upTo],
       );
+    // 翻开了信：那封来信的行换成全文（之前只说有信）；旧向量按"还没看"算的，删掉重算
+    if (ev.kind === "mail.read")
+      for (const id of (p.refs ?? []) as string[]) {
+        const src = db.query(`SELECT kind, payload FROM events WHERE id = ?`).get(id) as { kind: string; payload: string } | null;
+        if (src?.kind !== "mail.in") continue;
+        const row = db.query(`UPDATE p_experience SET text = ? WHERE event_id = ? RETURNING rid, text`).get(mailInText(JSON.parse(src.payload), true), id) as { rid: number; text: string } | null;
+        if (!row) continue;
+        if (hasFts(db)) {
+          db.run(`DELETE FROM ${FTS} WHERE rowid = ?`, [row.rid]);
+          db.run(`INSERT INTO ${FTS} (rowid, text) VALUES (?, ?)`, [row.rid, row.text]);
+        }
+        if (db.query(`SELECT 1 FROM sqlite_master WHERE name = 'p_vec'`).get()) db.run(`DELETE FROM p_vec WHERE ref = ?`, [id]);
+      }
     // 改写：旧的那版不再默认展示
     if (ev.kind === "episode")
       db.run(

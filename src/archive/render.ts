@@ -11,7 +11,14 @@ const cut = (s: string, n: number) => {
   const cps = Array.from(s);
   return cps.length > n ? `${cps.slice(0, n).join("")}…` : s;
 };
-const WOKE_BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", manual: "手动" };
+const WOKE_BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
+export const VIA: Record<string, string> = { "soma-note": "Soma 留言", email: "邮件" };
+
+/** 来信在经历里的样子：没翻开只说有信（m6.md §〇.2），翻开后（mail.read）投影换成全文 */
+export function mailInText(p: { from: string; text: string; via: string; subject?: string }, read: boolean): string {
+  const head = `（来信 · ${p.from}，经${VIA[p.via] ?? p.via}）`;
+  return read ? `${head}${p.subject ? `《${p.subject}》` : ""}${p.text}` : `${head}还没看`;
+}
 const ref = (r: { hash?: string } | undefined) => (r?.hash ? `[^${r.hash.slice(0, 8)}]` : "");
 
 export function renderExperience(ev: PsycheEvent): string | null {
@@ -42,12 +49,14 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;
     case "tool.result":
       // 就是这一段本身 / 翻出来的旧记忆：再记一遍，下次 recall 会把它当新的又翻出来
-      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self)$/.test(p.name)) return null;
+      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail)$/.test(p.name)) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
       return `（感知 · ${p.sensor}）${typeof p.value === "string" ? p.value : JSON.stringify(p.value)}`;
     case "mail.in":
-      return `收到 ${p.from} 的消息：${p.text}`;
+      return mailInText(p as { from: string; text: string; via: string }, false);
+    case "mail.read":
+      return `我看了${(p.seen as string[] | undefined)?.join("、") || "信"}`;
     case "surfaced":
       return null; // 浮现本身不进经历文本：它冒出来时已经在上下文里了
     case "woke":
@@ -79,7 +88,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "moved":
       return `我去了 ${p.to}`;
     case "mail.out":
-      return `我给 ${p.to} 发了消息：${p.text}`;
+      if (p.to === "self") return `我给之后在别处的自己留了封信${p.for ? `（给 ${p.for}）` : ""}：${p.text}`;
+      if (p.replyTo) return `我回了 ${p.to} 的信：${p.text}`;
+      return `我给 ${p.to} 写信${p.subject ? `《${p.subject}》` : ""}：${p.text}`;
     case "entity.merged":
       return `我认定 ${p.from.join("、")} 就是 ${p.into}`;
     case "fonds.claimed":

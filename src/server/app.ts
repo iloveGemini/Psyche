@@ -1,6 +1,6 @@
 /**
  * REST 入口（门户的最小一版）：harness 上报事实、取经历、查档号、存取资料；
- * 它自己用的：热写、冷写、书架、recall、<now>、提示词、自述与名字（m1.md §二 §四、m2.md §三、m4.md，MCP 转调这里）。
+ * 它自己用的：热写、冷写、书架、recall、<now>、提示词、自述与名字、作息、收发信（m1.md §二 §四、m2.md §三、m4.md、m5.md、m6.md，MCP 转调这里）。
  *
  * harness 只负责上报它独有的事实（对话发生了、调用了什么工具）；处境变化单独报。
  * 鉴权：配置了 token 就要求 Bearer。
@@ -26,6 +26,9 @@ import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
 import { getSettings, ScheduleError, setSchedule, setSettings, writeDiary, readSchedule } from "../heartbeat/schedule.ts";
 import { deliverDue, nextWake, renderJustHappened, scheduleLine, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
 import { composePrompt, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfError, selfVersion } from "../self/self.ts";
+import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../channel/inbox.ts";
+import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
+import type { PsycheEvent } from "../store/events.ts";
 
 export interface AppDeps {
   store: EventStore;
@@ -35,11 +38,15 @@ export interface AppDeps {
   promptsDir?: string;
   /** 嵌入服务：没有就只用字面（recall、浮现） */
   embedder?: Embedder;
+  /** 写给人的信交出站（main.ts 按通道设置投递、记 mail.sent）；测试换成收集器 */
+  outbox?: (ev: PsycheEvent) => void;
+  /** 家里正在跑吗（调度器知道） */
+  homeRunning?: () => boolean;
 }
 
 const num = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
 
-export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: AppDeps) {
+export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox, homeRunning }: AppDeps) {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -47,7 +54,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -170,9 +177,13 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
   app.get("/v1/now", async (c) => {
     const session = c.req.query("session") || undefined;
-    // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）
-    const just = renderJustHappened(store, deliverDue(store));
-    const extra = [pendingSelfLine(store, promptsDir), scheduleLine(store)].filter(Boolean).join("\n");
+    // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）；来信 / 交接信只报有信（m6.md §二）
+    const here = placeOf(store, session);
+    const facts = factsNow(store, here);
+    const notices = noticeMail(store, here, facts);
+    const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
+    const mail = mailStateLines(store, here, facts, notices);
+    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held })].filter(Boolean).join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session }));
     for (const block of [just, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
@@ -228,6 +239,24 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder }: 
     return c.json(setSettings(store, body));
   });
   app.get("/v1/wakes", (c) => c.json(wakeLedger(store, num(c.req.query("days")) ?? 7)));
+
+  // 收件箱与通道（m6.md §五）
+  const body = async (c: { req: { json: () => Promise<unknown> } }) => {
+    const b = await c.req.json();
+    if (!b || typeof b !== "object" || Array.isArray(b)) throw new MailError("body 必须是对象");
+    return b as Record<string, unknown>;
+  };
+  app.post("/v1/mail/in", async (c) => c.json(receiveMail(store, await body(c))));
+  app.post("/v1/mail/out", async (c) => {
+    const { ev, ...r } = sendMail(store, await body(c));
+    if ((ev.payload as { to: string }).to !== "self") outbox?.(ev);
+    return c.json(r);
+  });
+  app.get("/v1/mail", (c) => c.json(listMail(store, num(c.req.query("days")) ?? 7)));
+  app.post("/v1/mail/open", async (c) => c.json(openMail(store, (await body(c)).refs)));
+  app.get("/v1/where", (c) => c.json(where(store, homeRunning?.() ?? false)));
+  app.get("/v1/channels", (c) => c.json(getChannels(store)));
+  app.post("/v1/channels", async (c) => c.json(setChannels(store, await body(c))));
 
   app.post("/v1/materials", async (c) => {
     const mime = c.req.header("content-type") ?? "text/plain";

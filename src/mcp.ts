@@ -16,6 +16,8 @@
  *   schedule          看作息                  → GET  /v1/schedule
  *   set_schedule      排作息（全量替换）       → POST /v1/schedule
  *   write_diary       写日记                  → POST /v1/diary
+ *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
+ *   send_mail         写信：给 Joy / 交接信    → POST /v1/mail/out
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -471,7 +473,13 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     },
     guard(async () => {
       const s = (await call("GET", "/v1/schedule")) as {
-        schedule: { heartbeat: { everyMin: number } | null; daily: { at: string; note?: string }[]; alarms: { id: string; at: number; note: string }[] } | null;
+        schedule: {
+          heartbeat: { everyMin: number } | null;
+          daily: { at: string; note?: string }[];
+          alarms: { id: string; at: number; note: string }[];
+          wakeOn: { mail: boolean };
+          dnd: { when: Record<string, unknown>; except?: { from: string; urgent?: boolean }[] }[];
+        } | null;
         why?: string;
         next: { by: string; due: number; note?: string } | null;
         budget: { used: number; of: number };
@@ -484,10 +492,12 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         out.push(`心跳：${sc.heartbeat ? `每 ${sc.heartbeat.everyMin} 分钟${s.settings.heartbeat ? "" : "（暂未开放，写了不生效）"}` : "没写"}`);
         out.push(`每天定点：${sc.daily.length ? sc.daily.map((d) => `${d.at}${d.note ? ` ${d.note}` : ""}`).join("；") : "没有"}`);
         out.push(`闹钟：${sc.alarms.length ? sc.alarms.map((a) => `[${a.id}] ${shortTime(a.at, tz)} ${a.note}`).join("；") : "没有"}`);
+        out.push(`来信能叫醒你：${sc.wakeOn.mail ? "能" : "不能（关了）"}`);
+        out.push(`勿扰：${sc.dnd.length ? sc.dnd.map((r) => `${JSON.stringify(r.when)}${r.except?.length ? ` 例外 ${JSON.stringify(r.except)}` : ""}`).join("；") : "没有"}`);
         if (s.why) out.push(`上次这么排的理由：${s.why}`);
       }
       out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
-      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在家叫醒时各花一次；整理、补写不花；你醒着时到点的事在下一轮开始时放进 <now>，没等到下一轮改在家叫醒，也不花）`);
+      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在家叫醒时各花一次，主动写给 Joy 的信每封花一次；整理、补写、来信叫醒、回她的信不花；你醒着时到点的事在下一轮开始时放进 <now>，没等到下一轮改在家叫醒，也不花）`);
       if (s.settings.paused) out.push("Joy 暂停了你在家被叫醒（整理、补写也不叫）；醒着时到点的事照样递给你。");
       return text(out.join("\n"));
     }),
@@ -502,12 +512,24 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15）。",
         "到点时你正醒着（30 分钟内有对话或工具调用）：不另叫醒，下一轮开始时放进 <now> 的「刚发生」，不花额度；之后 30 分钟都没有下一轮，就在家里叫醒你，也不花额度。",
         "到点时你没醒着：在家里叫醒你，闹钟、定点、心跳各花一次唤醒额度。",
+        "wakeOn.mail：来信能不能在你没醒着时叫醒你（缺省能，不花额度）。",
+        "dnd：勿扰，一条条规则；一条里的条件都满足才算。条件：time { from, to }（HH:MM，可跨零点）、awake（醒着）、in（在哪个地方，如 soma）、busy（最近 15 分钟用过记忆以外的工具，在做事）。",
+        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的。闹钟、定点不受勿扰影响。Joy 的暂停盖过例外。",
       ].join("\n"),
       inputSchema: {
         schedule: z.object({
           heartbeat: z.object({ everyMin: z.number().int() }).nullable().optional(),
           daily: z.array(z.object({ at: z.string(), note: z.string().optional() })).optional(),
           alarms: z.array(z.object({ id: z.string().optional(), at: z.string(), note: z.string() })).optional(),
+          wakeOn: z.object({ mail: z.boolean() }).optional(),
+          dnd: z
+            .array(
+              z.object({
+                when: z.object({ time: z.object({ from: z.string(), to: z.string() }).optional(), awake: z.boolean().optional(), in: z.string().optional(), busy: z.boolean().optional() }),
+                except: z.array(z.object({ from: z.string(), urgent: z.boolean().optional() })).optional(),
+              }),
+            )
+            .optional(),
         }),
         why: z.string().min(1).describe("为什么这么排"),
       },
@@ -527,6 +549,79 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/diary", args)) as { archiveNo: string };
       return text(`写下了（${r.archiveNo}）。`);
+    }),
+  );
+
+  interface MailView {
+    id: string;
+    archiveNo: string;
+    at: number;
+    dir: "in" | "out" | "handoff";
+    from?: string;
+    to?: string;
+    via?: string;
+    subject?: string;
+    urgent?: boolean;
+    for?: string;
+    replyTo?: string;
+    read?: boolean;
+    chars: number;
+    text?: string;
+    delivery?: { via: string; ok: boolean; error?: string }[];
+  }
+  const VIA: Record<string, string> = { "soma-note": "Soma 留言", email: "邮件" };
+  const head = (m: MailView) => {
+    const t = shortTime(m.at, tz);
+    if (m.dir === "in") return `[${m.archiveNo}] ${t} 来信 · ${m.from}，经${VIA[m.via ?? ""] ?? m.via}${m.urgent ? " · 急" : ""}${m.subject ? `《${m.subject}》` : ""}`;
+    if (m.dir === "handoff") return `[${m.archiveNo}] ${t} 交接信${m.for ? `（给 ${m.for}）` : ""}`;
+    const failed = m.delivery?.filter((d) => !d.ok) ?? [];
+    return `[${m.archiveNo}] ${t} 我写给 ${m.to}${m.replyTo ? `（回 ${m.replyTo}）` : ""}${m.subject ? `《${m.subject}》` : ""}${failed.length ? ` · 没送出去：${failed.map((d) => d.error).join("；")}` : ""}`;
+  };
+
+  server.registerTool(
+    "mail",
+    {
+      description: [
+        "看信。不给 open：列出这几天来往的信（来信、你写给 Joy 的、你留给自己的交接信）；没看过的只显示谁、几时、多少字。",
+        "给 open（档号数组）：翻开这几封，看全文——翻开就算读过，之后 <now> 不再提它。",
+        "来信不会自动塞进你的上下文：<now> 只告诉你有信，什么时候看由你定。",
+      ].join("\n"),
+      inputSchema: {
+        open: z.array(z.string()).optional().describe("要翻开的信的档号"),
+        days: z.number().int().min(1).max(90).optional().describe("列几天内的（缺省 7）"),
+      },
+    },
+    guard(async (args: { open?: string[]; days?: number }) => {
+      if (args.open?.length) {
+        const r = (await call("POST", "/v1/mail/open", { refs: args.open })) as { mails: MailView[] };
+        return text(r.mails.map((m) => `${head(m)}\n${m.text ?? ""}`).join("\n\n"));
+      }
+      const r = (await call("GET", `/v1/mail?days=${args.days ?? 7}`)) as { mails: MailView[]; unread: number };
+      if (!r.mails.length) return text("这几天没有来往的信。");
+      const rows = r.mails.map((m) => (m.dir === "out" || m.read ? `${head(m)}：${m.text ?? ""}` : `${head(m)}（没看，${m.chars} 字）`));
+      return text([`没看的：${r.unread} 封`, ...rows].join("\n"));
+    }),
+  );
+
+  server.registerTool(
+    "send_mail",
+    {
+      description: [
+        "写信。在哪都能写（在家也能）。",
+        "to: \"Joy\"：经她设的通道送到她那里（邮件 / Soma 留言）。回她的某封信挂 replyTo（那封的档号），不算额度；没挂 replyTo 就是你主动找她，每封花一次唤醒额度，额度用完会被拒。subject 可选（邮件主题，不写就用正文第一行）。",
+        "to: \"self\"：交接信，写给之后去了别处的自己——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 home、soma）就只送那里。不过期，不叫醒你。",
+      ].join("\n"),
+      inputSchema: {
+        to: z.string().min(1).describe("Joy，或 self（交接信）"),
+        text: z.string().min(1),
+        subject: z.string().optional(),
+        replyTo: z.string().optional().describe("回哪封信（档号）"),
+        for: z.string().optional().describe("交接信送到哪个地方"),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/mail/out", args)) as { archiveNo: string; budget: { used: number; of: number } };
+      return text(`写好了（${r.archiveNo}）。${args.to === "self" ? "" : `今天额度 ${r.budget.used}/${r.budget.of}。`}`);
     }),
   );
 

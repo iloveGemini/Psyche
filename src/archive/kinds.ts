@@ -27,7 +27,8 @@ export const KINDS: Record<string, KindSpec> = {
   "tool.call": { class: "experience", required: { name: "string", callId: "string" } }, // + args?
   "tool.result": { class: "experience", required: { callId: "string", name: "string", ok: "boolean" } }, // + text? | result?: MaterialRef
   percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + sensitive?: string[], precision?
-  "mail.in": { class: "experience", required: { from: "string", text: "string" } },
+  // 来信（m6.md §一）：经通道口子写，不挂处境；没翻开前经历里不给正文
+  "mail.in": { class: "experience", required: { from: "string", text: "string", via: "string" } }, // + subject?, urgent?, ext?（外部通道的消息 id）
   surfaced: { class: "experience", required: { ref: "string" } }, // + clarity?；线索记在 cue 里但不渲染给它看
   woke: { class: "experience", required: { by: "string" } }, // + note?, session?（补写哪个会话）
   // 到点的闹钟 / 定点响了（m5.md §四）：调度器写，递进它眼下的地方或叫醒在家时
@@ -48,7 +49,8 @@ export const KINDS: Record<string, KindSpec> = {
   "schedule.changed": { class: "self", required: { schedule: "object" } },
   "prompt.changed": { class: "self", required: { doc: "object", version: "number", why: "string" }, rels: ["evidence"] },
   moved: { class: "self", required: { to: "string" } },
-  "mail.out": { class: "self", required: { to: "string", text: "string" } },
+  "mail.out": { class: "self", required: { to: "string", text: "string" } }, // + subject?, replyTo?, for?, from: { harness, session }（系统填）
+  "mail.read": { class: "self", required: { refs: "array" } }, // + seen: string[]（「Joy 的信」「交接信」）
   "entity.merged": { class: "self", required: { into: "string", from: "array" } },
   "fonds.claimed": { class: "self", required: { fonds: "string" } },
   // 冷写的书架条目（m2.md §一）：它睡觉时写，系统只数证据。经冷写口子写入（catalog/coldwrite.ts）
@@ -62,7 +64,7 @@ export const KINDS: Record<string, KindSpec> = {
   situation: { class: "situation", required: { harness: "string" } }, // + model?, harnessPrompt?: hash, selfPromptVersion?
 };
 
-/** episode / semantic.* / coldwrite.done / prompt.changed / named / schedule.changed / diary / due 由热写、冷写、自我、作息的口子写（带系统闸）；登记在这里是为了 kind 清单只有一份 */
+/** episode / semantic.* / coldwrite.done / prompt.changed / named / schedule.changed / diary / due / mail.* 由热写、冷写、自我、作息的口子写（带系统闸）；登记在这里是为了 kind 清单只有一份 */
 
 export class IntakeError extends Error {}
 

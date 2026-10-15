@@ -5,6 +5,7 @@
  *   闹钟响过（有了对应的 `due`）就不在现行作息里，事件不改。出生前的作息不带过去。
  * - 设置是 Joy 的（每个 Agent 一份）：暂停、唤醒额度、心跳开关。改一次记一条系统日志 `param.changed`；它看得到、改不了。
  * - 日记：全文进资料库，事件里只放哈希。
+ * - 来信能不能叫醒、勿扰（m6.md §三）也是作息的一部分：它自己写；缺省来信能叫醒、没有勿扰。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
@@ -22,11 +23,19 @@ export interface Daily {
   at: string;
   note?: string;
 }
+/** 勿扰（m6.md §三）：一条规则里的条件都满足才算；例外按来信的 from（+ 急） */
+export interface DndRule {
+  when: { time?: { from: string; to: string }; awake?: boolean; in?: string; busy?: boolean };
+  except?: { from: string; urgent?: boolean }[];
+}
 export interface Schedule {
   heartbeat: { everyMin: number } | null;
   daily: Daily[];
   alarms: Alarm[];
+  wakeOn: { mail: boolean };
+  dnd: DndRule[];
 }
+export const DEFAULT_WAKE_ON = { mail: true };
 export interface Settings {
   paused: boolean;
   wakeBudget: number;
@@ -86,10 +95,11 @@ export interface CurrentSchedule {
 export function readSchedule(store: EventStore): CurrentSchedule | null {
   const ev = ownSince(store, "schedule.changed").at(-1);
   if (!ev) return null;
-  const p = ev.payload as { schedule: Schedule; why: string };
+  // M6 之前写的作息没有 wakeOn / dnd：补缺省
+  const p = ev.payload as { schedule: Omit<Schedule, "wakeOn" | "dnd"> & Partial<Pick<Schedule, "wakeOn" | "dnd">>; why: string };
   const fired = firedKeys(store);
   return {
-    schedule: { ...p.schedule, alarms: p.schedule.alarms.filter((a) => !fired.has(alarmKey(a))) },
+    schedule: { wakeOn: DEFAULT_WAKE_ON, dnd: [], ...p.schedule, alarms: p.schedule.alarms.filter((a) => !fired.has(alarmKey(a))) },
     at: ev.at,
     why: p.why,
     archiveNo: displayArchiveNo(ev.archiveNo, year(store)),
@@ -97,9 +107,9 @@ export function readSchedule(store: EventStore): CurrentSchedule | null {
 }
 
 function parseSchedule(store: EventStore, raw: unknown): Schedule {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ScheduleError("schedule 应为对象 { heartbeat, daily, alarms }");
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ScheduleError("schedule 应为对象 { heartbeat, daily, alarms, wakeOn, dnd }");
   const s = raw as Record<string, unknown>;
-  for (const k of Object.keys(s)) if (!["heartbeat", "daily", "alarms"].includes(k)) throw new ScheduleError(`schedule 里没有 ${k} 这一项`);
+  for (const k of Object.keys(s)) if (!["heartbeat", "daily", "alarms", "wakeOn", "dnd"].includes(k)) throw new ScheduleError(`schedule 里没有 ${k} 这一项`);
 
   let heartbeat: Schedule["heartbeat"] = null;
   if (s.heartbeat !== undefined && s.heartbeat !== null) {
@@ -138,7 +148,58 @@ function parseSchedule(store: EventStore, raw: unknown): Schedule {
     });
     alarms.sort((a, b) => a.at - b.at);
   }
-  return { heartbeat, daily: daily.sort((a, b) => (a.at < b.at ? -1 : 1)), alarms };
+  return { heartbeat, daily: daily.sort((a, b) => (a.at < b.at ? -1 : 1)), alarms, wakeOn: parseWakeOn(s.wakeOn), dnd: parseDnd(s.dnd) };
+}
+
+function parseWakeOn(raw: unknown): Schedule["wakeOn"] {
+  if (raw === undefined || raw === null) return { ...DEFAULT_WAKE_ON };
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new ScheduleError("wakeOn 应为对象 { mail: true / false }");
+  const out = { ...DEFAULT_WAKE_ON };
+  for (const [k, v] of Object.entries(raw)) {
+    if (k !== "mail") throw new ScheduleError(`wakeOn 里没有 ${k}：现在只有 mail（来信能不能叫醒你）`);
+    if (typeof v !== "boolean") throw new ScheduleError("wakeOn.mail 应为 true / false");
+    out.mail = v;
+  }
+  return out;
+}
+
+const WHEN_KEYS = ["time", "awake", "in", "busy"];
+function parseDnd(raw: unknown): DndRule[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new ScheduleError("dnd 应为数组");
+  return raw.map((r, i) => {
+    const n = `第 ${i + 1} 条勿扰`;
+    const when = (r as { when?: unknown })?.when;
+    if (!when || typeof when !== "object" || Array.isArray(when)) throw new ScheduleError(`${n}缺 when（什么时候算勿扰）`);
+    const w = when as Record<string, unknown>;
+    const keys = Object.keys(w);
+    if (!keys.length) throw new ScheduleError(`${n}的 when 是空的：至少写一个条件（${WHEN_KEYS.join(" / ")}）`);
+    const out: DndRule["when"] = {};
+    for (const k of keys) {
+      const v = w[k];
+      if (k === "time") {
+        const { from, to } = (v ?? {}) as Record<string, unknown>;
+        if (typeof from !== "string" || !HHMM.test(from) || typeof to !== "string" || !HHMM.test(to))
+          throw new ScheduleError(`${n}的时段看不懂：用 { from: "23:00", to: "08:00" }（HH:MM，可跨零点）`);
+        out.time = { from, to };
+      } else if (k === "awake" || k === "busy") {
+        if (typeof v !== "boolean") throw new ScheduleError(`${n}的 ${k} 应为 true / false`);
+        out[k] = v;
+      } else if (k === "in") {
+        if (!nonEmpty(v)) throw new ScheduleError(`${n}的 in 应为地方名（如 soma）`);
+        out.in = v.trim();
+      } else throw new ScheduleError(`${n}的条件 ${k} 看不懂：只认 ${WHEN_KEYS.join(" / ")}`);
+    }
+    const ex = (r as { except?: unknown }).except;
+    if (ex !== undefined && !Array.isArray(ex)) throw new ScheduleError(`${n}的 except 应为数组`);
+    const except = ((ex ?? []) as unknown[]).map((e) => {
+      const { from, urgent } = (e ?? {}) as Record<string, unknown>;
+      if (!nonEmpty(from)) throw new ScheduleError(`${n}的例外要写 from（谁的信放行）`);
+      if (urgent !== undefined && typeof urgent !== "boolean") throw new ScheduleError(`${n}的例外 urgent 应为 true / false`);
+      return { from: from.trim(), ...(urgent ? { urgent: true } : {}) };
+    });
+    return { when: out, ...(except.length ? { except } : {}) };
+  });
 }
 
 /** POST /v1/schedule：{ schedule, why } 全量替换 */
