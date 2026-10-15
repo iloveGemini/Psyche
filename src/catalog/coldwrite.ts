@@ -9,8 +9,9 @@ import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
 import { sessionOf } from "../archive/experience.ts";
-import { computeStats } from "../reading/stats.ts";
-import { ENTRY_FIELDS, SHELVES, countedEvidence, readShelf, rootOf, type ShelfEntry } from "../reading/shelf.ts";
+import { computeStats, pickTracked, TRACK_KEYS } from "../reading/stats.ts";
+import { ENTRY_FIELDS, SHELVES, countedEvidence, readShelf, rootOf, trackedByPerson, type ShelfEntry } from "../reading/shelf.ts";
+import { renderExperience } from "../archive/render.ts";
 
 export class ColdwriteError extends Error {}
 
@@ -65,11 +66,11 @@ export function materialLines(store: EventStore, since: string, upTo: string): {
   return [...groups].map(([session, lines]) => ({ session, harness: harnessOf(store, session), lines })).sort((a, b) => a.lines[0].at - b.lines[0].at);
 }
 
-/** 候选证据：现行规律 / 镜子按它的 watch 词在材料里命中、还没计过的行 */
+/** 候选证据：现行规律 / 镜子 / 留意按它的 watch 词在材料里命中、还没计过的行 */
 export function candidatesFor(store: EventStore, shelf: ShelfEntry[], material: MaterialLine[]): { entry: ShelfEntry; lines: (MaterialLine & { hit: string })[] }[] {
   const out: { entry: ShelfEntry; lines: (MaterialLine & { hit: string })[] }[] = [];
   for (const e of shelf) {
-    if ((e.shelf !== "rule" && e.shelf !== "mirror") || !e.watch?.length) continue;
+    if ((e.shelf !== "rule" && e.shelf !== "mirror" && e.shelf !== "attend") || !e.watch?.length) continue;
     const counted = countedEvidence(store.db, e.root);
     const lines = material.flatMap((l) => {
       if (counted.has(l.eventId)) return [];
@@ -96,15 +97,73 @@ export function readColdwrite(store: EventStore) {
     (store.db.query(`SELECT ${agg}(at) AS at FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out') AND id <= ?`).get(maxId) as { at: number | null }).at;
   const periodFrom = since ? store.get(since)!.at : (msgAt("MIN") ?? 0);
   const periodTo = upTo ? Math.max(msgAt("MAX", upTo) ?? 0, store.get(upTo)!.at) + 1 : 0;
-  const stats = upTo ? computeStats(store.db, { from: periodFrom, to: periodTo, timeZone: store.timeZone }) : null;
+  // 只给它 track 了的（attention.md §四）；全表走 /v1/stats
+  const stats = upTo ? pickTracked(computeStats(store.db, { from: periodFrom, to: periodTo, timeZone: store.timeZone }), trackedByPerson(store.db)) : null;
   return {
     upTo,
     since,
     stats,
+    feedback: upTo ? feedbackLines(store, since, upTo) : [],
     material: groups.map((g) => ({ session: g.session, harness: g.harness, from: g.lines[0].at, to: g.lines.at(-1)!.at, lines: g.lines.map(({ eventId, ...l }) => l) })),
     shelf: shelf.map(shown),
     candidates: candidates.map((c) => ({ target: shown(c.entry).archiveNo, lines: c.lines.map(({ eventId, ...l }) => l) })),
   };
+}
+
+// ── 反馈线（attention.md §五）：我做了什么 → 结果，一律给，不看它留意了什么 ──
+
+export interface FeedbackLine {
+  archiveNo: string;
+  at: number;
+  kind: string;
+  text: string;
+}
+export interface Feedback {
+  acts: FeedbackLine[];
+  next: FeedbackLine | null;
+}
+
+/**
+ * (since, upTo] 内机械配对，用原始行（情节覆盖了也给：情节是它的说法，可能把她的反应写轻了）：
+ *   对话：同一会话里我连着说的几条 → 其后第一条她的话（1 天内，没有就是 null）；
+ *   工具：只列出错的，配上那次调用。
+ */
+export function feedbackLines(store: EventStore, since: string, upTo: string): Feedback[] {
+  const year = refYear(store);
+  const rows = store.db
+    .query(
+      `SELECT * FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND id > ? AND id <= ? ORDER BY at, id`,
+    )
+    .all(since, upTo) as Record<string, any>[];
+  const evs = rows.map((r) => ({ ...r, payload: JSON.parse(r.payload), archiveNo: `${r.day}#${r.seq}` }) as PsycheEvent);
+  const line = (e: PsycheEvent): FeedbackLine => ({ archiveNo: displayArchiveNo(e.archiveNo, year), at: e.at, kind: e.kind, text: renderExperience(e) ?? "" });
+  const out: (Feedback & { at: number })[] = [];
+  const DAY = 86_400_000;
+
+  // 对话：按会话走
+  const open = new Map<string, PsycheEvent[]>();
+  const flush = (session: string, next: PsycheEvent | null) => {
+    const acts = open.get(session);
+    if (acts?.length) out.push({ acts: acts.map(line), next: next && next.at - acts.at(-1)!.at <= DAY ? line(next) : null, at: acts[0].at });
+    open.delete(session);
+  };
+  for (const e of evs) {
+    if (e.kind !== "message.in" && e.kind !== "message.out") continue;
+    const s = sessionOf(store.db, e) ?? "";
+    if (e.kind === "message.out") open.set(s, [...(open.get(s) ?? []), e]);
+    else flush(s, e);
+  }
+  for (const s of [...open.keys()]) flush(s, null);
+
+  // 工具：出错的配上调用
+  const calls = new Map(evs.filter((e) => e.kind === "tool.call").map((e) => [(e.payload as { callId: string }).callId, e]));
+  for (const e of evs) {
+    const p = e.payload as { callId: string; ok: boolean };
+    if (e.kind !== "tool.result" || p.ok) continue;
+    const call = calls.get(p.callId);
+    out.push({ acts: call ? [line(call)] : [], next: line(e), at: call?.at ?? e.at });
+  }
+  return out.sort((a, b) => a.at - b.at).map(({ at, ...f }) => f);
 }
 
 // ── 写回 ──
@@ -155,6 +214,9 @@ function fieldsOf(e: Record<string, unknown>, at: string): Record<string, unknow
     if (v === undefined) continue;
     if (k === "watch") {
       if (!Array.isArray(v) || !v.every(nonEmpty)) throw new ColdwriteError(`${at}的 watch 应为非空字符串数组`);
+    } else if (k === "track") {
+      if (!Array.isArray(v) || !v.every((x) => TRACK_KEYS.includes(x as string)))
+        throw new ColdwriteError(`${at}的 track 只能取这些：${TRACK_KEYS.join(" / ")}`);
     } else if (typeof v !== "string") throw new ColdwriteError(`${at}的 ${k} 应为字符串`);
     out[k] = v;
   }
@@ -180,6 +242,10 @@ export function distinctTimes(store: EventStore, evs: PsycheEvent[]): boolean {
 /** 条目的规则：规律 / 镜子要条件、结果、观察方式；明说的规矩原话要逐字出现在所引的她的话里 */
 function checkEntryShape(store: EventStore, shelf: string, f: Record<string, unknown>, cited: PsycheEvent[], at: string) {
   if (!nonEmpty(f.text)) throw new ColdwriteError(`${at}的 text 是空的`);
+  if (f.track !== undefined && shelf !== "attend" && shelf !== "relation") throw new ColdwriteError(`${at}：track 只用在留意和关系上`);
+  if ((f.track as string[] | undefined)?.length && !nonEmpty(f.about)) throw new ColdwriteError(`${at}：track 要写 about（统计按人数）`);
+  if (shelf === "attend" && !(Array.isArray(f.watch) && f.watch.length)) throw new ColdwriteError(`${at}是留意，缺 watch（系统按这些词给你找后来的事）`);
+  if (shelf === "relation" && !nonEmpty(f.about)) throw new ColdwriteError(`${at}是关系，缺 about（和谁的关系）`);
   if (shelf === "rule" || shelf === "mirror") {
     for (const k of ["when", "then", "observe"]) if (!nonEmpty(f[k])) throw new ColdwriteError(`${at}是${shelf === "rule" ? "规律" : "镜子"}，缺 ${k}`);
   }
@@ -209,6 +275,8 @@ function checkOp(store: EventStore, e: unknown, i: number, upTo: string): Checke
     const f = fieldsOf(o, at);
     checkEntryShape(store, o.shelf as string, f, cited, at);
     if (!cited.length) throw new ColdwriteError(`${at}没有证据（cites）`);
+    if (o.shelf === "relation" && readShelf(store.db, { shelf: "relation" }).some((e) => e.about === f.about))
+      throw new ColdwriteError(`${at}：关于 ${f.about} 已经有一条关系了，要改就 revise 那条`);
     if ((o.shelf === "rule" || o.shelf === "mirror") && (cited.length < 2 || !distinctTimes(store, cited)))
       throw new ColdwriteError(`${at}是${o.shelf === "rule" ? "规律" : "镜子"}：证据至少 2 条、来自不同时间（不同会话、不同的天、或相隔 6 小时以上；单次不是规律）`);
     return { op, kind: OP_KIND[op], payload: { shelf: o.shelf, ...f }, links: evidence({ stance: "for" }), cited };
@@ -229,6 +297,7 @@ function checkOp(store: EventStore, e: unknown, i: number, upTo: string): Checke
   if (!cited.length) throw new ColdwriteError(`${at}没挂证据：看了哪些事才${op === "revise" ? "改" : "作废"}的`);
   if (op === "retire") return { op, kind: OP_KIND[op], payload: { ...target, why: o.why }, links: evidence(), root: entry.root, cited };
   const f = fieldsOf(o, at);
+  if (entry.shelf === "relation" && f.about !== undefined && f.about !== entry.about) throw new ColdwriteError(`${at}：关系改写不能换 about（换人就另起一条）`);
   const merged = { ...Object.fromEntries(ENTRY_FIELDS.filter((k) => entry[k] !== undefined).map((k) => [k, entry[k]])), ...f };
   checkEntryShape(store, entry.shelf, merged, cited, at);
   return { op, kind: OP_KIND[op], payload: { ...target, why: o.why, ...f }, links: [...evidence(), { to: entry.current, rel: "revises" }], root: entry.root, cited };

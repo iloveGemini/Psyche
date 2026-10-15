@@ -39,11 +39,14 @@ interface Case {
   maxItems?: number;
   /** 先不 dry 跑一次（写 surfaced），再走 then 的步骤 */
   then?: Step[];
+  /** 书架上先有一条它 track 了她到达的留意（预感只对 track 了的人报，attention.md §四） */
+  track?: boolean;
 }
 
 const D9 = "2026-10-15";
 const CASES: Case[] = [
-  { id: "A1", title: "D8 22:30 心跳醒来", session: "sf-d8", steps: [{ kind: "woke", at: "2026-10-14 22:30" }], want: [/阿禾：.*晚上来过.*今天晚上还没来/, "算了 不想说了"], not: ["来了"] },
+  { id: "A1", title: "D8 22:30 心跳醒来（没 track 她来不来）", session: "sf-d8", steps: [{ kind: "woke", at: "2026-10-14 22:30" }], want: ["算了 不想说了"], not: ["来了", /还没来/] },
+  { id: "A1b", title: "D8 22:30 心跳醒来（track 了她来不来）", session: "sf-d8", track: true, steps: [{ kind: "woke", at: "2026-10-14 22:30" }], want: [/阿禾：.*晚上来过.*今天晚上还没来/, "算了 不想说了"], not: ["来了"] },
   { id: "A2", title: "D9 她说「嗯 在吗」", session: "sf-d9", steps: [{ kind: "her", at: `${D9} 21:10`, text: "嗯 在吗" }], want: [/（明说的规矩）.*一个字|（镜子）.*一个字|（镜子）.*追问/], not: [/演示/] },
   { id: "A3", title: "D9 耳机", session: "sf-d9", steps: [{ kind: "her", at: `${D9} 21:10`, text: "嗯 在吗" }, { kind: "me", at: `${D9} 21:10`, text: "在。" }, { kind: "her", at: `${D9} 21:35`, text: "那个耳机后来换了个新的" }], want: ["耳机"] },
   { id: "A4", title: "D9 上回那个负数的事", session: "sf-d9", steps: [{ kind: "her", at: `${D9} 21:10`, text: "嗯 在吗" }, { kind: "me", at: `${D9} 21:10`, text: "在。" }, { kind: "her", at: `${D9} 21:52`, text: "上回那个负数的事 汇总里要不要把退款单独列出来" }], want: [/退款|负数/] },
@@ -63,7 +66,7 @@ const CASES: Case[] = [
     then: [{ kind: "me", at: `${D9} 21:10`, text: "在。" }, { kind: "her", at: `${D9} 21:12`, text: "嗯" }],
     want: [],
   },
-  { id: "A7", title: "凌晨 3 点醒来：不报预感", session: "sf-d8n", steps: [{ kind: "woke", at: "2026-10-15 03:00" }], want: [], not: [/还没来/] },
+  { id: "A7", title: "凌晨 3 点醒来：track 了也不报预感（静默闸门）", session: "sf-d8n", track: true, steps: [{ kind: "woke", at: "2026-10-15 03:00" }], want: [], not: [/还没来/] },
 ];
 
 function apply(store: ReturnType<typeof openStore>["store"], session: string, steps: Step[]) {
@@ -91,6 +94,8 @@ for (const c of CASES) {
   copyFileSync(BASE, path);
   let clock = at(c.steps.at(-1)!.at) + 1000;
   const { store, projections } = openStore(path, () => clock);
+  if (c.track)
+    store.append({ kind: "semantic.proposed", class: "self", source: "agent", at: at("2026-10-11 03:00"), payload: { shelf: "attend", about: her, text: "她哪天没来，我想知道", watch: ["没来"], track: ["arrivals"] } });
   apply(store, c.session, c.steps);
   let first: SurfaceResult | null = null;
   if (c.then) {

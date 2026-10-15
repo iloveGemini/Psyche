@@ -9,6 +9,7 @@
  *   coldwrite_material 睡前整理的材料        → GET  /v1/coldwrite
  *   coldwrite         写回书架               → POST /v1/coldwrite
  *   shelf             看书架                 → GET  /v1/shelf
+ *   stats             看互动统计（全表）      → GET  /v1/stats
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -23,7 +24,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { renderStats, type Stats } from "./reading/stats.ts";
+import { renderStats, TRACK_KEYS, type Stats } from "./reading/stats.ts";
 
 export interface McpOptions {
   url?: string;
@@ -229,16 +230,18 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  type Entry = { archiveNo: string; shelf: string; text: string; when?: string; then?: string; observe?: string; quote?: string; watch?: string[]; for: number; against: number; irrelevant: number; lastEvidenceAt: number | null };
-  const SHELF_NAME: Record<string, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子" };
+  type Entry = { archiveNo: string; shelf: string; text: string; when?: string; then?: string; observe?: string; quote?: string; watch?: string[]; about?: string; track?: string[]; for: number; against: number; irrelevant: number; lastEvidenceAt: number | null };
+  const SHELF_NAME: Record<string, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子", attend: "留意", relation: "关系" };
+  const SHELF_ENUM = ["fact", "told", "rule", "mirror", "attend", "relation"] as const;
   const entryLine = (e: Entry) =>
     [
-      `[${e.archiveNo}]（${SHELF_NAME[e.shelf] ?? e.shelf}）${e.text}`,
+      `[${e.archiveNo}]（${SHELF_NAME[e.shelf] ?? e.shelf}${e.about ? ` · ${e.about}` : ""}）${e.text}`,
       e.quote && `  原话：「${e.quote}」`,
       e.when && `  条件：${e.when}`,
       e.then && `  结果：${e.then}`,
       e.observe && `  怎么观察：${e.observe}`,
       e.watch?.length && `  留意：${e.watch.join("、")}`,
+      e.track?.length && `  盯着：${e.track.join("、")}`,
       `  印证 ${e.for} · 反例 ${e.against}${e.irrelevant ? ` · 判无关 ${e.irrelevant}` : ""}${e.lastEvidenceAt ? ` · 最近一次 ${shortTime(e.lastEvidenceAt, tz)}` : ""}`,
     ]
       .filter(Boolean)
@@ -248,7 +251,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "coldwrite_material",
     {
       description: [
-        "睡前整理用：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、按你留意的词找到的候选证据，以及这段时间和之前的互动统计（系统数的，只有数，没有结论）。",
+        "睡前整理用：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、按你留意的词找到的候选证据、反馈（你做了什么 → 之后对方的原话或工具出错，一律给），以及你 track 了的互动统计（系统数的，只有数，没有结论）。",
         "同时给你写法说明和 upTo。看完用 coldwrite 写回。",
       ].join("\n"),
       inputSchema: {},
@@ -262,6 +265,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         shelf: Entry[];
         candidates: { target: string; lines: { archiveNo: string; at: number; text: string; hit: string }[] }[];
         stats: Stats | null;
+        feedback: { acts: { archiveNo: string; at: number; text: string }[]; next: { archiveNo: string; at: number; text: string } | null }[];
       };
       if (m.upTo === null) return text("上次整理之后没有新的经历，不用整理。");
       return text(
@@ -275,9 +279,10 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
           ...(m.shelf.length ? m.shelf.map(entryLine) : ["（书架还是空的）"]),
           "</shelf>",
           "",
-          "<stats>",
-          ...(m.stats?.people.length ? renderStats(m.stats) : ["（这段没有对话）"]),
-          "</stats>",
+          ...(m.stats?.people.length ? ["<stats>", ...renderStats(m.stats), "</stats>", ""] : []),
+          "<feedback>",
+          ...(m.feedback.length ? m.feedback.flatMap((f) => [...f.acts.map(line), `  → ${f.next ? line(f.next) : "（之后一天内没有回应）"}`]) : ["（这段没有）"]),
+          "</feedback>",
           "",
           "<candidates>",
           ...(m.candidates.length ? m.candidates.flatMap((c) => [`关于 ${c.target}：`, ...c.lines.map((l) => `${line(l)}　〔命中「${l.hit}」〕`)]) : ["（没有）"]),
@@ -297,8 +302,10 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     {
       description: [
         "睡前整理，写回你的书架。书架上的字都是你写的；证据数、强弱由系统从你挂的档号数，不用自评。",
-        "op：propose 新条目（shelf: fact 事实 / told 明说的规矩 / rule 规律 / mirror 镜子）· evidence 对现行条目判一条证据（for 印证 / against 反例 / irrelevant 无关）· revise 改写 · retire 作废。",
+        "op：propose 新条目（shelf: fact 事实 / told 明说的规矩 / rule 规律 / mirror 镜子 / attend 留意 / relation 关系）· evidence 对现行条目判一条证据（for 印证 / against 反例 / irrelevant 无关）· revise 改写 · retire 作废。",
         "规律和镜子要写 when（条件）、then（结果）、observe（结果怎么观察），首批证据至少 2 条、来自不同时间（不同会话、不同的天或相隔 6 小时以上）；明说的规矩 quote 逐字照录她的原话。",
+        "留意是你想看下去的疑问，要写 watch，一件事就能写；关系是你和某个人现在怎么样，要写 about，一人一条，变了就 revise。",
+        `留意和关系可以带 track（要写 about），系统以后只给你看你 track 的统计：${TRACK_KEYS.join(" / ")}；想看全表用 stats。`,
         "upTo 原样传回。entries 可以是空的（看过了，没什么要写）。整批要么全收、要么全拒；被拒时会告诉你原因，改了再交。",
       ].join("\n"),
       inputSchema: {
@@ -308,7 +315,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
           .array(
             z.object({
               op: z.enum(["propose", "evidence", "revise", "retire"]),
-              shelf: z.enum(["fact", "told", "rule", "mirror"]).optional().describe("propose 时必填"),
+              shelf: z.enum(SHELF_ENUM).optional().describe("propose 时必填"),
               target: z.string().optional().describe("evidence / revise / retire：书架条目的档号（最新版）"),
               stance: z.enum(["for", "against", "irrelevant"]).optional().describe("evidence 时必填"),
               text: z.string().optional().describe("这一条，用你自己的话"),
@@ -317,6 +324,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
               observe: z.string().optional(),
               quote: z.string().optional().describe("明说的规矩：她的原话，逐字"),
               watch: z.array(z.string().min(1)).optional().describe("以后在新经历里留意哪些词，系统按这些词给你找候选证据"),
+              about: z.string().optional().describe("留意 / 关系：关于谁（她在消息里的名字）"),
+              track: z.array(z.enum(TRACK_KEYS as [string, ...string[]])).optional().describe("留意 / 关系：要盯的统计，要写 about"),
               why: z.string().optional().describe("revise / retire：为什么"),
               note: z.string().optional().describe("evidence：补一句判断理由（可选）"),
               cites: citesSchema,
@@ -341,9 +350,9 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   server.registerTool(
     "shelf",
     {
-      description: "看你的书架：你整理过的事实、明说的规矩、规律、镜子（现行的），带证据计数。可以按书架或词筛。",
+      description: "看你的书架：你整理过的事实、明说的规矩、规律、镜子、留意、关系（现行的），带证据计数。可以按书架或词筛。",
       inputSchema: {
-        shelf: z.enum(["fact", "told", "rule", "mirror"]).optional(),
+        shelf: z.enum(SHELF_ENUM).optional(),
         query: z.string().optional().describe("词，各词都要出现"),
       },
     },
@@ -353,6 +362,24 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       if (query) qs.set("q", query);
       const { entries } = (await call("GET", `/v1/shelf?${qs}`)) as { entries: Entry[] };
       return text(entries.length ? entries.map(entryLine).join("\n") : "书架上没有符合的条目。");
+    }),
+  );
+
+  server.registerTool(
+    "stats",
+    {
+      description: `看互动统计的全表：一段时间 vs 之前 28 天，系统数的，只有数，没有结论。能数的：${TRACK_KEYS.join(" / ")}。`,
+      inputSchema: {
+        from: z.string().optional().describe("起：日期或时间（如 2026-10-01）；缺省 to 之前 7 天"),
+        to: z.string().optional().describe("止；缺省此刻"),
+      },
+    },
+    guard(async ({ from, to }) => {
+      const qs = new URLSearchParams();
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      const s = (await call("GET", `/v1/stats?${qs}`)) as Stats;
+      return text(s.people.length ? renderStats(s).join("\n") : "这段没有对话。");
     }),
   );
 

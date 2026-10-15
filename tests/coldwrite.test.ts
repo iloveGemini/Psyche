@@ -264,6 +264,8 @@ test("统计这段截到材料里最后一条消息：最后一条材料是情�
   const c = t.her("好看 今天就到这", "2026-10-13T20:50:00");
   const { upTo } = readSegment(t.store, "d1");
   writeEpisodes(t.store, { session: "d1", upTo, entries: [{ text: "阿禾来了，做完就走。", cites: [a, b, c].map(t.no) }] }, 1);
+  // 统计只给 track 了的（attention.md §四）
+  t.store.append({ kind: "semantic.proposed", class: "self", source: "agent", payload: { shelf: "relation", about: "阿禾", text: "她来做小账本", track: ["convMinutes"] } });
   const m = await t.get();
   expect(m.stats.period.to).toBeGreaterThan(T("2026-10-13T20:50:00"));
   const conv = m.stats.people[0].rows.find((r: { key: string }) => r.key === "convMinutes");

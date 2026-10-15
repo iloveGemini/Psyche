@@ -65,6 +65,8 @@ describe("浮现", () => {
   test("预感：平时晚上来、今天晚上没来 → 报；凌晨 → 不报（她这个点不来）", async () => {
     const t = setup();
     t.evenings();
+    // 预感只对它 track 了到达的人报（attention.md §四；没 track 的情形见 attention.test.ts）
+    t.store.append({ kind: "semantic.proposed", class: "self", source: "agent", payload: { shelf: "attend", about: "阿禾", text: "她哪天没来", watch: ["没来"], track: ["arrivals"] } });
     t.set(T("2026-09-16T22:30:00"));
     t.sit("w1", T("2026-09-16T22:30:00"));
     intake(t.store, { kind: "woke", source: "soma", payload: { by: "heartbeat" }, at: T("2026-09-16T22:30:00") });

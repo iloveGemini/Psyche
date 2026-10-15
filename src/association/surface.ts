@@ -10,7 +10,7 @@ import type { EventStore } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
 import { localDay, wallClock } from "../core/time.ts";
 import { cosine, fromBlob, syncVectors, vectorOf, type Embedder } from "../archive/vectors.ts";
-import { readShelf, renderEntry, type ShelfEntry } from "../reading/shelf.ts";
+import { readShelf, renderEntry, trackedByPerson, type ShelfEntry } from "../reading/shelf.ts";
 import { NOT_MEMORY_TOOL } from "../archive/recall.ts";
 import { sessionOf } from "../archive/experience.ts";
 import { harnessOf } from "../catalog/coldwrite.ts";
@@ -217,7 +217,10 @@ function hunches(c: Ctx): Surfaced[] {
     .query(`SELECT at, json_extract(payload, '$.from') AS who FROM events WHERE fonds = '' AND kind = 'message.in' AND at >= ? AND at <= ? ORDER BY at`)
     .all(from, c.now) as { at: number; who: string }[];
   const out: Surfaced[] = [];
+  // 只对它 track 了到达的人报（attention.md §四）："她该来没来"不由系统默认替它惦记
+  const tracked = trackedByPerson(c.db);
   for (const who of new Set(rows.map((r) => r.who))) {
+    if (!tracked.get(who)?.has("arrivals")) continue;
     const mine = rows.filter((r) => r.who === who);
     const days = new Set(mine.map((r) => localDay(r.at, tz)));
     const inSlot = new Set(mine.filter((r) => slotOf(r.at, tz) === slot).map((r) => localDay(r.at, tz)));

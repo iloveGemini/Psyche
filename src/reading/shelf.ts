@@ -9,10 +9,10 @@ import type { PsycheEvent } from "../store/events.ts";
 import type { Projector } from "../store/projections.ts";
 import { sessionOf } from "../archive/experience.ts";
 
-export const SHELVES = ["fact", "told", "rule", "mirror"] as const;
+export const SHELVES = ["fact", "told", "rule", "mirror", "attend", "relation"] as const;
 export type Shelf = (typeof SHELVES)[number];
 /** 条目字段：proposed 给全，revised 只给要改的 */
-export const ENTRY_FIELDS = ["text", "when", "then", "observe", "quote", "watch"] as const;
+export const ENTRY_FIELDS = ["text", "when", "then", "observe", "quote", "watch", "about", "track"] as const;
 
 export interface ShelfEntry {
   root: string;
@@ -26,6 +26,10 @@ export interface ShelfEntry {
   observe?: string;
   quote?: string;
   watch?: string[];
+  /** 留意 / 关系：关于谁 */
+  about?: string;
+  /** 它要盯的统计指标（stats.ts 的 TRACK_KEYS），要有 about */
+  track?: string[];
   retired: boolean;
   for: number;
   against: number;
@@ -156,9 +160,21 @@ export function readShelf(db: Database, opts: { shelf?: string; q?: string; incl
   const terms = (opts.q ?? "").trim().split(/\s+/).filter(Boolean);
   return rows.map(toEntry).filter((e) => {
     if (!terms.length) return true;
-    const hay = [e.text, e.when, e.then, e.observe, e.quote, ...(e.watch ?? [])].filter(Boolean).join("\n");
+    const hay = [e.text, e.when, e.then, e.observe, e.quote, e.about, ...(e.watch ?? [])].filter(Boolean).join("\n");
     return terms.every((t) => hay.includes(t));
   });
+}
+
+/** 现行条目里 track 的指标，按人（about）合并 */
+export function trackedByPerson(db: Database): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const e of readShelf(db)) {
+    if (!e.about || !e.track?.length) continue;
+    const s = out.get(e.about) ?? new Set<string>();
+    e.track.forEach((k) => s.add(k));
+    out.set(e.about, s);
+  }
+  return out;
 }
 
 /** 某条目已计过的证据事件 */
@@ -167,14 +183,15 @@ export function countedEvidence(db: Database, root: string): Set<string> {
 }
 
 /** 给它看的一行：书架名 + 正文 + 规律的条件/结果 + 计数 */
-export const SHELF_NAME: Record<Shelf, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子" };
+export const SHELF_NAME: Record<Shelf, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子", attend: "留意", relation: "关系" };
 export function renderEntry(e: ShelfEntry): string {
-  const parts = [`（${SHELF_NAME[e.shelf]}）${e.text}`];
+  const parts = [`（${SHELF_NAME[e.shelf]}${e.about ? ` · ${e.about}` : ""}）${e.text}`];
   if (e.quote) parts.push(`原话：「${e.quote}」`);
   if (e.when) parts.push(`条件：${e.when}`);
   if (e.then) parts.push(`结果：${e.then}`);
   if (e.observe) parts.push(`怎么观察：${e.observe}`);
   if (e.watch?.length) parts.push(`留意：${e.watch.join("、")}`);
+  if (e.track?.length) parts.push(`盯着：${e.track.join("、")}`);
   parts.push(`印证 ${e.for} · 反例 ${e.against}${e.irrelevant ? ` · 判无关 ${e.irrelevant}` : ""}${e.retired ? " · 已作废" : ""}`);
   return parts.join("；");
 }

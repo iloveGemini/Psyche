@@ -143,6 +143,27 @@ const ROWS: { key: string; name: string; unit: string }[] = [
   { key: "herFirst", name: "她先开口的占比", unit: "" },
 ];
 
+/** 它能 track 的指标（attention.md §四）：上面各项 + 几点来 */
+export const TRACK_KEYS = [...ROWS.map((r) => r.key), "hours"];
+
+/**
+ * 只留它 track 了的（冷写材料用）：按人、按项；某人一项都没 track 就整个不出。silenceNow 跟着 arrivals 走。
+ * 一个都没有 → null（没有表，而不是空表）。
+ */
+export function pickTracked(s: Stats, tracked: Map<string, Set<string>>): Stats | null {
+  const people = s.people.flatMap((p) => {
+    const keys = tracked.get(p.who);
+    if (!keys?.size) return [];
+    return [{
+      ...p,
+      rows: p.rows.filter((r) => keys.has(r.key)),
+      hours: keys.has("hours") ? p.hours : { period: null, baseline: null },
+      silenceNow: keys.has("arrivals") ? p.silenceNow : null,
+    }];
+  });
+  return people.length ? { ...s, people } : null;
+}
+
 /** [from, to) 这段 vs 之前 BASELINE_DAYS 天；now 用来算"此刻沉默了多久" */
 export function computeStats(db: Database, opts: { from: number; to: number; now?: number; timeZone?: string; baselineDays?: number }): Stats {
   const tz = opts.timeZone ?? "Asia/Shanghai";
@@ -186,7 +207,7 @@ export function renderStats(s: Stats): string[] {
     lines.push(`和 ${p.who}：这段（${fmt((s.period.to - s.period.from) / DAY, "天")}）/ 之前（${fmt(s.baseline.days, "天")}）/ 变化`);
     for (const r of p.rows)
       lines.push(`  ${r.name}：${fmt(r.period, r.unit)} / ${fmt(r.baseline, r.unit)} / ${r.change === null ? "—" : `${r.change >= 0 ? "+" : ""}${Math.round(r.change * 100)}%`}`);
-    lines.push(`  她几点来：${dist(p.hours.period)} / ${dist(p.hours.baseline)}`);
+    if (p.hours.period || p.hours.baseline) lines.push(`  她几点来：${dist(p.hours.period)} / ${dist(p.hours.baseline)}`);
     if (p.silenceNow !== null) lines.push(`  到这段结束时，她上一条是 ${fmt(p.silenceNow / 60, "小时")}前`);
   }
   return lines;
