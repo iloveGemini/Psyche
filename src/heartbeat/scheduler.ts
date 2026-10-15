@@ -4,6 +4,7 @@
  * gather（读库）→ decide（纯函数）→ 记唤醒账本（系统日志 `wake`）。
  * - 它醒着（最近 30 分钟有对话 / 工具事件）就不叫：到点的闹钟 / 定点等它下次取 `<now>` 时写成 `due`、带一次（deliverDue）。
  * - 有活（补写 > 整理）不花额度；它约的（闹钟、定点、心跳）走额度。暂停 = 家里一律不叫。
+ *   到点时它醒着、没等到下一轮才改在家叫醒的闹钟 / 定点，不花额度（10-15 Joy 定）。
  * - 每个候选有 key：叫过、跳过、递过的 key 不再叫（整理 / 补写不会因为没交就每分钟再醒）。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
@@ -32,6 +33,8 @@ export interface Candidate {
   lines?: number;
   /** 到点时刻 */
   due?: number;
+  /** 到点时它醒着（没递出去才改在家叫醒）：不花额度 */
+  awakeAtDue?: boolean;
 }
 
 export interface State {
@@ -45,13 +48,16 @@ export interface State {
 
 export type Decision = { wake: Candidate } | { skip: Candidate; reason: "paused" | "budget" };
 
+/** 这次叫醒花不花额度 */
+export const costs = (c: Candidate) => BUDGETED.has(c.by) && !c.awakeAtDue;
+
 /** 纯函数：此刻叫不叫、叫哪个 */
 export function decide(s: State): Decision | null {
   if (s.awake || s.homeRunning) return null;
   const c = s.candidates[0];
   if (!c) return null;
   if (s.paused) return { skip: c, reason: "paused" };
-  if (BUDGETED.has(c.by) && s.budgetLeft <= 0) return { skip: c, reason: "budget" };
+  if (costs(c) && s.budgetLeft <= 0) return { skip: c, reason: "budget" };
   return { wake: c };
 }
 
@@ -75,6 +81,8 @@ interface WakeLog {
   by: string;
   key: string;
   decided: "woke" | "skipped" | "delivered";
+  /** 花了额度（woke 时记） */
+  budgeted?: boolean;
   reason?: string;
   note?: string;
   session?: string;
@@ -89,7 +97,7 @@ function wakeLogs(store: EventStore, since = 0): WakeLog[] {
 
 export function budgetUsedToday(store: EventStore): number {
   const today = localDay(store.now(), store.timeZone);
-  return wakeLogs(store, store.now() - 2 * 86_400_000).filter((l) => l.decided === "woke" && BUDGETED.has(l.by as By) && localDay(l.at, store.timeZone) === today).length;
+  return wakeLogs(store, store.now() - 2 * 86_400_000).filter((l) => l.decided === "woke" && (l.budgeted ?? BUDGETED.has(l.by as By)) && localDay(l.at, store.timeZone) === today).length;
 }
 
 const dayStart = (store: EventStore, at: number) => {
@@ -101,6 +109,18 @@ const slotAt = (store: EventStore, at: number, hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
   return fromWallClock(store.timeZone, w.year, w.month, w.day, h, m);
 };
+
+/** 某时刻它醒不醒着：之前 30 分钟内有和人 / 在别处的动静（家里的不算） */
+function awakeAt(store: EventStore, at: number): boolean {
+  const r = store.db
+    .query(
+      `SELECT 1 FROM events e LEFT JOIN events s ON s.id = e.situation
+       WHERE e.kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND e.fonds = ''
+         AND COALESCE(json_extract(s.payload, '$.harness'), '') <> 'home' AND e.at <= ? AND e.at > ? LIMIT 1`,
+    )
+    .get(at, at - AWAKE_MS);
+  return !!r;
+}
 
 /** 到点了、还没响（没有 due）的闹钟和定点 */
 export function pendingDue(store: EventStore): Candidate[] {
@@ -116,6 +136,7 @@ export function pendingDue(store: EventStore): Candidate[] {
     // 写作息之前的那个点不算（今天 08:00 写了 07:00，不当场响）
     if (t <= now && t >= cur.at && !fired.has(key)) out.push({ by: "daily", key, note: d.note, due: t });
   }
+  for (const c of out) if (awakeAt(store, c.due!)) c.awakeAtDue = true;
   return out.sort((a, b) => a.due! - b.due!);
 }
 
@@ -180,6 +201,7 @@ function log(store: EventStore, decided: WakeLog["decided"], c: Candidate, reaso
     by: c.by,
     key: c.key,
     decided,
+    ...(decided === "woke" ? { budgeted: costs(c) } : {}),
     ...(reason ? { reason } : {}),
     ...(c.note ? { note: c.note } : {}),
     ...(c.session ? { session: c.session } : {}),

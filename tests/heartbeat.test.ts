@@ -71,6 +71,10 @@ describe("纯函数 decide", () => {
     expect(decide({ ...base, budgetLeft: 0, candidates: [{ by: "tidy", key: "tidy:x" }] })).toEqual({ wake: { by: "tidy", key: "tidy:x" } });
   });
   test("没候选：null", () => expect(decide({ ...base, candidates: [] })).toBeNull());
+  test("到点时醒着的闹钟：额度用完也照叫", () => {
+    const c = { by: "alarm" as const, key: "alarm:b", awakeAtDue: true };
+    expect(decide({ ...base, budgetLeft: 0, candidates: [c] })).toEqual({ wake: c });
+  });
 });
 
 describe("作息的闸", () => {
@@ -154,7 +158,7 @@ describe("闹钟", () => {
     expect(tick(h.store)).toBeNull(); // 递过就不再叫
   });
 
-  test("醒着但 30 分钟没取 <now>：回到在家叫醒", async () => {
+  test("醒着但 30 分钟没取 <now>：回到在家叫醒，不花额度（到点时它醒着）", async () => {
     const h = setup();
     quietSince(h, "2026-10-15T08:00:00");
     await h.ok("/v1/schedule", { schedule: { alarms: [{ at: "2026-10-15T15:00", note: "x" }] }, why: "w" });
@@ -164,7 +168,23 @@ describe("闹钟", () => {
     h.set("2026-10-15T15:10:00");
     expect(tick(h.store)).toBeNull();
     h.set("2026-10-15T15:21:00");
-    expect(tick(h.store)).toMatchObject({ wake: { by: "alarm" } });
+    expect(tick(h.store)).toMatchObject({ wake: { by: "alarm", awakeAtDue: true } });
+    expect(h.ledger().at(-1)).toMatchObject({ decided: "woke", budgeted: false });
+    expect((await h.get("/v1/schedule")).budget.used).toBe(0);
+  });
+
+  test("额度用完也照叫：到点时它醒着的那个不花额度", async () => {
+    const h = setup();
+    quietSince(h, "2026-10-15T08:00:00");
+    await h.ok("/v1/settings", { wakeBudget: 0 });
+    await h.ok("/v1/schedule", { schedule: { alarms: [{ at: "2026-10-15T15:00", note: "醒着时到点" }, { at: "2026-10-15T17:00", note: "睡着时到点" }] }, why: "w" });
+    cover(h);
+    h.set("2026-10-15T14:50:00");
+    h.her("在吗");
+    h.set("2026-10-15T15:21:00");
+    expect(tick(h.store)).toMatchObject({ wake: { note: "醒着时到点" } });
+    h.set("2026-10-15T17:00:00");
+    expect(tick(h.store)).toMatchObject({ skip: { note: "睡着时到点" }, reason: "budget" });
   });
 });
 
