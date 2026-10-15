@@ -31,6 +31,8 @@ SILICONFLOW_API_KEY=… PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EM
 （同上的嵌入环境变量）bun evals/surfacing/b.ts --model claude-opus-5-5 --n 3 [--only B2]
 ```
 
+`--model gemini-*` 走 `evals/vertex.ts`（要 `VERTEX_API_KEY` / `VERTEX_BASE`），argon 首跑见 `evals/argon-run1.md`。
+
 每题起一个只读这份库的 Psyche（端口 7460 起），它能自己 recall / detail / shelf。结果在 `out/b/`。首跑见 `run1.md`。
 
 ## D10 之后入睡（统计题，`claude -p`，手动跑）

@@ -2,6 +2,7 @@
  * 浮现考卷 B（key.md）：同一轮输入，`<now>` 带「想起」vs 不带，各跑 N 次，看它的回复。花额度，手动跑。
  *
  *   bun evals/surfacing/build.ts && bun evals/surfacing/b.ts --model claude-opus-5-5 [--n 3] [--only B2]
+ *   Gemini（gemini-*）走 evals/vertex.ts，要 VERTEX_API_KEY / VERTEX_BASE。
  *
  * 每题：复制底库、补上那一刻的事件、起一个只读这份库的 Psyche（它可以自己 recall / detail / shelf），
  * 在空目录里用 `claude -p` 推这一轮。结果存 out/b/<题>-<组>-<次>.json，最后打印回复和它调了什么。
@@ -17,6 +18,7 @@ import { renderSurfaced, surface } from "../../src/association/surface.ts";
 import { filePrompt } from "../../src/self/self.ts";
 import { shanghai } from "../cold-write/build.ts";
 import { openStore, surfacingScript } from "./build.ts";
+import { isVertexModel, runVertex } from "../vertex.ts";
 
 const HERE = dirname(new URL(import.meta.url).pathname);
 const ROOT = join(HERE, "../..");
@@ -98,6 +100,11 @@ async function serve(dir: string, port: number) {
 }
 
 async function run(input: string, port: number) {
+  // Gemini 走 Vertex 执行器（evals/vertex.ts），工具和提示词同一份
+  if (isVertexModel(model!)) {
+    const r = await runVertex({ model: model!, system: filePrompt(), input, psycheUrl: `http://127.0.0.1:${port}`, tools: ["recall", "detail", "shelf"] });
+    return { reply: r.reply, calls: r.calls, cost: r.cost };
+  }
   const mcp = { mcpServers: { psyche: { type: "stdio", command: "bun", args: ["run", join(ROOT, "src/mcp.ts")], env: { PSYCHE_URL: `http://127.0.0.1:${port}` } } } };
   const tools = ["recall", "detail", "shelf"].map((t) => `mcp__psyche__${t}`);
   const proc = Bun.spawn(

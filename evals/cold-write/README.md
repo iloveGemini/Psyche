@@ -21,6 +21,8 @@ PSYCHE_URL=http://127.0.0.1:7451 bun run src/sleep.ts --model <同上> --at "202
 curl -s http://127.0.0.1:7451/v1/shelf | jq     # 看书架；每次判了什么在 GET /v1/events?kinds=semantic.evidence
 ```
 
+Gemini 用 `evals/vertex-sleep.ts` 代替 `src/sleep.ts`（参数相同，要 `VERTEX_API_KEY` / `VERTEX_BASE`，见 `evals/vertex.ts`）；首跑见 `evals/argon-run1.md`。
+
 然后对 `key.md` 的答案要点、`criteria.md` 人判。`s*.jsonl` 是无头会话的全程（它 recall 了什么、被拒过几次）。
 
 **剧本不是它的经历**：它那一侧的台词是我们写的（镜子要埋"它的做法"），只进临时库，绝不进 `~/.psyche/test`。
