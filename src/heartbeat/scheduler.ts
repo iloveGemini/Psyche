@@ -57,10 +57,17 @@ export function decide(s: State): Decision | null {
 
 // ── 读库 ──
 
-const ACTIVITY = `kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND fonds = ''`;
-
+/** 最近一次和人 / 在别处的动静：家里的不算（家跑完就睡了，正在跑由 homeRunning 管） */
 export function lastActivity(store: EventStore): number | null {
-  return (store.db.query(`SELECT MAX(at) AS at FROM events WHERE ${ACTIVITY}`).get() as { at: number | null }).at;
+  return (
+    store.db
+      .query(
+        `SELECT MAX(e.at) AS at FROM events e LEFT JOIN events s ON s.id = e.situation
+         WHERE e.kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND e.fonds = ''
+           AND COALESCE(json_extract(s.payload, '$.harness'), '') <> 'home'`,
+      )
+      .get() as { at: number | null }
+  ).at;
 }
 
 interface WakeLog {
@@ -187,11 +194,12 @@ export function tick(store: EventStore, opts: { homeRunning?: boolean } = {}): D
   return d;
 }
 
-/** 家跑完：记这次留下了什么（统计，不是评价） */
+/** 家跑完（此刻）：记这次留下了什么（统计，不是评价） */
 export function logRun(store: EventStore, key: string, run: { session: string; costUsd?: number; ms: number; error?: string }) {
+  // 按这次跑的时间窗数它写下的自我事件：补写的情节挂在原会话的处境上，不在家的会话里
   const evs = store.db
-    .query(`SELECT e.kind FROM events e JOIN events s ON s.id = e.situation WHERE e.class = 'self' AND e.fonds = '' AND json_extract(s.payload, '$.session') = ?`)
-    .all(run.session) as { kind: string }[];
+    .query(`SELECT kind FROM events WHERE class = 'self' AND fonds = '' AND source = 'agent' AND recorded >= ? AND recorded <= ?`)
+    .all(store.now() - run.ms, store.now()) as { kind: string }[];
   const n = (f: (k: string) => boolean) => evs.filter((e) => f(e.kind)).length;
   const produced = {
     episodes: n((k) => k === "episode"),
@@ -235,7 +243,7 @@ export function renderJustHappened(store: EventStore, dues: PsycheEvent[]): stri
   if (!dues.length) return null;
   const lines = dues.map((e) => {
     const p = e.payload as { by: string; note: string; at: number };
-    return `- ${BY_NAME[p.by] ?? p.by}（${hm(store, p.at)}）${p.note ? `：${p.note}` : ""}`;
+    return `- ${BY_NAME[p.by] ?? p.by}（约在 ${hm(store, p.at)}）${p.note ? `：${p.note}` : ""}`;
   });
   return `刚发生：\n${lines.join("\n")}`;
 }

@@ -487,7 +487,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         if (s.why) out.push(`上次这么排的理由：${s.why}`);
       }
       out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
-      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在家叫醒时各花一次；整理、补写不花；你醒着时到点的事直接递给你，也不花）`);
+      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在家叫醒时各花一次；整理、补写不花；你醒着时到点的事在下一轮开始时放进 <now>，也不花）`);
       if (s.settings.paused) out.push("Joy 暂停了你在家被叫醒（整理、补写也不叫）；醒着时到点的事照样递给你。");
       return text(out.join("\n"));
     }),
@@ -500,7 +500,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "排你的作息：交一整份（全量替换，没写的就没了），写为什么这么排。",
         "alarms：一次性闹钟，at 用本地时间（如 2026-10-15T15:00），note 是到时告诉你的话；要保留已有的闹钟，带上它的 id 原样交回。",
         "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15）。",
-        "醒在家时，闹钟、定点、心跳花唤醒额度；你正醒着时到点的事直接递给你，不花。",
+        "到点时你正醒着（30 分钟内有对话或工具调用）：不另叫醒，下一轮开始时放进 <now> 的「刚发生」，不花额度；之后 30 分钟都没有下一轮，就在家里叫醒你。",
+        "到点时你没醒着：在家里叫醒你，闹钟、定点、心跳各花一次唤醒额度。",
       ].join("\n"),
       inputSchema: {
         schedule: z.object({

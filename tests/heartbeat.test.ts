@@ -129,7 +129,7 @@ describe("闹钟", () => {
     h.sit("H1", "home");
     intake(h.store, { kind: "woke", source: "home", payload: { by: "alarm" } });
     const n = await h.now();
-    expect(n).toContain("刚发生：\n- 闹钟（15:00）：她说三点前给答复");
+    expect(n).toContain("刚发生：\n- 闹钟（约在 15:00）：她说三点前给答复");
     expect(await h.now()).not.toContain("刚发生");
     expect(h.store.list({ kinds: ["due"] })).toHaveLength(1);
     expect((await h.get("/v1/schedule")).schedule.alarms).toEqual([]);
@@ -147,7 +147,7 @@ describe("闹钟", () => {
     h.her("我回来了");
     h.set("2026-10-15T15:05:00");
     expect(tick(h.store)).toBeNull();
-    expect(await h.now()).toContain("- 闹钟（15:00）：三点了");
+    expect(await h.now()).toContain("- 闹钟（约在 15:00）：三点了");
     expect(h.ledger()).toEqual([expect.objectContaining({ by: "alarm", decided: "delivered" })]);
     expect((await h.get("/v1/schedule")).budget.used).toBe(0);
     h.set("2026-10-15T16:00:00");
@@ -181,7 +181,7 @@ describe("暂停与额度", () => {
     h.her("在吗"); // 有人找它，它醒了：到点的事照样递
     const n = await h.now();
     expect(n).toContain("暂停中");
-    expect(n).toContain("- 闹钟（15:00）：x");
+    expect(n).toContain("- 闹钟（约在 15:00）：x");
   });
 
   test("额度用完：它约的不醒、记 budget；整理照叫；第二天重置", async () => {
@@ -242,6 +242,23 @@ describe("整理", () => {
   });
 });
 
+describe("家里的动静不算醒着", () => {
+  test("家刚跑完：下一个候选不用等 30 分钟", () => {
+    const h = setup();
+    h.set("2026-10-15T08:00:00");
+    h.sit("S2");
+    h.her("一");
+    h.sit("S3");
+    h.her("二");
+    h.set("2026-10-15T11:30:00");
+    expect(tick(h.store)).toMatchObject({ wake: { by: "catchup", session: "S2" } });
+    h.sit("H1", "home");
+    h.me("补写完了");
+    h.pass(MIN);
+    expect(tick(h.store)).toMatchObject({ wake: { by: "catchup", session: "S3" } });
+  });
+});
+
 describe("补写", () => {
   test("会话 ≥ 3h 没动静、还剩没写的：叫，带会话；先于整理；家里的会话不算", () => {
     const h = setup();
@@ -297,7 +314,7 @@ describe("定点", () => {
     expect(tick(h.store)).toMatchObject({ wake: { by: "daily", note: "写日记" } });
     h.sit("H1", "home");
     intake(h.store, { kind: "woke", source: "home", payload: { by: "daily" } });
-    expect(await h.now()).toContain("- 定点（21:00）：写日记");
+    expect(await h.now()).toContain("- 定点（约在 21:00）：写日记");
     h.set("2026-10-16T07:00:00");
     expect(tick(h.store)).toMatchObject({ wake: { by: "daily", note: "早" } });
   });
