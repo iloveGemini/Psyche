@@ -19,6 +19,7 @@
 4. [档案馆](notes/design/archive.md) —— 库房 + 经历案卷 + 前世今生
 5. [编目：热写与梦](notes/design/catalog.md) —— 显式归它写、隐式归系统算；召回 = 还原处境
 6. [阅览室](notes/design/reading-room.md) —— 认知 = 条件 → 结果；镜子、经验；规律该多当真它看证据自己推
+   - [留意与关系](notes/design/attention.md)（10-15 草案）—— 关注什么由它定，系统只负责不让它忘了自己想看的
 7. [联想](notes/design/association.md) —— 隐式记忆的家，只管浮现：激活度 + 处境调制；不写时机，先定考卷
 8. [自我](notes/design/self.md) —— Agent 唯一能直接写的地方：自述、作息计划、focus、自主区
 9. [组装器](notes/design/assembler.md) —— 它此刻看得见什么：常驻 vs 按需、真实处境、出境检查
