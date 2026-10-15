@@ -90,10 +90,13 @@ export function readColdwrite(store: EventStore) {
   const year = refYear(store);
   const shown = (e: ShelfEntry) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year) });
   const candidates = candidatesFor(store, shelf, groups.flatMap((g) => g.lines));
-  // 统计：这段 = 上次整理那一刻到这次材料最后一条（按发生时间）；第一次从最早一条算
-  const first = store.db.query(`SELECT MIN(at) AS at FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out')`).get() as { at: number | null };
-  const periodFrom = since ? store.get(since)!.at : (first.at ?? 0);
-  const stats = upTo ? computeStats(store.db, { from: periodFrom, to: store.get(upTo)!.at + 1, timeZone: store.timeZone }) : null;
+  // 统计：这段 = 上次整理那一刻到这次材料里最后一条消息（按发生时间）；第一次从最早一条算
+  // 不用 upTo 那条的时刻：它可能是情节，情节的时刻是它所引的第一行，会把最后那次对话截掉
+  const msgAt = (agg: "MIN" | "MAX", maxId = "\uffff") =>
+    (store.db.query(`SELECT ${agg}(at) AS at FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out') AND id <= ?`).get(maxId) as { at: number | null }).at;
+  const periodFrom = since ? store.get(since)!.at : (msgAt("MIN") ?? 0);
+  const periodTo = upTo ? Math.max(msgAt("MAX", upTo) ?? 0, store.get(upTo)!.at) + 1 : 0;
+  const stats = upTo ? computeStats(store.db, { from: periodFrom, to: periodTo, timeZone: store.timeZone }) : null;
   return {
     upTo,
     since,

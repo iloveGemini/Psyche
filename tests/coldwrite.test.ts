@@ -254,3 +254,18 @@ describe("第二次睡：候选、判断、改写、作废", () => {
     expect(any.lines[0]).toMatchObject({ kind: "semantic" });
   });
 });
+
+test("统计这段截到材料里最后一条消息：最后一条材料是情节时，不截掉那次对话", async () => {
+  const { readSegment, writeEpisodes } = await import("../src/catalog/hotwrite.ts");
+  const t = setup();
+  t.session("d1", "2026-10-13T20:29:00");
+  const a = t.her("泡了杯茶 来了", "2026-10-13T20:30:00");
+  const b = t.me("好，今天做什么？", "2026-10-13T20:31:00");
+  const c = t.her("好看 今天就到这", "2026-10-13T20:50:00");
+  const { upTo } = readSegment(t.store, "d1");
+  writeEpisodes(t.store, { session: "d1", upTo, entries: [{ text: "阿禾来了，做完就走。", cites: [a, b, c].map(t.no) }] }, 1);
+  const m = await t.get();
+  expect(m.stats.period.to).toBeGreaterThan(T("2026-10-13T20:50:00"));
+  const conv = m.stats.people[0].rows.find((r: { key: string }) => r.key === "convMinutes");
+  expect(conv.period).toBe(20);
+});

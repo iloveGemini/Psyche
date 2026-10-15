@@ -6,6 +6,7 @@
 |---|---|
 | `key.md` | 剧本大纲与答案要点 |
 | `script.json` | D7、D9、D10（D8 是"她没来"，没有对话）；接在冷写考卷 D1–D6 之后 |
+| `run3.md` | D10 之后入睡（统计题）首跑 |
 | `shelf.json` | 冷写考卷 run2 里它自己写的书架，原样重放（不是我们写的） |
 | `episodes.json` | 剧本会话的情节：Opus 5.5 按热写提示词无头补写（它本人写的），原样重放 |
 | `hotwrite.ts` | 生成 `episodes.json`（花额度，剧本不改不用重跑） |
@@ -31,3 +32,14 @@ SILICONFLOW_API_KEY=… PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EM
 ```
 
 每题起一个只读这份库的 Psyche（端口 7460 起），它能自己 recall / detail / shelf。结果在 `out/b/`。首跑见 `run1.md`。
+
+## D10 之后入睡（统计题，`claude -p`，手动跑）
+
+```sh
+bun evals/surfacing/build.ts --full                  # out/full.db：底库 + D9、D10
+cp evals/surfacing/out/full.db evals/surfacing/out/s3/1/psyche.db
+PSYCHE_DATA_DIR=evals/surfacing/out/s3/1 PSYCHE_PORT=7471 bun run src/main.ts   # 另开终端
+PSYCHE_URL=http://127.0.0.1:7471 bun run src/sleep.ts --model claude-opus-5-5 --at "2026-10-17 03:00" --log evals/surfacing/out/s3/1/sleep.jsonl
+```
+
+D9、D10 的情节已在 `episodes.json`；剧本改了才用 `hotwrite.ts --only sf-d9,sf-d10` 重补。首跑见 `run3.md`。

@@ -1,7 +1,7 @@
 /**
  * 浮现考卷的底库：4 周基线（代码生成）+ 冷写考卷 D1–D6（连同两次入睡时它写的书架，按原样重放）+ D7。
  *
- *   bun evals/surfacing/build.ts [--db evals/surfacing/out/base.db]
+ *   bun evals/surfacing/build.ts [--full] [--db evals/surfacing/out/base.db]
  *
  * 基线的台词是模板，只为撑起统计（她多在晚上来、周末下午来）；不考内容，也避开考题里的词。
  * 书架重放要和冷写考卷 run2 的档号对得上：入睡前后的 slept / woke 照当时的时刻补上。
@@ -101,7 +101,9 @@ export function addSessions(store: EventStore, script: Script, ids?: string[]) {
 }
 
 /** 补情节的会话：剧本里的，不含基线（模板台词没东西可写） */
-export const EPISODE_SESSIONS = ["cw-d1", "cw-d2", "cw-d3a", "cw-d3b", "cw-d4", "cw-d5", "cw-d6", "sf-d7"];
+export const EPISODE_SESSIONS = ["cw-d1", "cw-d2", "cw-d3a", "cw-d3b", "cw-d4", "cw-d5", "cw-d6", "sf-d7", "sf-d9", "sf-d10"];
+/** 底库只到 D7（考卷 A / B 自己补那一刻）；`--full` 再接上 D9、D10，给 D10 之后的那次入睡（统计题） */
+export const FULL_SESSIONS = ["sf-d9", "sf-d10"];
 
 function replayEpisodes(store: EventStore) {
   const path = join(HERE, "episodes.json");
@@ -117,10 +119,11 @@ function replayEpisodes(store: EventStore) {
 
 export const surfacingScript = (): Script => JSON.parse(readFileSync(join(HERE, "script.json"), "utf8"));
 
-export function buildBase(path: string, withEpisodes = true) {
+export function buildBase(path: string, withEpisodes = true, full = false) {
   for (const suf of ["", "-wal", "-shm"]) rmSync(path + suf, { force: true });
   mkdirSync(dirname(path), { recursive: true });
-  const { store, projections } = openStore(path);
+  // 书架与情节是 10-14 当天写进去的，档号按写入那天编（10-14#N）；钟钉在那天，哪天重建档号都对得上
+  const { store, projections } = openStore(path, () => shanghai("2026-10-14", "12:00"));
   const cold = loadScript();
   const shelf = JSON.parse(readFileSync(join(HERE, "shelf.json"), "utf8")) as { sleeps: { entries: unknown[] }[] };
   baseline(store, cold.her, cold.model);
@@ -128,7 +131,7 @@ export function buildBase(path: string, withEpisodes = true) {
   replaySleep(store, "2026-10-08 03:00", shelf.sleeps[0].entries);
   buildCold(store, cold, "s2");
   replaySleep(store, "2026-10-11 03:00", shelf.sleeps[1].entries);
-  addSessions(store, surfacingScript(), ["sf-d7"]);
+  addSessions(store, surfacingScript(), ["sf-d7", ...(full ? FULL_SESSIONS : [])]);
   if (withEpisodes) replayEpisodes(store);
   projections.stop();
   store.close();
@@ -137,8 +140,9 @@ export function buildBase(path: string, withEpisodes = true) {
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const i = args.indexOf("--db");
-  const path = i >= 0 ? args[i + 1] : join(HERE, "out", "base.db");
-  buildBase(path, !args.includes("--no-episodes"));
+  const full = args.includes("--full");
+  const path = i >= 0 ? args[i + 1] : join(HERE, "out", full ? "full.db" : "base.db");
+  buildBase(path, !args.includes("--no-episodes"), full);
   const { store } = openStore(path);
   const shelf = store.db.query(`SELECT shelf, COUNT(*) AS n FROM p_shelf WHERE retired = 0 GROUP BY shelf`).all();
   const n = store.db.query(`SELECT COUNT(*) AS n FROM events WHERE kind LIKE 'message.%'`).get() as { n: number };
