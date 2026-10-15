@@ -193,6 +193,14 @@ describe("和别处的接线", () => {
     expect((await get("/v1/now")).text).not.toContain("自述");
   });
 
+  test("经历里：看自述不抄全文；改自述的调用不抄全文", async () => {
+    const { renderExperience } = await import("../src/archive/render.ts");
+    const ev = (kind: string, payload: object) => ({ kind, payload }) as Parameters<typeof renderExperience>[0];
+    expect(renderExperience(ev("tool.call", { name: "mcp__psyche__self", callId: "1", args: {} }))).toBe("我看了看自己那段自述");
+    expect(renderExperience(ev("tool.result", { name: "mcp__psyche__self", callId: "1", ok: true, text: "<self>…" }))).toBeNull();
+    expect(renderExperience(ev("tool.call", { name: "mcp__psyche__rewrite_self", callId: "2", args: { text: "很长", baseVersion: 2 } }))).toBe("我交了一版新的自述（在第 2 版上改）");
+  });
+
   test("lineDiff：一样返回 null", () => {
     expect(lineDiff("a\nb", "a\nb")).toBeNull();
     expect(lineDiff("a\nb", "a\nc")).toBe("  a\n- b\n+ c");

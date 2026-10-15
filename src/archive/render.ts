@@ -29,13 +29,16 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/(^|__)coldwrite$/.test(p.name)) return `我整理了一遍记忆，往书架写了 ${Array.isArray(p.args?.entries) ? p.args.entries.length : "?"} 条`;
       if (/(^|__)coldwrite_material$/.test(p.name)) return "我翻出上次整理之后的经历，准备整理";
       if (/^mcp__psyche__shelf$/.test(p.name)) return "我看了看自己的书架";
+      if (/^mcp__psyche__self$/.test(p.name)) return "我看了看自己那段自述";
+      // 自述全文已在 prompt.changed 里（资料库），调用不再抄一遍
+      if (/^mcp__psyche__rewrite_self$/.test(p.name)) return `我交了一版新的自述（在第 ${p.args?.baseVersion ?? "?"} 版上改）`;
       if (/^mcp__psyche__revise_episode$/.test(p.name)) return `我改写了 ${p.args?.target ?? "?"} 这条情节`;
       if (/^mcp__psyche__recall$/.test(p.name)) return `我翻了翻记忆，找「${p.args?.query ?? ""}」`;
       if (/^mcp__psyche__detail$/.test(p.name)) return `我翻出 ${p.args?.archiveNo ?? "?"} 的原件看了看`;
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;
     case "tool.result":
       // 就是这一段本身 / 翻出来的旧记忆：再记一遍，下次 recall 会把它当新的又翻出来
-      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf)$/.test(p.name)) return null;
+      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self)$/.test(p.name)) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
       return `（感知 · ${p.sensor}）${typeof p.value === "string" ? p.value : JSON.stringify(p.value)}`;
