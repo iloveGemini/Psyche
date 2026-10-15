@@ -83,13 +83,20 @@ const SELF_THIRD_HEAD = /^(?:Claude(?!\s*Code)|助手|AI|Agent|assistant|the ass
 const GENDER = /我是(?:个|一个)?(?:男|女)(?:的|生|性|孩)|作为一个?(?:男|女)(?:性|生|人|孩)/;
 const COUNT = /(?:\d+|[两三四五六七八九十几数多百千])\s*(?:次|回(?!事)|遍)|每次|每回|每当|经常|总是|老是|往往|通常|频繁|屡次|反复|向来|一向/g;
 // 后面紧跟「我」的（"所以我改了……"）是叙述动作，不算下结论
-const CONCLUDE = /(?:说明|意味着|所以|因此|可见|显然|证明了?|本质上|归根结底|看来|也就是说|这表明)(?![\s，,]*我)/;
-const ATTRIB = /我(?:当时)?(?:觉得|认为|想|以为|判断|猜|意识到|理解|得出|的(?:理解|判断|结论|感觉))|当时我|在我看来|对我来说|她(?:说|觉得|认为|的意思)|他(?:说|觉得|认为)|Joy\s*(?:说|觉得|认为)|按她的说法/;
+// 「我说明了」是动作不是下结论
+const CONCLUDE = /(?:(?<!我)说明|意味着|所以|因此|可见|显然|证明了?|本质上|归根结底|看来|也就是说|这表明)(?![\s，,]*我)/;
+const ATTRIB = /我(?:当时|由此)?(?:也)?(?:觉得|认为|想|以为|判断|猜|意识到|理解|得出|推断|答|回答|说|讲|解释|补了?一句|提出|的(?:理解|判断|结论|感觉))|当时我|在我看来|对我来说|她(?:说|觉得|认为|的意思)|他(?:说|觉得|认为)|Joy\s*(?:说|觉得|认为)|按她的说法/;
 const OTHER_TRAIT =
   /(?:她|他|Joy)\s*(?:很|有点|有些|非常|挺|显得|似乎|好像)?\s*(?:失落|开心|高兴|难过|生气|不耐烦|失望|担心|焦虑|困惑|满意|不满|沮丧|兴奋|委屈|累了|烦|着急|紧张|感动|惊讶)/;
 const HEDGE = /我觉得|我猜|我想|看起来|看上去|好像|似乎|大概|可能|她说|他说|她自己说|在我看来|我读出|我感觉/;
 const TRANSITIONS = /另外|此外|然后|接着|后来|之后|再后来|与此同时/g;
 const TEMPLATE = /我调用了 \S+（|\S+ (?:返回|出错)：|（感知 · /;
+
+/** 引号里的、「A / B / C」这样的选项列举，是原话或界面文字，不是它自己的判断与统计 */
+const unquote = (s: string) =>
+  s
+    .replace(/「[^「」]*」|『[^『』]*』|“[^“”]*”|"[^"\n]*"/g, "「…」")
+    .replace(/[^\s/（()）、，,：:]+(?:\s*\/\s*[^\s/（()）、，,：:]+)+/g, "…");
 
 const sentences = (s: string) =>
   s
@@ -166,12 +173,21 @@ export function check(segment: Segment, submission: unknown, opts: CheckOptions 
 
     // P5：次数、频率
     // 词表里没有「一」：「第一次」「这一次」是在说意外，不是统计
-    const counts = [...all.matchAll(COUNT)].map((m) => m[0]);
+    // 引号里的不算（界面上的「总是允许」、引她的原话）
+    const own = unquote(all);
+    const counts = [...own.matchAll(COUNT)].map((m) => m[0]);
     if (counts.length) flag("P5", "疑似写了次数 / 频率", [...new Set(counts)].join("、"));
 
     // P6 / P7：结论与定性的归属，按句看
+    // P6 的归属往后延续：「我答：……。……所以……」整段都是我答的，到换行为止
+    for (const para of own.split("\n")) {
+      let attributed = false;
+      for (const s of sentences(para)) {
+        if (ATTRIB.test(s)) attributed = true;
+        else if (CONCLUDE.test(s) && !attributed) flag("P6", "疑似结论没标归属", s.slice(0, 80));
+      }
+    }
     for (const s of sentences(all)) {
-      if (CONCLUDE.test(s) && !ATTRIB.test(s)) flag("P6", "疑似结论没标归属", s.slice(0, 80));
       if (OTHER_TRAIT.test(s) && !HEDGE.test(s)) flag("P7", "疑似对别人的定性没标是谁的解读", s.slice(0, 80));
     }
 

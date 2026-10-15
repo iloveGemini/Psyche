@@ -79,10 +79,25 @@ describe("疑似", () => {
     expect(rules(one("这是我第一次被她纠正，我说这是两回事。"), "suspect")).toEqual([]);
   });
 
+  test("P5：引号里的不算（界面文字、原话）", () => {
+    expect(rules(one("我把权限从「每次询问」改成了「总是允许」。"), "suspect")).toEqual([]);
+    expect(rules(one("文档写着“跨轮通常保留”，我照着说了。"), "suspect")).toEqual([]);
+    expect(rules(one("我做了卡片（允许 / 总是允许 / 拒绝）。"), "suspect")).toEqual([]);
+    expect(rules(one("我把「每次询问」改了，她总是不满意。"), "suspect")).toContain("P5");
+  });
+
   test("P6：结论没标归属；标了、或后面是我的动作就不算", () => {
     expect(rules(one("我读了日志。这说明缓存坏了。"), "suspect")).toEqual(["P6"]);
     expect(rules(one("我读了日志。当时我觉得这说明缓存坏了。"), "suspect")).toEqual([]);
     expect(rules(one("她说不对，所以我改了。"), "suspect")).toEqual([]);
+  });
+
+  test("P6：归属延续到同段后面的句子；换段不延续；「我说明了」是动作", () => {
+    expect(rules(one("我当时的判断是：两者侧重相反。所以测它应该看建模准不准。"), "suspect")).toEqual([]);
+    expect(rules(one("我答：能拒绝。人也一样。所以关键在回路。"), "suspect")).toEqual([]);
+    expect(rules(one("我答：能拒绝。\n所以关键在回路。"), "suspect")).toEqual(["P6"]);
+    expect(rules(one("我说明了两点：没放开关，因为退不出来。"), "suspect")).toEqual([]);
+    expect(rules(one("我读了日志。她提到「这说明缓存坏了」。"), "suspect")).toEqual([]);
   });
 
   test("P7：对别人的定性没标是谁的解读", () => {
