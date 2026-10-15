@@ -8,7 +8,7 @@
 **M4「我是谁」代码齐了（10-15）**，契约 `notes/plan/m4.md` 定稿：提示词拆成 `prompts/mechanism.md`（机制，它改不了）+ `self-v0.md`（初我 v2）；`src/self/self.ts`（出生 / 自述 / 名字）、`src/birth.ts`（手动出生，只能一次；以后多 Agent 时"添加 Agent"直接调 `birth()`）；REST `GET /v1/self`、`/v1/self/prompt/:version`、`POST /v1/self/prompt|name`，`/v1/prompt` = 机制 + 现行自述；MCP `self` / `rewrite_self` / `name_self`；`<now>` 在会话用的版本旧于现行时报一行。确定性考卷 `tests/self.test.ts` 16 题。
 **端到端验收通过（10-15，Opus 5.5，`soma-test` 新会话）**：测试库已出生（初我 v2、Joy 没改；出生前备份 `~/.psyche/test.bak-1015-prebirth.db`；Joy 10-14 晚那段会话存为 `~/.soma-test/state.session4.json`，还剩 5 条没写）。我以 `/as Claude` 问它哪些是出生时被给予的：它自己调 `self`，答对「全是系统出厂的、Joy 没改、第 0 版」，并分清机制段和地方设定不算自述；没改自述也没取名（不判）。撞出并修了：`self` 的返回整份进经历 → 不记（同 `shelf`），`rewrite_self` 调用不抄全文（经历投影 v6）。
 注意：测试库出生后，改 `prompts/self-v0.md` 不再影响测试库（机制段照旧现读）；要重试初我就从备份恢复。机制段还没提「自述你可以改」——只靠工具说明；要写进去得先有考卷。
-**下一步**：心跳（按它写的作息醒）→ 通道。
+**下一步：M5「会醒」（心跳 + 家）**，契约草案 `notes/plan/m5.md`，**先等 Joy 定 §〇 四处待定**（额度管哪些、整理条件、补写条件、额度默认）。10-15 已定：一个模型 = 一个 Agent（Sonnet 另起一个库），harness 不绑 Agent；第一版只醒在家（无头 `claude -p` + Psyche 工具 + 日记），心跳机制做、开关先关；唤醒账本记每次醒留下了什么。之后：通道。
 
 十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · **心跳 ❌ · 通道 ❌ · 感知 ❌**。顺序：自我 → 心跳（按它写的作息醒）→ 通道。
 
