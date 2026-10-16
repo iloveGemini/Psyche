@@ -48,10 +48,12 @@ export function openHouse(dataDir: string, residents: Viewer[], now: () => numbe
     }
     // 分一只耳机（m8.md §3.3）：Joy 在 Soma 页面上戴上 / 摘下某人的
     if (req.method === "POST" && path === "/v1/house/listen") {
-      const b = (await req.json().catch(() => null)) as { host?: unknown; on?: unknown } | null;
+      const b = (await req.json().catch(() => null)) as { host?: unknown; on?: unknown; who?: unknown } | null;
+      // 谁戴的由 Soma 页面说（?viewer=，缺省 Joy）；不替人认领（10-16 a1：测试时点的按钮被记成了 Joy）
+      const who = typeof b?.who === "string" && b.who.trim() ? b.who.trim().slice(0, 40) : JOY;
       const host = typeof b?.host === "string" ? storeOf(b.host) : undefined;
       if (!host) return Response.json({ error: "屋里没有这个人" }, { status: 404 });
-      host.append({ kind: b!.on === false ? "ear.left" : "ear.joined", class: "experience", source: "house", situation: null, payload: { who: JOY } });
+      host.append({ kind: b!.on === false ? "ear.left" : "ear.joined", class: "experience", source: "house", situation: null, payload: { who } });
       return Response.json({ ok: true });
     }
     // 某人此刻在放什么、放到哪、能放的地址（Soma 照这个真的出声）

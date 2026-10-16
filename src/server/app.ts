@@ -35,6 +35,7 @@ import { deliverPresence, lookPresence, MoodError, setMood } from "../house/pres
 import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, readPlaylists, SoundError, stop, type SoundDeps } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { analyzeTrack } from "../perception/features.ts";
+import { NoticeError, writeNotice } from "../perception/env.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 
 export interface AppDeps {
@@ -70,7 +71,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError || err instanceof SoundError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError || err instanceof SoundError || err instanceof NoticeError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -216,7 +217,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const mail = mailStateLines(store, here, facts, notices);
     const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store)].filter(Boolean).join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
-    const s = renderSurfaced(await surface(store, embedder, { session }));
+    const s = renderSurfaced(await surface(store, embedder, { session, storeOf }));
     // 屋里有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
     const house = deliverPresence(store, session);
     const heard = await deliverSound(store, sound, session).catch(() => null);
@@ -323,6 +324,10 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     if (r.left) storeOf?.(r.left)?.append({ kind: "ear.left", class: "experience", source: "house", situation: null, payload: { who: me } });
     if (r.joined) storeOf?.(r.joined)?.append({ kind: "ear.joined", class: "experience", source: "house", situation: null, payload: { who: me } });
     return c.json(r);
+  });
+  app.post("/v1/notice", async (c) => {
+    const r = writeNotice(store, await obj2(c), storeOf);
+    return c.json({ archiveNo: displayArchiveNo(r.archiveNo, Number(localDay(store.now(), store.timeZone).slice(0, 4))), env: r.env });
   });
   app.get("/v1/playing", (c) => {
     const p = nowPlaying(store);

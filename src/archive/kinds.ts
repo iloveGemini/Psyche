@@ -59,6 +59,8 @@ export const KINDS: Record<string, KindSpec> = {
   "listen.left": { class: "self", required: { host: "string" } },
   "ear.joined": { class: "experience", required: { who: "string" } },
   "ear.left": { class: "experience", required: { who: "string" } },
+  // 注意到（m8.md §4.2）：它当场写的一条观察；系统把此刻的环境记进 env、挂成证据
+  notice: { class: "self", required: { text: "string" }, rels: ["evidence"] }, // + about?, env
   "focus.changed": { class: "self", required: { items: "array" } },
   loaded: { class: "self", required: { refs: "array" } },
   evicted: { class: "self", required: { refs: "array" } },

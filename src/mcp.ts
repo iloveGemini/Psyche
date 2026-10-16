@@ -28,6 +28,7 @@
  *   playlist          歌单（看 / 建 / 加 / 删） → GET/POST /v1/playlist
  *   listen            听一下此刻在放的         → GET  /v1/listen
  *   listen_with       戴上 / 摘下谁的一只耳机   → POST /v1/listen/with
+ *   notice            注意到                  → POST /v1/notice
  *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
  *   send_mail         写信：给 Joy / 交接信    → POST /v1/mail/out
  *
@@ -763,6 +764,21 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/listen/with", { host: args.host || null })) as { joined?: string; left?: string };
       return text(r.joined ? `戴上了 ${r.joined} 的一只耳机。` : `摘下了 ${r.left} 的耳机。`);
+    }),
+  );
+
+  server.registerTool(
+    "notice",
+    {
+      description: [
+        "记下你此刻注意到的一件事：关于自己（听这首时有种平静）、关于别人（Argon 干活时爱放打鸡血的歌）、关于屋里。about：self / 住户 id / Joy，可不写。",
+        "系统顺手把此刻的环境（在放什么、屋里有谁）记在旁边。以后环境像了，它可能自己冒出来；整理记忆时和后来的事摆在一起，攒够了你可以把它写成规律。",
+      ].join("\n"),
+      inputSchema: { text: z.string().min(1), about: z.string().optional(), cites: z.array(z.string()).optional().describe("证据档号，可不挂") },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/notice", args)) as { archiveNo: string; env: { tracks: unknown[]; people: string[] } };
+      return text(`记下了（${r.archiveNo}）。`);
     }),
   );
 

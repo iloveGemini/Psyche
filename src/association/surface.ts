@@ -15,6 +15,7 @@ import { NOT_MEMORY_TOOL } from "../archive/recall.ts";
 import { sessionOf } from "../archive/experience.ts";
 import { harnessOf } from "../catalog/coldwrite.ts";
 import { keywords } from "../core/words.ts";
+import { envNow, envOf, envSimilarity, type Env } from "../perception/env.ts";
 export { keywords };
 
 /** 各项权重与阈值：都在这一处，用考卷调 */
@@ -181,7 +182,7 @@ function recallCandidates(c: Ctx, cue: string, qvec: Float32Array | null, model:
   const rows = c.db
     .query(
       `SELECT p.event_id, p.archive_no, p.at, p.kind, p.text, p.session FROM p_experience p
-       WHERE p.covered = 0 AND p.kind = 'episode' AND p.at <= ?`,
+       WHERE p.covered = 0 AND p.kind IN ('episode', 'notice') AND p.at <= ?`,
     )
     .all(c.now) as { event_id: string; archive_no: string; at: number; kind: string; text: string; session: string | null }[];
   const all = rows.filter((r) => !block.has(r.event_id));
@@ -263,7 +264,7 @@ function shelfScore(e: ShelfEntry, cue: string, qvec: Float32Array | null, v: Fl
 export async function surface(
   store: EventStore,
   embedder: Embedder | undefined,
-  opts: { session?: string; dry?: boolean; seed?: number } = {},
+  opts: { session?: string; dry?: boolean; seed?: number; storeOf?: (id: string) => EventStore | undefined } = {},
 ): Promise<SurfaceResult> {
   const c: Ctx = { db: store.db, store, now: store.now(), session: opts.session ?? ((store.situation?.payload as { session?: string } | undefined)?.session ?? null) };
   const { mode, turnStart, herNow } = modeOf(c);
@@ -302,13 +303,28 @@ export async function surface(
   const skip = new Set(tail.map((r) => r.event_id));
 
   const scored: Surfaced[] = [];
-  if (cue.trim()) {
-    for (const { row, lex, cos } of idle ? [] : recallCandidates(c, cueNow, qvec, model, block)) {
+  // 此刻的环境（m8.md §4.1）：放着什么、谁在。没在放歌就不比（屋里天天是那几个人，单靠人不浮现）
+  const envHere: Env = envNow(store, opts.storeOf);
+  const byEnv = envHere.tracks.length > 0;
+  if (cue.trim() || byEnv) {
+    for (const { row, lex, cos } of idle && !byEnv ? [] : recallCandidates(c, cueNow, qvec, model, block)) {
       if (skip.has(row.event_id)) continue;
-      const cueScore = lex * W.lexical + Math.max(0, Math.min(1, (cos - W.vecFloor) / W.vecSpan)) * W.vec;
-      if (cueScore <= 0) continue;
+      const cueScore = idle ? 0 : lex * W.lexical + Math.max(0, Math.min(1, (cos - W.vecFloor) / W.vecSpan)) * W.vec;
+      const ev = byEnv ? store.get(row.event_id) : null;
+      const env = ev ? envSimilarity(envHere, envOf(store, ev, opts.storeOf)) : { song: 0, artist: 0, people: 0 };
+      if (cueScore + env.song + env.artist <= 0) continue;
+      // 只靠环境撞上的，刚发生的不算"想起"（这首歌还在放，刚写的情节自然也带着它）
+      if (cueScore <= 0 && c.now - row.at < 30 * 60_000) continue;
       const b = baseOfEvent(c, row.event_id);
-      const parts = { lex: lex * W.lexical, vec: cueScore - lex * W.lexical, ...b, noise: noise() };
+      const parts = {
+        lex: idle ? 0 : lex * W.lexical,
+        vec: idle ? 0 : cueScore - lex * W.lexical,
+        ...(env.song ? { song: env.song } : {}),
+        ...(env.artist ? { artist: env.artist } : {}),
+        ...(env.people ? { people: env.people } : {}),
+        ...b,
+        noise: noise(),
+      };
       scored.push({
         source: "recall",
         ref: row.event_id,
@@ -317,7 +333,7 @@ export async function surface(
         parts,
       });
     }
-    for (const e of readShelf(store.db)) {
+    for (const e of cue.trim() ? readShelf(store.db) : []) {
       if (block.has(e.root)) continue;
       const p: Record<string, number> = shelfScore(e, cueNow, qvec, model ? vectorOf(store.db, e.current, model) : null, c.now);
       if (here && evidencePlaces(c, e.root).has(here)) p.place = W.place;

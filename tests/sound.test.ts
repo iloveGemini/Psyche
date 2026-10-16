@@ -182,3 +182,11 @@ test("搜歌：歌名对得上的优先；对不上要说", async () => {
   expect(matches("Halcyon Days", hits[0])).toBe(false);
   expect(matches("Halcyon Days", hits[1])).toBe(true);
 });
+
+test("分耳机记的是页面说的那个人，不替人认领", async () => {
+  const h = setup();
+  const house = openHouse(mkdtempSync(join(tmpdir(), "house-")), [{ id: "a1", store: h.a1 }], () => h.clock.t, fake);
+  await h.ok("a1", "/v1/play", { query: "夜曲" });
+  await house.handle(new Request("http://x/v1/house/listen", { method: "POST", body: JSON.stringify({ host: "a1", who: "Claude" }) }));
+  expect(await deliverSound(h.a1, h.deps, "s1")).toContain("Claude 戴上了你的一只耳机");
+});
