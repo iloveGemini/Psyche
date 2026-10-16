@@ -40,13 +40,11 @@ export interface AppDeps {
   embedder?: Embedder;
   /** 写给人的信交出站（main.ts 按通道设置投递、记 mail.sent）；测试换成收集器 */
   outbox?: (ev: PsycheEvent) => void;
-  /** 家里正在跑吗（调度器知道） */
-  homeRunning?: () => boolean;
 }
 
 const num = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
 
-export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox, homeRunning }: AppDeps) {
+export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox }: AppDeps) {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -254,7 +252,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   });
   app.get("/v1/mail", (c) => c.json(listMail(store, num(c.req.query("days")) ?? 7, c.req.query("full") === "1")));
   app.post("/v1/mail/open", async (c) => c.json(openMail(store, (await body(c)).refs)));
-  app.get("/v1/where", (c) => c.json(where(store, homeRunning?.() ?? false)));
+  app.get("/v1/where", (c) => c.json(where(store)));
   app.get("/v1/channels", (c) => c.json(getChannels(store)));
   app.post("/v1/channels", async (c) => c.json(setChannels(store, await body(c))));
 

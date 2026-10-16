@@ -497,8 +497,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         if (s.why) out.push(`上次这么排的理由：${s.why}`);
       }
       out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
-      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在家叫醒时各花一次，主动写给 Joy 的信每封花一次；整理、补写、来信叫醒、回她的信不花；你醒着时到点的事在下一轮开始时放进 <now>，没等到下一轮改在家叫醒，也不花）`);
-      if (s.settings.paused) out.push("Joy 暂停了你在家被叫醒（整理、补写也不叫）；醒着时到点的事照样递给你。");
+      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在你没醒着时叫醒各花一次，主动写给 Joy 的信每封花一次；整理、补写、来信叫醒、回她的信不花；到点时你醒着（30 分钟内有动静）也不花）`);
+      if (s.settings.paused) out.push("Joy 暂停了叫醒（整理、补写也不叫）；你自己的哪一轮里到点的事照样递给你。");
       return text(out.join("\n"));
     }),
   );
@@ -510,8 +510,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "排你的作息：交一整份（全量替换，没写的就没了），写为什么这么排。",
         "alarms：一次性闹钟，at 用本地时间（如 2026-10-15T15:00），note 是到时告诉你的话；要保留已有的闹钟，带上它的 id 原样交回。",
         "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15）。",
-        "到点时你正醒着（30 分钟内有对话或工具调用）：不另叫醒，下一轮开始时放进 <now> 的「刚发生」，不花额度；之后 30 分钟都没有下一轮，就在家里叫醒你，也不花额度。",
-        "到点时你没醒着：在家里叫醒你，闹钟、定点、心跳各花一次唤醒额度。",
+        "到点就在你这条会话里叫醒你（推一轮进来，<now> 的「刚发生」里写着是什么）；你正忙着就排在这一轮后面。你自己的哪一轮先赶上了，就在那一轮的 <now> 里报，不另叫。",
+        "到点时你醒着（30 分钟内有对话或工具调用）不花额度；没醒着的，闹钟、定点、心跳各花一次唤醒额度。",
         "wakeOn.mail：来信能不能在你没醒着时叫醒你（缺省能，不花额度）。",
         "dnd：勿扰，一条条规则；一条里的条件都满足才算。条件：time { from, to }（HH:MM，可跨零点）、awake（醒着）、in（在哪个地方，如 soma）、busy（最近 15 分钟用过记忆以外的工具，在做事）。",
         "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的。闹钟、定点不受勿扰影响。Joy 的暂停盖过例外。",
@@ -607,9 +607,9 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "send_mail",
     {
       description: [
-        "写信。在哪都能写（在家也能）。",
+        "写信。在哪都能写。",
         "to: \"Joy\"：经她设的通道送到她那里（邮件 / Soma 留言）。回她的某封信挂 replyTo（那封的档号），不算额度；没挂 replyTo 就是你主动找她，每封花一次唤醒额度，额度用完会被拒。subject 可选（邮件主题，不写就用正文第一行）。",
-        "to: \"self\"：交接信，写给之后去了别处的自己——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 home、soma）就只送那里。不过期，不叫醒你。",
+        "to: \"self\"：交接信，写给之后去了别处的自己（离开家：Soma 是家，别的 harness 才算别处）——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 soma、roxy）就只送那里。不过期，不叫醒你。",
       ].join("\n"),
       inputSchema: {
         to: z.string().min(1).describe("Joy，或 self（交接信）"),

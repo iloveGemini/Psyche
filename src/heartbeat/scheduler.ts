@@ -1,12 +1,14 @@
 /**
- * 调度（notes/plan/m5.md §二 §五 §六）：每分钟判一次醒不醒、为什么。
+ * 调度（notes/plan/m5.md §二 §五 §六；10-16 收束见 notes/design/lib-vs-harness.md「家 = Soma」）：每分钟判一次。
  *
- * gather（读库）→ decide（纯函数）→ 记唤醒账本（系统日志 `wake`）。
- * - 它醒着（最近 30 分钟有对话 / 工具事件）就不叫：到点的闹钟 / 定点等它下次取 `<now>` 时写成 `due`、带一次（deliverDue）。
- * - 有活（补写 > 整理）不花额度；它约的（闹钟、定点、心跳）走额度。暂停 = 家里一律不叫。
- *   到点时它醒着、没等到下一轮才改在家叫醒的闹钟 / 定点，不花额度（10-15 Joy 定）。
+ * gather（读库）→ decide（纯函数）→ 记唤醒账本（系统日志 `wake`）。两种叫法：
+ * - **醒来**（来信、闹钟、定点、心跳）：往它那条连续的会话（Soma）推一轮。Soma 不在 = 当它睡着，不叫、不记账，等它在了再叫。
+ *   它正忙着（一轮没完）也照推：Soma 排在后面。那一轮取 `<now>` 时把到点的事写成 `due`、带一次（deliverDue）；
+ *   在那之前它自己的哪一轮先取了 `<now>`，就算递过了（`delivered`），不再推。
+ * - **睡着时整理**（补写 > 整理）：Psyche 另起一个无头的它（asleep.ts），不进连续会话，同一时间只一个。
+ * - 补写、整理、来信不花额度；它约的（闹钟、定点、心跳）走额度，到点时它醒着（30 分钟内有动静）的不花（10-15 Joy 定）。暂停 = 一律不叫。
  * - 每个候选有 key：叫过、跳过、递过的 key 不再叫（整理 / 补写不会因为没交就每分钟再醒）。
- * - 来信（m6.md §二.3）：她的信没报过就叫醒在家，不花额度；勿扰挡住 / 它关了来信叫醒，记一次账（换 key），出了勿扰再叫。
+ * - 来信（m6.md §二.3）：她的信没报过就叫醒；勿扰挡住 / 它关了来信叫醒，记一次账（换 key），出了勿扰再叫。
  * - 额度 = 它约的醒（闹钟、定点、心跳）+ 主动写给人的信（没挂 replyTo 的 mail.out，m6.md §〇.3）。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
@@ -14,7 +16,7 @@ import { fromWallClock, localDay, wallClock } from "../core/time.ts";
 import { readSegment, segmentEvents } from "../catalog/hotwrite.ts";
 import { ownSince } from "../self/self.ts";
 import { alarmKey, dailyKey, firedKeys, getSettings, readSchedule, type Settings } from "./schedule.ts";
-import { factsNow, mailCandidates } from "../channel/inbox.ts";
+import { factsNow, lastActive, mailCandidates, NOT_PLACE_SQL } from "../channel/inbox.ts";
 
 export const AWAKE_MS = 30 * 60_000;
 export const IDLE_MS = 3 * 3600_000;
@@ -23,6 +25,9 @@ export const TIDY_GAP_MS = 3 * 86_400_000;
 
 export type By = "catchup" | "tidy" | "mail" | "alarm" | "daily" | "heartbeat";
 export const BUDGETED: ReadonlySet<By> = new Set(["alarm", "daily", "heartbeat"]);
+/** 睡着时做的：另起无头会话（asleep.ts），不进连续会话 */
+export const ASLEEP: ReadonlySet<By> = new Set(["catchup", "tidy"]);
+export const asleepWork = (c: Candidate) => ASLEEP.has(c.by);
 export const BY_NAME: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
 
 export interface Candidate {
@@ -36,7 +41,7 @@ export interface Candidate {
   lines?: number;
   /** 到点时刻 */
   due?: number;
-  /** 到点时它醒着（没递出去才改在家叫醒）：不花额度 */
+  /** 到点时它醒着（30 分钟内有动静）：不花额度 */
   awakeAtDue?: boolean;
   /** 来信：哪封 */
   mail?: string;
@@ -45,8 +50,10 @@ export interface Candidate {
 }
 
 export interface State {
-  awake: boolean;
-  homeRunning: boolean;
+  /** 睡着时的整理正在跑：不再起第二个 */
+  asleep: boolean;
+  /** 它那条会话（Soma）在：不在就不推醒来 */
+  bodyUp: boolean;
   paused: boolean;
   budgetLeft: number;
   /** 已排除叫过 / 跳过 / 递过的；按优先级排好 */
@@ -58,10 +65,9 @@ export type Decision = { wake: Candidate } | { skip: Candidate; reason: "paused"
 /** 这次叫醒花不花额度 */
 export const costs = (c: Candidate) => BUDGETED.has(c.by) && !c.awakeAtDue;
 
-/** 纯函数：此刻叫不叫、叫哪个 */
+/** 纯函数：此刻叫不叫、叫哪个。叫不了的（整理正在跑 / Soma 不在）先让给后面的 */
 export function decide(s: State): Decision | null {
-  if (s.awake || s.homeRunning) return null;
-  const c = s.candidates[0];
+  const c = s.candidates.find((c) => (asleepWork(c) ? !s.asleep : s.bodyUp));
   if (!c) return null;
   if (c.hold) return { skip: c, reason: c.hold };
   if (s.paused) return { skip: c, reason: "paused" };
@@ -71,17 +77,9 @@ export function decide(s: State): Decision | null {
 
 // ── 读库 ──
 
-/** 最近一次和人 / 在别处的动静：家里的不算（家跑完就睡了，正在跑由 homeRunning 管） */
+/** 最近一次醒着的动静（口径在 inbox.ts lastActive） */
 export function lastActivity(store: EventStore): number | null {
-  return (
-    store.db
-      .query(
-        `SELECT MAX(e.at) AS at FROM events e LEFT JOIN events s ON s.id = e.situation
-         WHERE e.kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND e.fonds = ''
-           AND COALESCE(json_extract(s.payload, '$.harness'), '') <> 'home'`,
-      )
-      .get() as { at: number | null }
-  ).at;
+  return lastActive(store)?.at ?? null;
 }
 
 interface WakeLog {
@@ -128,16 +126,10 @@ const slotAt = (store: EventStore, at: number, hhmm: string) => {
   return fromWallClock(store.timeZone, w.year, w.month, w.day, h, m);
 };
 
-/** 某时刻它醒不醒着：之前 30 分钟内有和人 / 在别处的动静（家里的不算） */
+/** 某时刻它醒不醒着：之前 30 分钟内有醒着的动静 */
 function awakeAt(store: EventStore, at: number): boolean {
-  const r = store.db
-    .query(
-      `SELECT 1 FROM events e LEFT JOIN events s ON s.id = e.situation
-       WHERE e.kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND e.fonds = ''
-         AND COALESCE(json_extract(s.payload, '$.harness'), '') <> 'home' AND e.at <= ? AND e.at > ? LIMIT 1`,
-    )
-    .get(at, at - AWAKE_MS);
-  return !!r;
+  const last = lastActive(store, at);
+  return !!last && last.at > at - AWAKE_MS;
 }
 
 /** 到点了、还没响（没有 due）的闹钟和定点 */
@@ -158,13 +150,22 @@ export function pendingDue(store: EventStore): Candidate[] {
   return out.sort((a, b) => a.due! - b.due!);
 }
 
+/** 上次醒来（睡着时的整理不算）和有人上次找它，较晚的那个 */
+function lastWokeOrSpoken(store: EventStore): number {
+  const r = store.db
+    .query(
+      `SELECT MAX(at) AS at FROM events WHERE fonds = '' AND (kind = 'message.in' OR (kind = 'woke' AND json_extract(payload, '$.by') NOT IN (${[...ASLEEP].map((b) => `'${b}'`).join(", ")})))`,
+    )
+    .get() as { at: number | null };
+  return r.at ?? 0;
+}
+
 /** 心跳从"上次醒"和"有人上次找它"较晚者算起（Roxy 教训） */
 function heartbeatDue(store: EventStore, settings: Settings): Candidate | null {
   const every = readSchedule(store)?.schedule.heartbeat?.everyMin;
   if (!settings.heartbeat || !every) return null;
-  const q = (kind: string) => (store.db.query(`SELECT MAX(at) AS at FROM events WHERE kind = ? AND fonds = ''`).get(kind) as { at: number | null }).at ?? 0;
   const born = ownSince(store, "schedule.changed")[0]?.at ?? 0;
-  const anchor = Math.max(q("woke"), q("message.in"), born);
+  const anchor = Math.max(lastWokeOrSpoken(store), born);
   const due = anchor + every * 60_000;
   return due <= store.now() ? { by: "heartbeat", key: `heartbeat:${anchor}`, due } : null;
 }
@@ -181,10 +182,10 @@ function tidyDue(store: EventStore): Candidate | null {
   return { by: "tidy", key: `tidy:${eps.newest}` };
 }
 
-/** 有段没写进记忆：会话 ≥ 3h 没动静、还剩 ≥ 1 条；家里的会话不算 */
+/** 有段没写进记忆：会话 ≥ 3h 没动静、还剩 ≥ 1 条；睡着时整理的会话（和以前的家）不算 */
 function catchupDue(store: EventStore): Candidate[] {
   const rows = store.db
-    .query(`SELECT DISTINCT json_extract(payload, '$.session') AS s FROM events WHERE class = 'situation' AND fonds = '' AND json_extract(payload, '$.harness') <> 'home' AND json_extract(payload, '$.session') IS NOT NULL`)
+    .query(`SELECT DISTINCT json_extract(s.payload, '$.session') AS s FROM events s WHERE s.class = 'situation' AND s.fonds = '' AND ${NOT_PLACE_SQL} AND json_extract(s.payload, '$.session') IS NOT NULL`)
     .all() as { s: string }[];
   const out: (Candidate & { last: number })[] = [];
   for (const { s } of rows) {
@@ -199,15 +200,21 @@ function catchupDue(store: EventStore): Candidate[] {
   return out.sort((a, b) => a.last - b.last).map(({ last, ...c }) => c);
 }
 
-export function gather(store: EventStore, opts: { homeRunning?: boolean } = {}): State {
+export interface GatherOpts {
+  /** 睡着时的整理正在跑（缺省没有） */
+  asleep?: boolean;
+  /** Soma 在不在（缺省在） */
+  bodyUp?: boolean;
+}
+
+export function gather(store: EventStore, opts: GatherOpts = {}): State {
   const settings = getSettings(store);
-  const last = lastActivity(store);
   const logged = new Set(wakeLogs(store).map((l) => l.key));
   const hb = heartbeatDue(store, settings);
   const candidates = [...catchupDue(store), tidyDue(store), ...mailCandidates(store, factsNow(store)), ...pendingDue(store), hb].filter((c): c is Candidate => !!c && !logged.has(c.key));
   return {
-    awake: last !== null && store.now() - last < AWAKE_MS,
-    homeRunning: !!opts.homeRunning,
+    asleep: !!opts.asleep,
+    bodyUp: opts.bodyUp ?? true,
     paused: settings.paused,
     budgetLeft: settings.wakeBudget - budgetUsedToday(store),
     candidates,
@@ -227,17 +234,17 @@ function log(store: EventStore, decided: WakeLog["decided"], c: Candidate, reaso
   });
 }
 
-/** 判一次并记账；叫醒由调用方去跑家（home.ts） */
-export function tick(store: EventStore, opts: { homeRunning?: boolean } = {}): Decision | null {
+/** 判一次并记账；叫醒由调用方去做（main.ts：醒来推给 Soma，整理起 asleep.ts） */
+export function tick(store: EventStore, opts: GatherOpts = {}): Decision | null {
   const d = decide(gather(store, opts));
   if (d && "wake" in d) log(store, "woke", d.wake);
   else if (d) log(store, "skipped", d.skip, d.reason);
   return d;
 }
 
-/** 家跑完（此刻）：记这次留下了什么（统计，不是评价） */
+/** 一次叫醒跑完（此刻）：记这次留下了什么（统计，不是评价）。睡着时整理的跑完记；推给 Soma 的醒来不在这里记 */
 export function logRun(store: EventStore, key: string, run: { session: string; costUsd?: number; ms: number; error?: string }) {
-  // 按这次跑的时间窗数它写下的自我事件：补写的情节挂在原会话的处境上，不在家的会话里
+  // 按这次跑的时间窗数它写下的自我事件：补写的情节挂在原会话的处境上，不在这次的会话里
   const evs = store.db
     .query(`SELECT kind FROM events WHERE class = 'self' AND fonds = '' AND source = 'agent' AND recorded >= ? AND recorded <= ?`)
     .all(store.now() - run.ms, store.now()) as { kind: string }[];
@@ -255,7 +262,7 @@ export function logRun(store: EventStore, key: string, run: { session: string; c
 
 // ── 递进去：<now> 取的时候 ──
 
-/** 到点的闹钟 / 定点写成 due（经历），返回这次递的；叫醒在家时也走这里 */
+/** 到点的闹钟 / 定点写成 due（经历），返回这次递的；推给 Soma 的那一轮取 <now> 时也走这里 */
 export function deliverDue(store: EventStore): PsycheEvent[] {
   const pending = pendingDue(store);
   if (!pending.length) return [];
@@ -306,8 +313,7 @@ export function nextWake(store: EventStore): Candidate | null {
   const settings = getSettings(store);
   const every = cur.schedule.heartbeat?.everyMin;
   if (settings.heartbeat && every) {
-    const q = (kind: string) => (store.db.query(`SELECT MAX(at) AS at FROM events WHERE kind = ? AND fonds = ''`).get(kind) as { at: number | null }).at ?? 0;
-    c.push({ by: "heartbeat", key: "heartbeat", due: Math.max(q("woke"), q("message.in"), cur.at) + every * 60_000 });
+    c.push({ by: "heartbeat", key: "heartbeat", due: Math.max(lastWokeOrSpoken(store), cur.at) + every * 60_000 });
   }
   return c.sort((a, b) => a.due! - b.due!)[0] ?? null;
 }
@@ -326,7 +332,7 @@ export function scheduleLine(store: EventStore, opts: { held?: number } = {}): s
   if (cur && !cur.schedule.wakeOn.mail) parts.push("来信不叫醒我");
   if (held) parts.push(`勿扰中，攒了 ${held} 封`);
   if (cur?.schedule.heartbeat && !settings.heartbeat) parts.push("心跳暂未开放，写了不生效");
-  if (settings.paused) parts.push("暂停中：家里不叫醒");
+  if (settings.paused) parts.push("暂停中：不叫醒");
   return `作息：${parts.join(" · ")}`;
 }
 

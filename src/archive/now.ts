@@ -31,13 +31,15 @@ export function renderNow(store: EventStore, session?: string): string {
   const w = wallClock(now, tz);
   const lines = [`现在：${w.year}-${pad(w.month)}-${pad(w.day)} ${w.weekday} ${pad(w.hour)}:${pad(w.minute)}`];
 
-  const sit = store.situation?.payload as { harness?: string; session?: string } | undefined;
   let s: string | null = null;
   try {
     s = resolveSession(store, session);
   } catch {
     // 没有会话：不报会话起点和未写条数
   }
+  // 取 <now> 的那个会话在哪；没给会话才用全局当前处境（几个地方同时跑时全局的会被顶掉）
+  const own = s ? store.situationOfSession(s, now) : null;
+  const sit = ((own ? store.get(own) : store.situation)?.payload) as { harness?: string; session?: string } | undefined;
   if (sit?.harness) {
     const start = s
       ? (store.db

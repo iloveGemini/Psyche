@@ -132,8 +132,8 @@ describe("来信与翻开", () => {
   });
 });
 
-describe("醒着：递消息，不递信", () => {
-  test("下一轮「刚发生」报一次、不带正文；之后状态行现算到翻开为止；不花额度", async () => {
+describe("递消息，不递信", () => {
+  test("醒着也推一轮；那一轮「刚发生」报一次、不带正文；之后状态行现算到翻开为止；不花额度", async () => {
     const h = setup();
     quiet(h, "2026-10-15T08:00:00");
     h.set("2026-10-15T14:00:00");
@@ -141,7 +141,7 @@ describe("醒着：递消息，不递信", () => {
     h.her("在忙吗");
     h.set("2026-10-15T14:02:00");
     const m = await h.mail("晚上吃什么");
-    expect(tick(h.store)).toBeNull(); // 醒着不叫
+    expect(tick(h.store)).toMatchObject({ wake: { by: "mail" } }); // 醒着也推（10-16 家 = Soma）
     const n1 = await h.now("S2");
     expect(n1).toContain("刚发生：\n- 来信（Joy · 邮件 · 14:02）");
     expect(n1).not.toContain("晚上吃什么");
@@ -156,21 +156,20 @@ describe("醒着：递消息，不递信", () => {
     expect((await h.get("/v1/schedule")).budget.used).toBe(0);
   });
 
-  test("醒着但 30 分钟没等到下一轮：回到叫醒判定", async () => {
+  test("它自己那一轮先取了 <now>：报过了，不再推", async () => {
     const h = setup();
     quiet(h, "2026-10-15T08:00:00");
     h.set("2026-10-15T14:00:00");
+    h.sit("S2");
     h.her("在吗");
-    h.set("2026-10-15T14:05:00");
     await h.mail("x");
+    expect(await h.now("S2")).toContain("- 来信（Joy · 邮件 · 14:00）");
     expect(tick(h.store)).toBeNull();
-    h.set("2026-10-15T14:31:00");
-    expect(tick(h.store)).toMatchObject({ wake: { by: "mail" } });
   });
 });
 
-describe("不醒着：叫醒在家", () => {
-  test("她的信叫醒在家，不花额度；家里取 <now> 报一次、提示用哪个工具；叫过不再叫", async () => {
+describe("不醒着：叫醒", () => {
+  test("她的信推一轮叫醒，不花额度；那一轮取 <now> 报一次；叫过不再叫", async () => {
     const h = setup();
     quiet(h, "2026-10-15T08:00:00");
     await h.ok("/v1/settings", { wakeBudget: 0 });
@@ -178,9 +177,8 @@ describe("不醒着：叫醒在家", () => {
     await h.mail("在家吗");
     expect(tick(h.store)).toMatchObject({ wake: { by: "mail", key: expect.stringMatching(/^mail:/) } });
     expect(h.ledger().at(-1)).toMatchObject({ by: "mail", decided: "woke", budgeted: false });
-    h.sit("H1", "home");
-    intake(h.store, { kind: "woke", source: "home", payload: { by: "mail" } });
-    expect(await h.now("H1")).toContain("- 来信（Joy · 邮件 · 14:02）");
+    intake(h.store, { kind: "woke", source: "soma", payload: { by: "mail" } });
+    expect(await h.now("S1")).toContain("- 来信（Joy · 邮件 · 14:02）");
     h.pass(MIN);
     expect(tick(h.store)).toBeNull();
   });
@@ -290,13 +288,12 @@ describe("发信", () => {
     cover(h);
     h.set("2026-10-15T15:00:00");
     expect(tick(h.store)).toMatchObject({ wake: { by: "alarm" } }); // 醒 1
-    h.sit("H1", "home");
     const m = await h.mail("在吗");
     await h.ok("/v1/mail/out", { to: "Joy", text: "在的", replyTo: m.archiveNo });
     expect((await h.get("/v1/schedule")).budget.used).toBe(1);
     await h.ok("/v1/mail/out", { to: "Joy", text: "想起一件事" }); // 写信 1
     expect((await h.get("/v1/schedule")).budget).toEqual({ used: 2, of: 3 });
-    expect(await h.now("H1")).toContain("今天额度 2/3（醒 1 · 写信 1）");
+    expect(await h.now("S1")).toContain("今天额度 2/3（醒 1 · 写信 1）");
     await h.ok("/v1/mail/out", { to: "Joy", text: "还有一件" });
     const r = await h.post("/v1/mail/out", { to: "Joy", text: "第四封" });
     expect(r.status).toBe(400);
@@ -328,9 +325,9 @@ describe("发信", () => {
     h.her("在吗");
     const m = await h.mail("周末呢", { subject: "周末" });
     const r = await h.ok("/v1/mail/out", { to: "Joy", text: "好呀", replyTo: m.id });
-    await h.ok("/v1/mail/out", { to: "self", text: "记得问她周末", for: "home" });
+    await h.ok("/v1/mail/out", { to: "self", text: "记得问她周末", for: "soma" });
     expect(h.sent.map((e) => e.payload)).toEqual([expect.objectContaining({ to: "Joy", text: "好呀" })]);
-    expect(h.exp()).toEqual(expect.arrayContaining(["我回了 Joy 的信：好呀", "我给之后在别处的自己留了封信（给 home）：记得问她周末"]));
+    expect(h.exp()).toEqual(expect.arrayContaining(["我回了 Joy 的信：好呀", "我给之后在别处的自己留了封信（给 soma）：记得问她周末"]));
     h.store.syslog("mail.sent", { ref: r.id, via: "email", ok: false, error: "网络断了" });
     expect(await h.now("S1")).toContain("没送出去的信：1 封（邮件：网络断了）");
     h.store.syslog("mail.sent", { ref: r.id, via: "email", ok: true });
@@ -352,15 +349,15 @@ describe("交接信", () => {
     h.set("2026-10-20T09:00:00"); // 隔了几天：不过期
     const d = tick(h.store);
     expect(d && "wake" in d ? d.wake.by : null).not.toBe("mail"); // 写给自己的，不叫醒
-    h.sit("H1", "home");
-    const n = await h.now("H1");
+    h.sit("R1", "roxy"); // 离开家，去了别处
+    const n = await h.now("R1");
     expect(n).toContain("- 交接信（10-15 09:00 在 soma 写的）");
     expect(n).not.toContain("做到一半");
-    expect(await h.now("H1")).toContain("交接信 1 封没看");
+    expect(await h.now("R1")).toContain("交接信 1 封没看");
     const list = await h.get("/v1/mail?days=30");
     const letter = list.mails.find((x: { dir: string }) => x.dir === "handoff");
     await h.ok("/v1/mail/open", { refs: [letter.id] });
-    expect(await h.now("H1")).not.toContain("交接信");
+    expect(await h.now("R1")).not.toContain("交接信");
     h.sit("S3");
     h.her("回来了");
     expect(await h.now("S3")).not.toContain("交接信");
@@ -371,8 +368,8 @@ describe("交接信", () => {
     h.sit("S1");
     await h.ok("/v1/mail/out", { to: "self", text: "给 Soma 下一段的我", for: "soma" });
     expect(await h.now("S1")).not.toContain("交接信");
-    h.sit("H1", "home");
-    expect(await h.now("H1")).not.toContain("交接信");
+    h.sit("R1", "roxy");
+    expect(await h.now("R1")).not.toContain("交接信");
     h.sit("S2");
     expect(await h.now("S2")).toContain("- 交接信");
   });
@@ -384,7 +381,7 @@ describe("在哪", () => {
     h.set("2026-10-15T09:00:00");
     h.sit("S1");
     h.her("在吗");
-    expect(await h.get("/v1/where")).toMatchObject({ harness: "soma", session: "S1", awake: true, homeRunning: false });
+    expect(await h.get("/v1/where")).toMatchObject({ harness: "soma", session: "S1", awake: true });
     h.set("2026-10-15T10:00:00");
     expect((await h.get("/v1/where")).awake).toBe(false);
   });

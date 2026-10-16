@@ -1,12 +1,15 @@
 /**
- * 家（notes/plan/m5.md §三）：Psyche 自带的地方。调度器叫醒它时，在这里起一个无头会话。
+ * 睡着时的整理（10-16 收束，notes/design/lib-vs-harness.md「家 = Soma」）：补写、整理（以后还有 gist）。
+ * 不进它那条连续的会话——材料大，也不是它醒着经历的事；调度器在这里另起一个无头的它。
+ * 10-15 这里是"家"（home.ts，心跳 / 来信 / 闹钟也在这里醒）；家挪到 Soma 后只剩睡着时的活。
  *
  * 和 sleep.ts 同样隔离：空目录里跑（不读项目 CLAUDE.md、git 信息），不读用户设置，只挂 Psyche 的 MCP，内置工具全关。
- * 家本身是一个 harness（situation.harness = "home"）：边跑边把对话、工具调用按 Soma 的格式报成事件。
- * 第一条消息只放事实（<now>，醒来原因已在里面），不用它的口吻；整理 / 补写附上该用的工具名。
+ * situation.harness = "sleep"：不算地方、不算醒着、不补写（inbox.ts NOT_PLACES）。对话、工具调用照样报成事件。
+ * 第一条消息只放事实（<now>）和该用的工具名，不用它的口吻。
  *
  * 只经 REST 和 Psyche 说话（PSYCHE_URL / PSYCHE_TOKEN），手动也能跑：
- *   bun run src/home.ts --by manual [--model claude-opus-5-5]
+ *   bun run src/asleep.ts --by tidy [--model claude-opus-5-5]
+ *   bun run src/asleep.ts --by catchup --session <会话>
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +22,7 @@ export interface WakeReason {
   session?: string;
 }
 
-export interface HomeOptions {
+export interface AsleepOptions {
   base: string;
   token?: string;
   model: string;
@@ -28,16 +31,16 @@ export interface HomeOptions {
   timeoutMs?: number;
 }
 
-export interface HomeRun {
+export interface AsleepRun {
   session: string;
   costUsd?: number;
   ms: number;
   error?: string;
 }
 
-const PLACE = "这是家：Psyche 自带的地方，只有记忆相关的工具（看记忆、整理、写日记、看自己、排作息、收发信），没有别的。";
+const PLACE = "这是睡着的时候：Psyche 起的一段整理，不在你平时那条会话里，只有记忆相关的工具。整理完就接着睡。";
 
-export async function runHome(opts: HomeOptions): Promise<HomeRun> {
+export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
   const t0 = Date.now();
   const base = opts.base.replace(/\/+$/, "");
   const rest = async (method: "GET" | "POST", path: string, body?: unknown): Promise<any> => {
@@ -50,11 +53,11 @@ export async function runHome(opts: HomeOptions): Promise<HomeRun> {
     if (!res.ok) throw new Error(`${method} ${path} → ${res.status}：${json?.error ?? ""}`);
     return json;
   };
-  const report = (kind: string, payload: Record<string, unknown>, idem: string) => rest("POST", "/v1/events", { kind, source: "home", payload: { ...payload, session }, idem });
+  const report = (kind: string, payload: Record<string, unknown>, idem: string) => rest("POST", "/v1/events", { kind, source: "sleep", payload: { ...payload, session }, idem });
 
   const session = crypto.randomUUID();
   const prompt = await rest("GET", "/v1/prompt");
-  await rest("POST", "/v1/situation", { harness: "home", session, model: opts.model, selfPromptVersion: prompt.version, source: "home" });
+  await rest("POST", "/v1/situation", { harness: "sleep", session, model: opts.model, selfPromptVersion: prompt.version, source: "sleep" });
   await report("woke", { by: opts.wake.by, ...(opts.wake.note ? { note: opts.wake.note } : {}), ...(opts.wake.session ? { for: opts.wake.session } : {}) }, `${session}:woke`);
   // 取 <now> = 把到点的闹钟递进来（写 due）
   const now = (await rest("GET", `/v1/now?session=${encodeURIComponent(session)}`)).text as string;
@@ -65,7 +68,6 @@ export async function runHome(opts: HomeOptions): Promise<HomeRun> {
     const seg = await rest("GET", `/v1/hotwrite?session=${encodeURIComponent(opts.wake.session)}`);
     task = `会话 ${opts.wake.session} 还有 ${seg.lines.length} 条没写进记忆（那段已经散了）：用 hotwrite_segment（session: ${opts.wake.session}）取这一段，写完用 hotwrite 交（带上同一个 session）。`;
   }
-  if (opts.wake.by === "mail") task = "看信用 mail，回信用 send_mail。";
   const first = [now, task].filter(Boolean).join("\n\n");
 
   const mcp = {
@@ -78,7 +80,7 @@ export async function runHome(opts: HomeOptions): Promise<HomeRun> {
       },
     },
   };
-  const cwd = mkdtempSync(join(tmpdir(), "psyche-home-"));
+  const cwd = mkdtempSync(join(tmpdir(), "psyche-asleep-"));
   const proc = Bun.spawn(
     [
       "claude", "-p",
@@ -151,11 +153,11 @@ if (import.meta.main) {
   };
   const model = opt("--model") ?? process.env.PSYCHE_MODEL;
   if (!model) throw new Error("要 --model 或 PSYCHE_MODEL：这个 Agent 的模型");
-  const run = await runHome({
+  const run = await runAsleep({
     base: process.env.PSYCHE_URL ?? "http://127.0.0.1:7450",
     token: process.env.PSYCHE_TOKEN,
     model,
-    wake: { by: opt("--by") ?? "manual", note: opt("--note"), session: opt("--session") },
+    wake: { by: opt("--by") ?? "tidy", note: opt("--note"), session: opt("--session") },
   });
   console.log(JSON.stringify(run, null, 2));
 }

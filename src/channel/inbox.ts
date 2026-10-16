@@ -2,8 +2,8 @@
  * 收件箱（notes/plan/m6.md §二–§四）：未读、交接信去哪、勿扰、递消息——都按事件现算，不另存状态。
  *
  * - 未读 = `mail.in` 和"该送到这里的交接信"里，没有 `mail.read` 指向的。翻开（mail.read）是它的动作。
- * - 递的是**消息**不是信：醒着时下一次取 `<now>` 在「刚发生」报一次（谁、几时），记系统日志 `mail.noticed`；
- *   之后每轮在状态行现算未读，直到它翻开。报过了就不再因这封叫醒。
+ * - 递的是**消息**不是信：下一次取 `<now>` 在「刚发生」报一次（谁、几时），记系统日志 `mail.noticed`；
+ *   之后每轮在状态行现算未读，直到它翻开。报过了就不再因这封叫醒。来信叫醒 = 往 Soma 推一轮，那一轮的 `<now>` 报它。
  * - 交接信不送回写它的地方（同一个 harness 换会话也不送）；写明 for 只送那里、且不是写信那个会话；不过期；不叫醒。
  * - 勿扰：条件只认系统看得见的事实（时段、醒着、在哪、在做事）；挡住的信不叫醒、醒着时也不报，攒着。
  *
@@ -18,6 +18,12 @@ import { DEFAULT_WAKE_ON, readSchedule, type DndRule } from "../heartbeat/schedu
 export type { DndRule };
 
 export const AWAKE_MS = 30 * 60_000;
+/**
+ * 不算"在哪"的处境：睡着时的整理 / 补写（sleep，10-16 起），和以前的家（home，10-15 的事件里还有）。
+ * 它们不是醒着待的地方，不算醒着、不算动静、不补写。
+ */
+export const NOT_PLACES = ["home", "sleep"];
+export const NOT_PLACE_SQL = `COALESCE(json_extract(s.payload, '$.harness'), '') NOT IN (${NOT_PLACES.map((h) => `'${h}'`).join(", ")})`;
 /** 在做事：最近 15 分钟有记忆工具以外的工具调用 */
 export const BUSY_MS = 15 * 60_000;
 
@@ -57,24 +63,30 @@ export interface Place {
 
 /** 会话所在的地方；没给会话就是当前处境 */
 export function placeOf(store: EventStore, session?: string | null): Place | null {
+  // 没给会话：最近一个算地方的处境（睡着时的整理和它同时跑，全局"当前处境"可能是它）
   const row = session
     ? (store.db
         .query(`SELECT payload FROM events WHERE class = 'situation' AND fonds = '' AND json_extract(payload, '$.session') = ? ORDER BY id DESC LIMIT 1`)
         .get(session) as { payload: string } | null)
-    : null;
-  const p = (row ? JSON.parse(row.payload) : store.situation?.payload) as { harness?: string; session?: string } | undefined;
+    : (store.db
+        .query(`SELECT s.payload FROM events s WHERE s.class = 'situation' AND s.fonds = '' AND ${NOT_PLACE_SQL} ORDER BY s.at DESC, s.id DESC LIMIT 1`)
+        .get() as { payload: string } | null);
+  const p = (row ? JSON.parse(row.payload) : null) as { harness?: string; session?: string } | null;
   return p?.harness ? { harness: p.harness, session: p.session ?? session ?? null } : null;
 }
 
-/** 最近一次和人 / 在别处的动静和它在哪（家里的不算：家跑完就睡了） */
-function lastActive(store: EventStore): { at: number; harness: string | null } | null {
+/**
+ * 最近一次醒着的动静（对话、工具）和在哪；at 给了就只看那一刻及以前。睡着时整理的不算。
+ * "醒着"只有这一个口径：调度器、勿扰、`/v1/where` 都从这里算。
+ */
+export function lastActive(store: EventStore, at?: number): { at: number; harness: string | null } | null {
   const r = store.db
     .query(
       `SELECT e.at, json_extract(s.payload, '$.harness') AS harness FROM events e LEFT JOIN events s ON s.id = e.situation
        WHERE e.kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND e.fonds = ''
-         AND COALESCE(json_extract(s.payload, '$.harness'), '') <> 'home' ORDER BY e.at DESC LIMIT 1`,
+         AND ${NOT_PLACE_SQL} AND e.at <= ? ORDER BY e.at DESC LIMIT 1`,
     )
-    .get() as { at: number; harness: string | null } | null;
+    .get(at ?? Number.MAX_SAFE_INTEGER) as { at: number; harness: string | null } | null;
   return r;
 }
 

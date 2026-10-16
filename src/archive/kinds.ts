@@ -31,7 +31,7 @@ export const KINDS: Record<string, KindSpec> = {
   "mail.in": { class: "experience", required: { from: "string", text: "string", via: "string" } }, // + subject?, urgent?, ext?（外部通道的消息 id）
   surfaced: { class: "experience", required: { ref: "string" } }, // + clarity?；线索记在 cue 里但不渲染给它看
   woke: { class: "experience", required: { by: "string" } }, // + note?, session?（补写哪个会话）
-  // 到点的闹钟 / 定点响了（m5.md §四）：调度器写，递进它眼下的地方或叫醒在家时
+  // 到点的闹钟 / 定点响了（m5.md §四）：它下一次取 <now> 时写（推给 Soma 的那一轮，或它自己先赶上的那一轮）
   due: { class: "experience", required: { by: "string", key: "string" } }, // + note, at（约的时刻）
   slept: { class: "experience", required: {} },
 

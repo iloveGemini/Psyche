@@ -18,7 +18,7 @@ export interface IntakeItem {
   at?: number;
   idem?: string;
   links?: LinkInput[];
-  /** 显式指定所挂处境（导入用）：缺省按发生时间找当时生效的那条 */
+  /** 显式指定所挂处境（导入用）：缺省挂 payload.session 那个会话的处境，没带会话就按发生时间找当时生效的那条 */
   situation?: string;
 }
 
@@ -40,5 +40,7 @@ export function intake(store: EventStore, item: IntakeItem): PsycheEvent {
       payload = { ...rest, argsRef: { hash: store.putMaterial(json, "application/json"), mime: "application/json" } };
     }
   }
-  return store.append({ kind: item.kind, class: spec.class, source: item.source, payload, at: item.at, idem: item.idem, links: item.links, situation: item.situation });
+  const session = typeof item.payload.session === "string" ? item.payload.session : undefined;
+  const situation = item.situation ?? (session ? (store.situationOfSession(session, item.at ?? store.now()) ?? undefined) : undefined);
+  return store.append({ kind: item.kind, class: spec.class, source: item.source, payload, at: item.at, idem: item.idem, links: item.links, situation });
 }

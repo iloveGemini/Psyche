@@ -13,7 +13,7 @@ import { localDay } from "../core/time.ts";
 import { ownSince } from "../self/self.ts";
 import { getSettings } from "../heartbeat/schedule.ts";
 import { budgetToday } from "../heartbeat/scheduler.ts";
-import { AWAKE_MS, placeOf, undelivered } from "./inbox.ts";
+import { AWAKE_MS, lastActive, NOT_PLACES, placeOf, undelivered } from "./inbox.ts";
 
 export class MailError extends Error {}
 
@@ -84,10 +84,10 @@ export function receiveMail(store: EventStore, body: Record<string, unknown>): {
 
 // ── 写信 ──
 
-/** 认识的地方：处境里出现过的 + 家 */
+/** 认识的地方：处境里出现过的（睡着、以前的家不算地方；家就是 Soma，10-16） */
 function knownPlaces(store: EventStore): Set<string> {
   const rows = store.db.query(`SELECT DISTINCT json_extract(payload, '$.harness') AS h FROM events WHERE class = 'situation' AND fonds = ''`).all() as { h: string | null }[];
-  return new Set(["home", ...rows.map((r) => r.h).filter((h): h is string => !!h)]);
+  return new Set(rows.map((r) => r.h).filter((h): h is string => !!h && !NOT_PLACES.includes(h)));
 }
 
 function resolve(store: EventStore, ref: unknown): PsycheEvent | null {
@@ -215,11 +215,9 @@ export function openMail(store: EventStore, refs: unknown): { mails: MailView[] 
 
 // ── 在哪 ──
 
-export function where(store: EventStore, homeRunning = false) {
+export function where(store: EventStore) {
   const here = placeOf(store);
-  const last = store.db
-    .query(`SELECT MAX(at) AS at FROM events WHERE kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND fonds = ''`)
-    .get() as { at: number | null };
+  const last = lastActive(store);
   const since = here?.session
     ? (store.db.query(`SELECT MIN(at) AS at FROM events WHERE class = 'situation' AND fonds = '' AND json_extract(payload, '$.session') = ?`).get(here.session) as { at: number | null }).at
     : null;
@@ -227,8 +225,7 @@ export function where(store: EventStore, homeRunning = false) {
     harness: here?.harness ?? null,
     session: here?.session ?? null,
     since,
-    awake: last.at !== null && store.now() - last.at < AWAKE_MS,
-    homeRunning,
+    awake: !!last && store.now() - last.at < AWAKE_MS,
   };
 }
 

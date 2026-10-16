@@ -204,6 +204,17 @@ export class EventStore {
     return this.currentSituation;
   }
 
+  /**
+   * 某会话在 at 那一刻的处境 id（那个会话报过的最近一条）。几个地方同时在跑时（Soma 醒着、睡着时在整理），
+   * 全局"当前处境"会被后报的一方顶掉；事件带了会话就挂它自己的（10-16）。
+   */
+  situationOfSession(session: string, at: number): string | null {
+    const r = this.db
+      .query(`SELECT id FROM events WHERE class = 'situation' AND fonds = '' AND json_extract(payload, '$.session') = ? AND at <= ? ORDER BY at DESC, id DESC LIMIT 1`)
+      .get(session, at) as { id: string } | null;
+    return r?.id ?? null;
+  }
+
   /** 发生时间 at 那一刻有效的处境 id：晚到的事件挂当时的处境，不挂此刻的 */
   situationAt(at: number): string | null {
     const cur = this.currentSituation;

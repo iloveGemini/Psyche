@@ -8,7 +8,8 @@
  *   PSYCHE_PORT      端口（缺省 7450）
  *   PSYCHE_EMBED_*   嵌入服务（archive/vectors.ts）；不设 = 只用字面检索
  *   PSYCHE_SCHEDULER 设成 1 才开调度器（m5.md §六：缺省关，开着才会醒）
- *   PSYCHE_MODEL     这个 Agent 的模型，出生时没记下的库用它（家里醒来用）
+ *   PSYCHE_MODEL     这个 Agent 的模型，出生时没记下的库用它（睡着时整理用）
+ *   SOMA_URL         它的家（Soma，如 http://127.0.0.1:30151）：醒来推到这里。不设 = 只做睡着时的整理，不叫醒
  *   PSYCHE_EMAIL     设成 1 才收它自己的邮箱（agently-cli，m6.md §〇.1）；AGENTLY_WORKSPACE 缺省 psyche
  */
 import { mkdirSync } from "node:fs";
@@ -22,7 +23,8 @@ import { createApp } from "./server/app.ts";
 import { embedderFromEnv, syncVectors } from "./archive/vectors.ts";
 import { bornRecord } from "./self/self.ts";
 import { logRun, tick } from "./heartbeat/scheduler.ts";
-import { runHome } from "./home.ts";
+import { runAsleep } from "./asleep.ts";
+import { asleepWork, BY_NAME } from "./heartbeat/scheduler.ts";
 import { getChannels } from "./channel/mailbox.ts";
 import { deliverEmail, startEmailWatch, WORKSPACE } from "./channel/email.ts";
 import type { PsycheEvent } from "./store/events.ts";
@@ -48,8 +50,7 @@ const outbox = (ev: PsycheEvent) => {
   const to = (ev.payload as { to: string }).to;
   for (const ch of getChannels(store).channels[to] ?? []) if (ch === "email") void deliverEmail(store, ev);
 };
-let homeRunning = false;
-const app = createApp({ store, projections, token: process.env.PSYCHE_TOKEN, embedder, outbox, homeRunning: () => homeRunning });
+const app = createApp({ store, projections, token: process.env.PSYCHE_TOKEN, embedder, outbox });
 Bun.serve({ port, hostname: "127.0.0.1", fetch: app.fetch });
 console.log(`Psyche 在 http://127.0.0.1:${port}，数据在 ${dataDir}${embedder ? `，向量：${embedder.model}` : "，没配向量"}`);
 
@@ -58,28 +59,56 @@ if (process.env.PSYCHE_EMAIL === "1") {
   console.log(`收邮件（agently-cli，workspace ${WORKSPACE}）`);
 }
 
-// 调度器（m5.md §二）：每分钟判一次；叫醒 = 在家起一个无头会话，跑完记下留下了什么
+// 调度器（m5.md §二；10-16 家 = Soma）：每分钟判一次。醒来推给 Soma（同一条会话）；补写、整理在睡着时另起无头会话
 if (process.env.PSYCHE_SCHEDULER === "1") {
   const model = bornRecord(store)?.model ?? process.env.PSYCHE_MODEL;
+  const soma = process.env.SOMA_URL?.replace(/\/+$/, "");
   if (!model) console.error("调度器没开：不知道这个 Agent 的模型（出生时没记，也没设 PSYCHE_MODEL）");
   else {
-    setInterval(() => {
-      const d = tick(store, { homeRunning });
+    let asleep = false;
+    // Soma 在不在：不在 = 当它睡着，醒来不推、不记账，等它回来
+    const bodyUp = async () => {
+      if (!soma) return false;
+      try {
+        return (await fetch(`${soma}/api/line/wake`, { signal: AbortSignal.timeout(3_000) })).ok;
+      } catch {
+        return false;
+      }
+    };
+    setInterval(async () => {
+      const d = tick(store, { asleep, bodyUp: await bodyUp() });
       if (!d || !("wake" in d)) return;
-      homeRunning = true;
       const { by, note, session, key } = d.wake;
-      console.log(`醒来（${by}${note ? `：${note}` : ""}）`);
-      runHome({ base: `http://127.0.0.1:${port}`, token: process.env.PSYCHE_TOKEN, model, wake: { by, note, session } })
+      if (!asleepWork(d.wake)) {
+        console.log(`叫醒（${BY_NAME[by] ?? by}${note ? `：${note}` : ""}）→ Soma`);
+        fetch(`${soma}/api/line/wake`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ by, key, ...(note ? { note } : {}) }),
+          signal: AbortSignal.timeout(10_000),
+        })
+          .then(async (res) => {
+            if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+          })
+          .catch((e) => {
+            store.syslog("wake.run", { key, error: `推给 Soma 没成：${e instanceof Error ? e.message : e}` });
+            console.error(`推给 Soma 没成：${e instanceof Error ? e.message : e}`);
+          });
+        return;
+      }
+      asleep = true;
+      console.log(`睡着时${BY_NAME[by] ?? by}${session ? `（${session}）` : ""}`);
+      runAsleep({ base: `http://127.0.0.1:${port}`, token: process.env.PSYCHE_TOKEN, model, wake: { by, note, session } })
         .then((run) => {
           const produced = logRun(store, key, run);
-          console.log(`家里跑完：${JSON.stringify({ ...run, produced })}`);
+          console.log(`整理完：${JSON.stringify({ ...run, produced })}`);
         })
         .catch((e) => {
           store.syslog("wake.run", { key, error: String(e) });
-          console.error(`家里没跑成：${e instanceof Error ? e.message : e}`);
+          console.error(`整理没跑成：${e instanceof Error ? e.message : e}`);
         })
-        .finally(() => (homeRunning = false));
+        .finally(() => (asleep = false));
     }, 60_000);
-    console.log(`调度器开着（${model}）`);
+    console.log(`调度器开着（${model}${soma ? `，家在 ${soma}` : "，没设 SOMA_URL：只做睡着时的整理"}）`);
   }
 }
