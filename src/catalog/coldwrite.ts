@@ -12,6 +12,7 @@ import { sessionOf } from "../archive/experience.ts";
 import { computeStats, pickTracked, TRACK_KEYS } from "../reading/stats.ts";
 import { ENTRY_FIELDS, SHELVES, countedEvidence, readShelf, rootOf, trackedByPerson, type ShelfEntry } from "../reading/shelf.ts";
 import { renderExperience } from "../archive/render.ts";
+import { observationsFor } from "./observations.ts";
 
 export class ColdwriteError extends Error {}
 
@@ -99,7 +100,7 @@ export function candidatesFor(store: EventStore, shelf: ShelfEntry[], material: 
   return out;
 }
 
-export function readColdwrite(store: EventStore) {
+export function readColdwrite(store: EventStore, storeOf?: (id: string) => EventStore | undefined) {
   const since = coldCursor(store);
   const last = lastMaterialId(store);
   const upTo = last && last > since ? last : null;
@@ -121,6 +122,8 @@ export function readColdwrite(store: EventStore) {
     since,
     stats,
     feedback: upTo ? feedbackLines(store, since, upTo) : [],
+    // 你记下的观察 + 后来同样的环境又出现时的事（m8.md §4.2）；被书架引过的不再摆
+    observations: upTo ? observationsFor(store, upTo, storeOf) : [],
     material: groups.map((g) => ({ session: g.session, harness: g.harness, from: g.lines[0].at, to: g.lines.at(-1)!.at, lines: g.lines.map(({ eventId, ...l }) => l) })),
     shelf: shelf.map(shown),
     candidates: candidates.map((c) => ({ target: shown(c.entry).archiveNo, lines: c.lines.map(({ eventId, ...l }) => l) })),

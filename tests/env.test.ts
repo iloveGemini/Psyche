@@ -63,7 +63,7 @@ describe("环境指纹", () => {
     const b = h.me("嗯，在放晴天");
     const ep = h.episode("那晚她说很安静，我放着晴天", [a.id, b.id]);
     h.pass(10 * 60 * MIN);
-    expect(envOf(h.s, ep)).toEqual({ tracks: [{ id: "1", artist: "周杰伦" }], people: ["Joy"] });
+    expect(envOf(h.s, ep)).toEqual({ tracks: [{ id: "1", title: "晴天", artist: "周杰伦" }], people: ["Joy"] });
     // 放完之后的那段没有歌
     expect(envBetween(h.s, h.clock.t - MIN, h.clock.t).tracks).toEqual([]);
   });
@@ -77,9 +77,9 @@ describe("环境指纹", () => {
   });
 
   test("像不像：同一首 > 同一个歌手；人只加分不单独成立", () => {
-    const now = { tracks: [{ id: "1", artist: "周杰伦" }], people: ["Joy"] };
-    expect(envSimilarity(now, { tracks: [{ id: "1", artist: "周杰伦" }], people: ["Joy"] })).toEqual({ song: 0.6, artist: 0, people: 0.15 });
-    expect(envSimilarity(now, { tracks: [{ id: "2", artist: "周杰伦" }], people: [] }).artist).toBe(0.3);
+    const now = { tracks: [{ id: "1", title: "晴天", artist: "周杰伦" }], people: ["Joy"] };
+    expect(envSimilarity(now, { tracks: [{ id: "1", title: "晴天", artist: "周杰伦" }], people: ["Joy"] })).toEqual({ song: 0.6, artist: 0, people: 0.15 });
+    expect(envSimilarity(now, { tracks: [{ id: "2", title: "夜曲", artist: "周杰伦" }], people: [] }).artist).toBe(0.3);
     expect(envSimilarity({ tracks: [], people: ["Joy"] }, { tracks: [], people: ["Joy"] })).toEqual({ song: 0, artist: 0, people: 0 });
   });
 });
@@ -121,7 +121,7 @@ describe("notice", () => {
     h.tick();
     await h.ok("/v1/play", { query: "Halcyon" });
     const r = await h.ok("/v1/notice", { text: "听这首的时候有种平静", about: "self" });
-    expect(r.env).toEqual({ tracks: [{ id: "3", artist: "Ellie Goulding" }], people: ["Joy"] });
+    expect(r.env).toEqual({ tracks: [{ id: "3", title: "Halcyon Days", artist: "Ellie Goulding" }], people: ["Joy"] });
     const ev = h.s.byArchiveNo(r.archiveNo)!;
     expect(h.s.linksFrom(ev.id).map((l) => h.s.get(l.to)!.kind).sort()).toEqual(["percept", "percept", "played"]);
     expect(readExperience(h.s.db, {}).map((l) => l.text)).toContain("我注意到：听这首的时候有种平静");

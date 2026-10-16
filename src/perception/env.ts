@@ -11,14 +11,44 @@ import type { Presence } from "../house/presence.ts";
 
 export interface Env {
   /** 这段时间听到的歌（自己放的，或戴着谁的耳机听的） */
-  tracks: { id: string; artist: string }[];
+  tracks: { id: string; title: string; artist: string }[];
   /** 这段时间在屋里的人：住户在线（忙 / 闲）、Joy 在家 */
   people: string[];
 }
 
+/** 某首歌在 [from, to] 里被我听到的每一段（自己放的；跟着谁听的算谁的） */
+export function hearings(store: EventStore, trackId: string, from: number, to: number, storeOf?: (id: string) => EventStore | undefined): { from: number; to: number; began: number }[] {
+  const out: { from: number; to: number; began: number }[] = [];
+  const spans: { host: string | null; from: number; to: number }[] = [];
+  let cur: { host: string | null; at: number } = { host: null, at: 0 };
+  for (const e of store.list({ kinds: ["listen.joined", "listen.left"], fonds: "", limit: 100_000 })) {
+    spans.push({ host: cur.host, from: cur.at, to: e.at });
+    cur = { host: e.kind === "listen.joined" ? (e.payload as { host: string }).host : null, at: e.at };
+  }
+  spans.push({ host: cur.host, from: cur.at, to: Number.MAX_SAFE_INTEGER });
+  for (const s of spans) {
+    const src = s.host ? storeOf?.(s.host) : store;
+    if (!src) continue;
+    const plays = src.list({ kinds: ["played", "stopped"], fonds: "", limit: 100_000 });
+    plays.forEach((ev, i) => {
+      if (ev.kind !== "played") return;
+      const stopAt = plays[i + 1]?.at ?? Number.MAX_SAFE_INTEGER;
+      let begin = (ev.payload as { startAt: number }).startAt;
+      for (const t of (ev.payload as { tracks: Track[] }).tracks) {
+        const end = Math.min(begin + t.duration * 1000, stopAt);
+        const a = Math.max(begin, s.from, from);
+        const b = Math.min(end, s.to, to);
+        if (t.id === trackId && a < b) out.push({ from: a, to: b, began: begin });
+        begin += t.duration * 1000;
+      }
+    });
+  }
+  return out.sort((x, y) => x.from - y.from);
+}
+
 /** [from, to] 里听到的歌：按 played / stopped 和一起听的区间算（跟着谁听就算谁的播放器） */
 function tracksBetween(store: EventStore, from: number, to: number, storeOf?: (id: string) => EventStore | undefined): Env["tracks"] {
-  const out = new Map<string, string>();
+  const out = new Map<string, { title: string; artist: string }>();
   // 我在哪些时段跟着谁听
   const spans: { host: string | null; from: number; to: number }[] = [];
   let cur: { host: string | null; at: number } = { host: null, at: 0 };
@@ -41,12 +71,12 @@ function tracksBetween(store: EventStore, from: number, to: number, storeOf?: (i
       let begin = (ev.payload as { startAt: number }).startAt;
       for (const t of (ev.payload as { tracks: Track[] }).tracks) {
         const tEnd = begin + t.duration * 1000;
-        if (begin <= end && tEnd > a) out.set(t.id, t.artist);
+        if (begin <= end && tEnd > a) out.set(t.id, { title: t.title, artist: t.artist });
         begin = tEnd;
       }
     });
   }
-  return [...out].map(([id, artist]) => ({ id, artist }));
+  return [...out].map(([id, t]) => ({ id, ...t }));
 }
 
 /** [from, to] 里在屋里的人：到 to 为止每人最后记下的样子，或这段时间里出现过在线 / 在家 */

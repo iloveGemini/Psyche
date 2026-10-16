@@ -143,7 +143,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   // 冷写：取材料 + 书架 + 候选证据；交回书架条目（m2.md §三）
   app.get("/v1/coldwrite", (c) => {
     const prompt = readPrompt("cold-write.md", promptsDir);
-    return c.json({ ...readColdwrite(store), prompt: prompt.text, promptVersion: prompt.version });
+    return c.json({ ...readColdwrite(store, storeOf), prompt: prompt.text, promptVersion: prompt.version });
   });
 
   app.post("/v1/coldwrite", async (c) => {

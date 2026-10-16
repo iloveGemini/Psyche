@@ -348,6 +348,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         candidates: { target: string; lines: { archiveNo: string; at: number; text: string; hit: string }[] }[];
         stats: Stats | null;
         feedback: { acts: { archiveNo: string; at: number; text: string }[]; next: { archiveNo: string; at: number; text: string } | null }[];
+        observations?: { archiveNo: string; at: number; text: string; about?: string; env: { tracks: { title: string; artist: string }[]; people: string[] }; later: { archiveNo?: string; at: number; text: string }[] }[];
       };
       if (m.upTo === null) return text("上次整理之后没有新的经历，不用整理。");
       return text(
@@ -366,6 +367,18 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
           ...(m.feedback.length ? m.feedback.flatMap((f) => [...f.acts.map(line), `  → ${f.next ? line(f.next) : "（之后一天内没有回应）"}`]) : ["（这段没有）"]),
           "</feedback>",
           "",
+          ...(m.observations?.length
+            ? [
+                "<observations>",
+                "（你以前当场记下的观察，和之后同样的环境又出现时的事。系统只摆，不判；攒够了想写成规律 / 镜子，就引这些档号当证据。被书架引过的不再出现）",
+                ...m.observations.flatMap((o) => [
+                  `${line(o)}${o.about && o.about !== "self" ? `　〔关于 ${o.about}〕` : ""}${o.env.tracks.length || o.env.people.length ? `　〔当时：${[...o.env.tracks.map((t) => `《${t.title}》${t.artist}`), ...(o.env.people.length ? [`在的人 ${o.env.people.join("、")}`] : [])].join("；")}〕` : ""}`,
+                  ...(o.later.length ? o.later.map((l) => `  后来：${l.archiveNo ? `[${l.archiveNo}] ` : ""}${l.text}`) : ["  后来：（还没有再遇到）"]),
+                ]),
+                "</observations>",
+                "",
+              ]
+            : []),
           "<candidates>",
           ...(m.candidates.length ? m.candidates.flatMap((c) => [`关于 ${c.target}：`, ...c.lines.map((l) => `${line(l)}　〔命中「${l.hit}」〕`)]) : ["（没有）"]),
           "</candidates>",
