@@ -161,9 +161,9 @@ describe("音频特征（本地算）", () => {
     const f = analyzePcm(pcm);
     expect(f.sections).toEqual([0, 20]);
     expect(f.loud[0]).toBeLessThan(f.loud[5] - 10);
-    expect(f.bpm === 120 || f.bpm === 60).toBe(true);
-    expect(describeSection(f, 22)).toMatch(/^刚在 0:20 变响；整首里偏响/);
-    expect(describeSection(f, 3)).toMatch(/^整首里偏安静/);
+    expect(Math.abs(f.bpm! - 120)).toBeLessThanOrEqual(5); // 起音包络按 23ms 一格，滞后取整差几拍
+    expect(describeSection(f, 22)).toMatch(/^刚在 0:20 变响；这一段比这首其他部分响/);
+    expect(describeSection(f, 3)).toMatch(/^这一段比这首其他部分安静.*不是听到的$/);
   });
 
   test("LRC：去掉作词作曲行、按时间排", () => {

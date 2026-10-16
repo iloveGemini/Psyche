@@ -2,7 +2,7 @@
  * 音频特征（m8.md §3.2 §3.4）：ffmpeg 解成单声道 PCM，自己算，不过模型。
  *
  * - 每 5 秒一格：响度（RMS → dBFS）、明亮度（过零率，粗略的"亮 / 暗"）。
- * - 整首的速度：起音包络（每 ~23ms 的能量正增量）做自相关，在 60–180 BPM 里找峰。粗估，可能差一倍。
+ * - 整首的速度：起音包络（每 ~23ms 的能量正增量）做自相关，在 85–175 BPM 里找峰。粗估，可能差一倍。
  * - 段落：前后各 3 格平均响度差 ≥ 3 dB 处切开。
  * 存资料库（JSON），系统日志 `track.features { id, hash }` 记着；同一首只算一次。
  */
@@ -80,7 +80,8 @@ function estimateBpm(pcm: Float32Array, rate: number): number | null {
   const x = env.map((v) => v - mean);
   let best = 0;
   let bestLag = 0;
-  for (let bpm = 60; bpm <= 180; bpm++) {
+  // 只在 85–175 里找：太慢的多半是只数到每两拍一下（10-16：一首约 140 的电音被估成 70）
+  for (let bpm = 85; bpm <= 175; bpm++) {
     const lag = Math.round((60 / bpm) * fps);
     let c = 0;
     for (let i = lag; i < x.length; i++) c += x[i] * x[i - lag];
@@ -99,13 +100,14 @@ export function describeSection(f: Features, pos: number): string {
   const sorted = [...f.loud].sort((a, b) => a - b);
   const q = (p: number) => sorted[Math.floor(p * (sorted.length - 1))];
   const l = f.loud[k];
-  const level = l <= q(0.25) ? "整首里偏安静" : l >= q(0.75) ? "整首里偏响" : "整首里中等";
+  // 说清楚是跟什么比的：这一段 vs 同一首的其他段（10-16 a1 把"偏安静"读成了整首都安静）
+  const level = l <= q(0.25) ? "这一段比这首其他部分安静" : l >= q(0.75) ? "这一段比这首其他部分响" : "这一段在这首里响度中等";
   const bs = [...f.bright].sort((a, b) => a - b);
   const b = f.bright[k];
-  const tone = b <= bs[Math.floor(0.25 * (bs.length - 1))] ? "偏暗、偏闷" : b >= bs[Math.floor(0.75 * (bs.length - 1))] ? "偏亮、偏尖" : "";
+  const tone = b <= bs[Math.floor(0.25 * (bs.length - 1))] ? "音色比其他部分暗、闷" : b >= bs[Math.floor(0.75 * (bs.length - 1))] ? "音色比其他部分亮、尖" : "";
   const sec = [...f.sections].reverse().find((s) => s <= pos) ?? 0;
   const turned = sec > 0 && pos - sec < f.step * 2 ? `刚在 ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")} ${meanOf(f.loud, sec / f.step, sec / f.step + 3) > meanOf(f.loud, sec / f.step - 3, sec / f.step) ? "变响" : "收下来"}；` : "";
-  return `${turned}${level}（${l} dB）${tone ? `，${tone}` : ""}${f.bpm ? `；整首约 ${f.bpm} BPM（粗估）` : ""}`;
+  return `${turned}${level}（${l} dB）${tone ? `，${tone}` : ""}${f.bpm ? `；整首约 ${f.bpm} BPM（粗估，可能差一倍）` : ""}；这些是从音频算的数，不是听到的`;
 }
 
 /** 后台算一首：ffmpeg 拉网易云地址解码 → 特征 → 存。同一首同时只算一次 */
