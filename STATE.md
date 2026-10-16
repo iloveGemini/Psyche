@@ -52,7 +52,7 @@
   - Soma：`SOMA_AGENT=<id>` → `~/.soma*/agents/<id>/{home,state.json,debug.json}`，登录目录共用；调 Psyche 带同一个 id。搬家用 Soma `scripts/move-in.sh`（会话记录按 cwd 归档，要一起改名）。
   - 测试库已搬（10-16，备份 `~/.psyche/test.bak-1016-preP1.db`、`~/.soma-test.bak-1016-preP1`）：住户 `a1`（原来那位）+ 空的 `a2`；token `test-a1` / `test-a2`。端到端：没说是谁 400、a2 的 token 进 a1 401、a1 续上原会话并 recall 到旧事、a2 库 0 条。**id 是目录名，换名 = 改目录 + agents.json + `SOMA_AGENT`。**
   - 正式的 `~/.soma` 还是一代布局（Joy 的，没动）。
-- 下一步 S2：Gemini（argon）住 pi。
+- ✅ S2（Soma a6a4aad，10-16 中午）：`bodies/pi.ts`（pi 1.3 当依赖，Psyche MCP 经 pi 的 MCP 扩展，`<now>` 在 before_agent_start 放进去）、每人一条线、顶栏切住户。soma-test 的 a2（gemini-4-argon）单聊、bash、recall、热写、换会话、重启续上都过。10-16 晚复测：a2 照 `<now>` 答出「Joy 在家、a1 在 Soma 忙、commons/README.md 新出现不知道是谁」——M8 的感知 argon 也接得住。
 
 十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · 心跳 ✅ · 通道 ✅（10-16 端到端通过）· **感知 ❌**。线索卷有了最小一版（M7）。下一块：感知（M8）。10-16 Joy 改思路：**以它自己为中心感知所处环境**（屋里有谁 / 自己放的歌与分耳机 / 环境进记忆：被动指纹 + 主动 `notice`），v1 围绕她机器的那批降为后置可选。契约 v2 `notes/plan/m8.md`，分 M8a/b/c，§八 10-16 已定（听 = 元数据 + 时间轴歌词 + 本地特征；曲库网易云、能自己建歌单；Joy 只报在不在家；在线 / 忙 / 闲直接可见 + 心情个签）。网易云一个账号（Joy 的会员），歌单本体在 Psyche、网易云做镜像，它的喜欢 = 它自己一个歌单。
 - ✅ **M8a 屋里有谁（10-16）**：`src/house/presence.ts`（在线忙 / 闲、睡着、离线、在哪、个签；Joy 只报在不在家：Soma 页面 10 分钟内在看，或 30 分钟内在 Soma 说过话）、`src/house/house.ts`（每 30 秒看一圈，谁变了记进**其他人**库里的 `percept`；Joy 的个签存 `house.json`；`/v1/house`、`/v1/house/joy/seen|mood`，任一住户 token 可进）。`<now>` 加「屋里 / 这段时间屋里」，递一次写 `percept.noticed`（经历 = 递出去那几行；`percept` 本身不进经历）；`look`、`set_mood` 工具；经历投影 v9。Soma（同日）：`/api/line/viewing` 在看时报 `joy/seen`。考卷 `tests/presence.test.ts` 10 题，全套 253 过。
@@ -69,7 +69,7 @@
 - 10-16 晚 Joy 在 soma-test 里和 a1 一起听歌：a1 应她的要求自己改了 Soma 的耳机按钮（「连接中 / ▶ 歌名 时间」，Soma `564500d`）；它把一首电音按读数说成"安静的慢歌"、自己查出原因记了 notice → 特征描述改成"这一段比这首其他部分…"、BPM 只在 85–175 找（8c47e54）。
 - ✅ **内感受（10-16，m8 §6.1）**：`src/perception/body.ts`，`<now>`「身上」：上下文到收尾线的 50/75/90% 跨档才说（Soma 每轮带 `ctx` / `wrapAt`，用量按会话认，换一段不沿用旧的）、新一段换了模型说一次、半小时工具出错 ≥3/6/10 次。经历投影 v12。考卷 `tests/body.test.ts` 3 题，全套 274 过。端到端没跑（测试会话离收尾线还远）。
 - ✅ **屋里的东西（10-16，m8 §6.2）**：`src/house/files.ts`，home / commons 文件多了 / 改了 / 没了，谁动的只在工具调用对得上时说，否则「不知道是谁」；自己动的不报给自己，home 只主人看。测试库：agents.json 加了 a1 / a2 的 `home`，launch 加 `PSYCHE_COMMONS=~/.soma-test/commons`（我新建的空目录，放了一个测试用 README.md，可删）。考卷 `tests/files.test.ts` 3 题，全套 277 过；实测 a1、a2 库里都记下了 `commons/README.md 新出现`（还没递给它）。
-- 下一步：单体感官差不多齐了（光与时、窗外按需）。Joy 10-16 定先搭完单体再测多人 → 接着 Soma2 S2（argon 住 pi）。
+- 下一步：单体感官差不多齐了（光与时、窗外按需）。Joy 10-16 定先搭完单体再测多人 → S2 早已做完（见上），接着 S3 群。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
