@@ -461,7 +461,7 @@ describe("和别处的接线", () => {
     h.her("在吗");
     expect(await h.now("S2")).toContain("上次有人跟我说话：Joy，5 小时前");
     await h.ok("/v1/mail/open", { refs: [m.id] });
-    expect(await h.now("S2")).toContain("上次有人跟我说话：Joy，1 小时前（来信）");
+    expect(await h.now("S2")).toContain("上次有人跟我说话：Joy，1 小时前（来信，看过了）");
   });
 
   test("冷写材料：没翻开的信不进；这段里翻开的、哪怕信到得早也补进来", async () => {

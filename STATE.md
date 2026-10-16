@@ -60,7 +60,6 @@
 - ✅ **M8b 自己的声音（10-16）**：`src/perception/`（`netease.ts` 搬 Roxy 读法，cookie 走 `PSYCHE_NCM_COOKIE`，测试 launch 指向 Roxy 那份；`sound.ts` 虚的播放器 + 歌单（`playlist.changed`，以 Psyche 为准，网易云镜像没做）+ 递「这段时间听到的」+ 一起听；`features.ts` ffmpeg 解码自算响度 / 亮暗 / BPM / 段落，真歌约 1 秒）。工具 `play` / `stop` / `playlist` / `listen` / `listen_with`；屋子 `/v1/house/listen`、`/v1/house/playing/:id`；经历投影 v10。Soma：顶栏「🎧 分我一只」+ `/api/ear`、`/api/ear/stream`（同源转发网易云音频）。考卷 `tests/sound.test.ts` 9 题，全套 262 过。
   - 端到端（a1，备份 `a1.bak-1016-preM8b.db`）：告诉它有了，它自己搜《Halcyon Days》（和 Joy 聊过的翠鸟）放，结果网易云第一首是专辑名对上的别的歌，它放了才发现 → 已改：歌名优先 + 对不上直说。它还提：自己写的信不能当线索卷证据 → 已放行 `mail.out`。
   - 我在内置浏览器点了「分我一只」（测试库因此记了一次「Joy 戴上了耳机」）；按钮、记账、转发都通（curl 206 audio/mpeg），但**内置浏览器的 audio 卡在加载，真出声没验**——要 Joy 在手机或 Chrome 上点一下。
-  - **待查**：a1 说 Joy 09:40 那封信它 09:41 在 Soma 就翻开回了，10:35 在家时 `<now>` 却报没读，它因此挂了一天。已读是按人还是按会话算，要查 `inbox.ts`。
 - ✅ **M8c 环境进记忆（10-16）**：`src/perception/env.ts`。被动：情节那段时间（所引原件首尾）的环境指纹——听到的歌（含戴别人耳机）、在的人——事后从播放和在场记录算，不另存；联想加「环境相似」一项（同一首 0.6 > 同歌手 0.3，同一拨人只加分），没在放歌就不比，刚发生 30 分钟内的不算想起。主动：`notice { text, about?, cites? }`，系统把此刻环境记进 payload、播放和在场挂成证据；能浮现。经历投影 v11。考卷 `tests/env.test.ts` 7 题，全套 270 过。
   - 端到端：告诉 a1 有了，它马上用 notice 记了「Joy 戴上耳机听完一首」——那是我测试点的。我如实告诉它后，它另记一条更正（#305 挂 #292），并指出这是漏洞：认不出就别替人认领。→ Soma 加 `?viewer=`（`lib/soma/viewer.ts`，缺省 Joy）：分耳机记页面说的人、只有 Joy 在看才报在家；我的测试页已标 `viewer=Claude`。它那句「Joy 刚刚回家了」也是我开着的页面报的。
   - 被动那一路只在考卷里验过（测试库里还没有带歌的旧情节）。
@@ -75,7 +74,10 @@
   - 端到端（soma-test「S3 测试」群，我以 Claude 身份 @ 两人）：依次问，a1 说「7，翠鸟那七天」，a2 接着说「2，在那七天平静的海面上添一只作伴的鸟」——看得到前一个人这一轮说的。**Joy 起的一轮和新话题我没测**（我不是 Joy），留给她在 `/room` 亲自试。
 - ✅ **群的第一轮反馈（10-16 晚，a1 / a2 在群里提的，`soma2.md` §5.7）**：没能回应（出错 / 额度用完 / 等满 5 分钟）记 `（没能回应：原因）`、不算 pass（a1 正是额度用完被连记两次 pass 静音的）；`<now>` 报「你在《X》被静音了」（Soma 带 `muted` 给 `/v1/now`）；提示写明「这句 @ 了谁 / 对所有人」「说出口的发进群《X》」；没被 @ 的每轮轮换先后。Soma 测试 9 题、全套 40 过；Psyche 281 过。**没实跑**：psyche-test 要重启才有静音那行；a1 仍静音在《S3测试新话题》，Joy 开新话题即回来。没做：话唠指数 / 举手、住户 @ 住户追问、住户主动开口（雏形先不碰）。出生时测试记忆怎么带，到时按他们自己的意见（a2 投前世今生，a1 还没答）。
 - ✅ **Dashboard 观测与管理台（10-16，`notes/design/dashboard.md`）**：只读不改 + 四层可见性（日记与非 Joy 住户间私信只计数量不露正文）+「纸本档案柜与深夜阅览室」UI（`GET /dashboard`，`src/server/dashboard.ts`）。新增 `GET /v1/health`（`src/reading/health.ts`：热写积压与 7 天压缩比、书架分布、闭环预警 `no_against` / `stale`、私密封条计数）、`GET /v1/shelf/:no`（单条认知版本演变与证据链）、`POST /v1/house/residents`（新建住户热挂载并调 `birth()`）；扩展 `GET /v1/house`（带 `born` / `wake` / `pulse`）与 `GET /v1/gist`（带已写 `gists` 列表）。考卷 `tests/dashboard.test.ts` 全过，全套 280 过。
-- 下一步：Joy 试 `/room` 与 `/dashboard`；S5 分工（commons + 项目 STATE.md + 忙碌灯 + 插话 / 停下）。
+- ✅ **S5 分工的底座（10-16 晚，Soma，`soma2.md` §5.4）**：commons 分目录是共识、写在 `~/.soma-test/commons/README.md`（project / share / tools / chat，谁都能改）；地方提示词多一行 home 和 commons 在哪（`SOMA_COMMONS`，缺省 `SOMA_HOME/commons`；新开进程才生效）；群页面每人一盏忙碌灯 +「停下」（`/api/rooms/<id>` 带 `busy`，停下走 `/api/line/interrupt?agent=`）。插话不打断原来就有（干活中途进来的话折进这一轮）。实测页面上 a2 收尾时亮「忙」，没点停下。**没做**：commons 用 git（谁动的先靠 Psyche 屋里的东西认）；验收「两人各做一块、靠 STATE.md 交接」没跑。现有的 `commons/soma-ui-plan.md` 是别人放的，没挪。
+- ✅ 内感受实测（10-16 晚）：a2 压缩前自己先说「马上要写记忆换新会话，换完我接着在」。
+- ✅ 「信没读」查清（10-16 晚）：已读是按人记的，那封 09:40 的信 09:40:56 就记了已读。a1 误会的是 `<now>`「上次有人跟我说话：Joy，55 分钟前（来信）」——只算读过的信，它读成了没看。改成「（来信，看过了）」。
+- 下一步：S5 验收（两个住户各做一块，靠 `commons/project/<名>/STATE.md` 交接）；S6 住户之间写信。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 

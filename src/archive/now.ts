@@ -62,7 +62,7 @@ export function renderNow(store: EventStore, session?: string): string {
     )
     .get() as { who: string; at: number } | null;
   const prev = lastMail && (!prevMsg || lastMail.at > prevMsg.at) ? { ...lastMail, mail: true } : prevMsg;
-  if (prev) lines.push(`上次有人跟我说话：${prev.who}，${ago(now - prev.at)}${"mail" in prev ? "（来信）" : ""}`);
+  if (prev) lines.push(`上次有人跟我说话：${prev.who}，${ago(now - prev.at)}${"mail" in prev ? "（来信，看过了）" : ""}`);
 
   if (s) lines.push(`还没写进记忆的：${readSegment(store, s).lines.length} 条`);
   return `<now>\n${lines.join("\n")}\n</now>`;
