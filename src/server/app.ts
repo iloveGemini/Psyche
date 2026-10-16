@@ -227,7 +227,9 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const notices = noticeMail(store, here, facts);
     const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
     const mail = mailStateLines(store, here, facts, notices);
-    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store)].filter(Boolean).join("\n");
+    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store), mutedLine(c.req.query("muted"))]
+      .filter(Boolean)
+      .join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session, storeOf }));
     // 屋里有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
@@ -385,4 +387,20 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.get("/v1/syslog", (c) => c.json({ entries: store.readSyslog({ kind: c.req.query("kind"), limit: num(c.req.query("limit")) }) }));
 
   return app;
+}
+
+/**
+ * 在哪些群被静音（Soma 每轮带来，soma2.md §5.7，a1 提）：静音了就没人来问，不说它会以为大家都安静了。
+ * 是此刻的状态，每轮都报，不记经历。
+ */
+function mutedLine(raw: string | undefined): string | null {
+  let names: unknown;
+  try {
+    names = raw ? JSON.parse(raw) : [];
+  } catch {
+    return null;
+  }
+  const list = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && !!n) : [];
+  if (!list.length) return null;
+  return `群：你在${list.map((n) => `《${n}》`).join("、")}被静音了（连着两次没说话）——那里不会再轮到你，等 Joy 开新话题或有人 @ 你才会再问你`;
 }

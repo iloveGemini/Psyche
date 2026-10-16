@@ -60,3 +60,13 @@ test("工具老出错：半小时内 ≥3 次才说，次数跨档再说；经�
   const { text } = (await (await app.request("/v1/now?session=s1&ctx=120000&wrapAt=150000")).json()) as { text: string };
   expect(text).toContain("身上：\n- 这一段的上下文用了收尾线的 80%，快满了");
 });
+
+test("群里被静音：Soma 带来的群名报成一行，没有就不报（soma2.md §5.7）", async () => {
+  const { store, p } = setup();
+  store.setSituation({ harness: "soma", session: "s1" }, "soma");
+  const app = createApp({ store, projections: p });
+  const now = async (q: string) => ((await (await app.request(`/v1/now?session=s1${q}`)).json()) as { text: string }).text;
+  expect(await now(`&muted=${encodeURIComponent(JSON.stringify(["S3 测试"]))}`)).toContain("群：你在《S3 测试》被静音了");
+  expect(await now("")).not.toContain("被静音");
+  expect(await now("&muted=oops")).not.toContain("被静音");
+});
