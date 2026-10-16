@@ -5,7 +5,7 @@
  * 隔离靠文件：A 的请求只碰得到 A 的库；每人一个 token，A 的 token 进不了 B 的门（server/house.ts）。
  *
  * 每人的设置在 <PSYCHE_DATA_DIR>/agents.json（可以没有）：
- *   { "<id>": { "token": "…", "soma": "http://127.0.0.1:30151", "model": "claude-opus-5-5", "email": true } }
+ *   { "<id>": { "token": "…", "soma": "http://127.0.0.1:30151", "model": "claude-opus-5-5", "home": "~/.soma/agents/<id>/home", "email": true } }
  * 列在里面的人没有目录就建一个（还没出生的空库）。
  *
  * 只住一个人时，环境变量（PSYCHE_TOKEN / SOMA_URL / PSYCHE_MODEL / PSYCHE_EMAIL=1）给他当缺省，跟一代一样。
@@ -22,6 +22,8 @@ export interface ResidentConfig {
   soma?: string;
   /** 他的模型，出生时没记下的库用它 */
   model?: string;
+  /** 他的 home 目录（Soma 的 agents/<id>/home）：屋里的东西从这里看（m8.md §6.2） */
+  home?: string;
   /** 收房子那个邮箱的信（S6 之前只能有一个人收） */
   email?: boolean;
 }

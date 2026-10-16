@@ -8,6 +8,7 @@
  *   PSYCHE_PORT      端口（缺省 7450）
  *   PSYCHE_EMBED_*   嵌入服务（archive/vectors.ts）；不设 = 只用字面检索。大家共用
  *   PSYCHE_SCHEDULER 设成 1 才开调度器（m5.md §六：缺省关，开着才会醒）；每人一个
+ *   PSYCHE_COMMONS   公共文件夹（Soma 的 commons）：屋里人人看得到它的文件变化（m8.md §6.2）；每人的 home 写在 agents.json
  *   PSYCHE_NCM_COOKIE 网易云登录（cookies.json 的路径，Roxy 那份的格式）：全屋共用一个账号放歌（m8.md §三）
  *   只住一个人时给他当缺省（住几个人就写进 agents.json）：
  *   PSYCHE_MODEL     他的模型，出生时没记下的库用它（睡着时整理用）
@@ -55,7 +56,12 @@ for (const r of residents) {
   viewers.push({ id: r.id, store });
 }
 // 屋子：每 30 秒看一圈谁变了，记进其他人的库（m8.md §二）
-const house = openHouse(dataDir, viewers);
+const expand = (p: string) => p.replace(/^~(?=\/)/, homedir());
+const places = [
+  ...residents.filter((r) => r.config.home).map((r) => ({ label: "home", dir: expand(r.config.home!), owner: r.id })),
+  ...(process.env.PSYCHE_COMMONS ? [{ label: "commons", dir: expand(process.env.PSYCHE_COMMONS) }] : []),
+];
+const house = openHouse(dataDir, viewers, Date.now, undefined, places);
 house.tick();
 setInterval(() => {
   try {

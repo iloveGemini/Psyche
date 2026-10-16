@@ -11,17 +11,28 @@ import { houseTick, joyPresence, presenceOf, JOY, MOOD_MAX, type Viewer } from "
 import { currentName } from "../self/self.ts";
 import { nowPlaying } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
+import { filesTick, loadSnaps, saveSnaps, type Place } from "./files.ts";
 
 export const TICK_MS = 30_000;
 
-export function openHouse(dataDir: string, residents: Viewer[], now: () => number = Date.now, music: MusicSource = netease) {
+export function openHouse(dataDir: string, residents: Viewer[], now: () => number = Date.now, music: MusicSource = netease, places: Place[] = []) {
   const storeOf = (id: string) => residents.find((r) => r.id === id)?.store;
   const file = join(dataDir, "house.json");
   const saved = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { joyMood?: string }) : {};
   const joy: { lastSeen?: number; mood?: string } = { mood: saved.joyMood || undefined };
   const save = () => writeFileSync(file, JSON.stringify({ joyMood: joy.mood ?? "" }, null, 2));
 
-  const tick = () => houseTick(residents, joy, now());
+  // 屋里的东西（m8.md §6.2）：home、commons 的文件变化；快照存着，重启不丢
+  const snapFile = join(dataDir, "files.json");
+  const snaps = loadSnaps(snapFile);
+  const tick = () => {
+    const n = houseTick(residents, joy, now());
+    if (places.length) {
+      filesTick(residents, places, snaps, now());
+      saveSnaps(snapFile, snaps);
+    }
+    return n;
+  };
 
   const handle = async (req: Request): Promise<Response> => {
     const path = new URL(req.url).pathname;
