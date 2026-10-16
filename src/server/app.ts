@@ -31,6 +31,7 @@ import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setC
 import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, writeGist } from "../catalog/gist.ts";
 import { renderContinuity } from "../archive/continuity.ts";
+import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 
 export interface AppDeps {
   store: EventStore;
@@ -54,7 +55,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -198,7 +199,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const notices = noticeMail(store, here, facts);
     const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
     const mail = mailStateLines(store, here, facts, notices);
-    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held })].filter(Boolean).join("\n");
+    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store)].filter(Boolean).join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session }));
     for (const block of [just, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
@@ -254,6 +255,20 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     return c.json(setSettings(store, body));
   });
   app.get("/v1/wakes", (c) => c.json(wakeLedger(store, num(c.req.query("days")) ?? 7)));
+
+  // 还开着的事（m7.md §四）
+  const obj = async (c: { req: { json: () => Promise<unknown> } }) => {
+    const b = await c.req.json();
+    if (!b || typeof b !== "object" || Array.isArray(b)) throw new ThreadError("body 必须是对象");
+    return b as Record<string, unknown>;
+  };
+  app.get("/v1/threads", (c) => {
+    const all = readThreads(store).map(({ id, ...t }) => t);
+    return c.json({ open: all.filter((t) => !t.closed), ...(c.req.query("all") === "1" ? { closed: all.filter((t) => t.closed) } : {}) });
+  });
+  app.post("/v1/threads", async (c) => c.json(openThread(store, await obj(c))));
+  app.post("/v1/threads/note", async (c) => c.json(noteThread(store, await obj(c))));
+  app.post("/v1/threads/close", async (c) => c.json(closeThread(store, await obj(c))));
 
   // 收件箱与通道（m6.md §五）
   const body = async (c: { req: { json: () => Promise<unknown> } }) => {

@@ -23,10 +23,10 @@ export interface IntakeItem {
 }
 
 /** 带系统闸的记忆与自我：只能从热写 / 冷写 / 自我的口子进，不能绕过校验直接上报 */
-const GATED = /^(episode|semantic\..+|coldwrite\.done|prompt\.changed|named|schedule\.changed|diary|gist|due|mail\.(in|out|read))$/;
+const GATED = /^(episode|semantic\..+|coldwrite\.done|prompt\.changed|named|schedule\.changed|diary|gist|due|thread\..+|mail\.(in|out|read))$/;
 
 export function intake(store: EventStore, item: IntakeItem): PsycheEvent {
-  if (GATED.test(item.kind)) throw new IntakeError(`${item.kind} 要经热写 / 冷写 / 自我 / 作息 / 通道的口子写，不走上报`);
+  if (GATED.test(item.kind)) throw new IntakeError(`${item.kind} 要经热写 / 冷写 / 自我 / 作息 / 通道 / 线索卷的口子写，不走上报`);
   const spec = validate(item.kind, item.payload, item.links);
   let payload = item.payload;
   if (item.kind === "tool.result" && typeof payload.text === "string" && payload.text.length > INLINE_LIMIT) {

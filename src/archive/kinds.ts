@@ -43,6 +43,10 @@ export const KINDS: Record<string, KindSpec> = {
   diary: { class: "self", required: { doc: "object" } }, // doc: MaterialRef（+ path?）
   // 梗概（10-16）：天 / 周 / 月，它睡着时自己写（catalog/gist.ts）
   gist: { class: "self", required: { span: "string", key: "string", text: "string" } },
+  // 还开着的事（m7.md）：它开卷、记碎片、合卷；noted / closed 的 title 由系统抄上（经历模板看不到开卷那条）
+  "thread.opened": { class: "self", required: { type: "string", title: "string" }, rels: ["evidence"] }, // + to?, note?
+  "thread.noted": { class: "self", required: { target: "string", title: "string", text: "string" }, rels: ["evidence"] },
+  "thread.closed": { class: "self", required: { target: "string", title: "string", how: "string", why: "string" }, rels: ["evidence"] },
   "focus.changed": { class: "self", required: { items: "array" } },
   loaded: { class: "self", required: { refs: "array" } },
   evicted: { class: "self", required: { refs: "array" } },

@@ -5,6 +5,8 @@
  * 纯函数、不调模型——投影重放时一字不差。
  */
 import type { PsycheEvent } from "../store/events.ts";
+// 合卷的说法（同 self/threads.ts 的 CLOSE_HOW；模板是纯函数，不引 self 层）
+const CLOSE_HOW = { done: "做到了", dropped: "不做了", moot: "不用做了" } as const;
 
 /** 按码点截，不把 emoji 切成半个代理对 */
 const cut = (s: string, n: number) => {
@@ -39,6 +41,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/^mcp__psyche__shelf$/.test(p.name)) return "我看了看自己的书架";
       if (/^mcp__psyche__self$/.test(p.name)) return "我看了看自己那段自述";
       if (/^mcp__psyche__schedule$/.test(p.name)) return "我看了看自己的作息";
+      if (/^mcp__psyche__threads$/.test(p.name)) return "我看了看还开着的事";
+      // 开卷 / 记一笔 / 合卷本身就是 thread.* 事件，调用不再抄一遍
+      if (/^mcp__psyche__(open|note|close)_thread$/.test(p.name)) return null;
       // 日记全文已在 diary 事件里（资料库）
       if (/^mcp__psyche__write_diary$/.test(p.name)) return "我写了一篇日记";
       // 自述全文已在 prompt.changed 里（资料库），调用不再抄一遍
@@ -49,7 +54,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;
     case "tool.result":
       // 就是这一段本身 / 翻出来的旧记忆：再记一遍，下次 recall 会把它当新的又翻出来
-      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail)$/.test(p.name)) return null;
+      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads)$/.test(p.name)) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
       return `（感知 · ${p.sensor}）${typeof p.value === "string" ? p.value : JSON.stringify(p.value)}`;
@@ -73,6 +78,12 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我写了日记${p.title ? `《${p.title}》` : ""}${ref(p.doc)}`;
     case "gist":
       return `我给 ${p.key} 写了梗概：${p.text}`;
+    case "thread.opened":
+      return `我开了一卷${p.type === "promise" ? `（答应 ${p.to}）` : ""}：${p.title}${p.note ? `——${p.note}` : ""}`;
+    case "thread.noted":
+      return `我在「${p.title}」上记了一笔：${p.text}`;
+    case "thread.closed":
+      return `我合上了「${p.title}」（${CLOSE_HOW[p.how as keyof typeof CLOSE_HOW] ?? p.how}）：${p.why}`;
     case "focus.changed":
       return p.items.length ? `我眼下关注：${p.items.join("；")}` : "我清空了眼下的关注";
     case "loaded":

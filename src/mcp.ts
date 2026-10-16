@@ -18,6 +18,10 @@
  *   schedule          看作息                  → GET  /v1/schedule
  *   set_schedule      排作息（全量替换）       → POST /v1/schedule
  *   write_diary       写日记                  → POST /v1/diary
+ *   threads           看还开着的事             → GET  /v1/threads
+ *   open_thread       开一卷                  → POST /v1/threads
+ *   note_thread       在一卷上记一笔           → POST /v1/threads/note
+ *   close_thread      合上一卷                → POST /v1/threads/close
  *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
  *   send_mail         写信：给 Joy / 交接信    → POST /v1/mail/out
  *
@@ -604,6 +608,69 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/diary", args)) as { archiveNo: string };
       return text(`写下了（${r.archiveNo}）。`);
+    }),
+  );
+
+  // 还开着的事（m7.md）
+  const HOW: Record<string, string> = { done: "做到了", dropped: "不做了", moot: "不用做了" };
+  const cites = z.array(z.string()).optional().describe("证据档号（你的经历或情节），可不挂");
+  server.registerTool(
+    "threads",
+    {
+      description: "看还开着的事：你挂上的、答应过谁的、等后续的，每卷的进展。all: true 连合上的一起看。",
+      inputSchema: { all: z.boolean().optional() },
+    },
+    guard(async (args) => {
+      type T = { archiveNo: string; type: string; title: string; to?: string; openedAt: number; notes: { at: number; text: string }[]; closed?: { at: number; how: string; why: string } };
+      const r = (await call("GET", `/v1/threads${args.all ? "?all=1" : ""}`)) as { open: T[]; closed?: T[] };
+      const show = (t: T) =>
+        [
+          `[${t.archiveNo}] ${t.type === "promise" ? `答应 ${t.to}：` : ""}${t.title}（${shortTime(t.openedAt, tz)} 开）`,
+          ...t.notes.map((n) => `  ${shortTime(n.at, tz)} ${n.text}`),
+          ...(t.closed ? [`  ${shortTime(t.closed.at, tz)} 合上（${HOW[t.closed.how] ?? t.closed.how}）：${t.closed.why}`] : []),
+        ].join("\n");
+      const out = [r.open.length ? r.open.map(show).join("\n") : "没有开着的事。"];
+      if (r.closed?.length) out.push("", "合上的：", r.closed.map(show).join("\n"));
+      return text(out.join("\n"));
+    }),
+  );
+
+  server.registerTool(
+    "open_thread",
+    {
+      description: [
+        "开一卷还开着的事：之后在 <now> 里看得到开着几件、最久没动的是哪件，换会话时全列在开头。系统不替你合、不催、不判做没做到。",
+        "type：promise = 你答应了谁什么（要写 to）；matter = 挂着、等后续的事。",
+      ].join("\n"),
+      inputSchema: { type: z.enum(["promise", "matter"]), title: z.string().min(1), to: z.string().optional(), note: z.string().optional(), cites },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/threads", args)) as { archiveNo: string };
+      return text(`开了（${r.archiveNo}）。`);
+    }),
+  );
+
+  server.registerTool(
+    "note_thread",
+    {
+      description: "在一卷开着的事上记一笔进展（target 是开卷那条的档号）。",
+      inputSchema: { target: z.string().min(1), text: z.string().min(1), cites },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/threads/note", args)) as { archiveNo: string };
+      return text(`记下了（${r.archiveNo}）。`);
+    }),
+  );
+
+  server.registerTool(
+    "close_thread",
+    {
+      description: "合上一卷（target 是开卷那条的档号）。how：done 做到了 / dropped 不做了 / moot 不用做了；写 why。合上的不能再记；同一件事再起，开新卷。",
+      inputSchema: { target: z.string().min(1), how: z.enum(["done", "dropped", "moot"]), why: z.string().min(1), cites },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/threads/close", args)) as { archiveNo: string };
+      return text(`合上了（${r.archiveNo}）。`);
     }),
   );
 
