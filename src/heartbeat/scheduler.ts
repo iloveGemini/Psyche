@@ -107,8 +107,9 @@ export function budgetToday(store: EventStore): { woke: number; mail: number; us
   const today = localDay(store.now(), store.timeZone);
   const woke = wakeLogs(store, store.now() - 2 * 86_400_000).filter((l) => l.decided === "woke" && (l.budgeted ?? BUDGETED.has(l.by as By)) && localDay(l.at, store.timeZone) === today).length;
   const mail = ownSince(store, "mail.out").filter((e) => {
-    const p = e.payload as { to: string; replyTo?: string };
-    return p.to !== "self" && !p.replyTo && localDay(e.at, store.timeZone) === today;
+    const p = e.payload as { to: string; replyTo?: string; house?: boolean };
+    // 回 Joy 的信不算；写给住户的回信也算（m6.md §八：互相回信互相叫醒）
+    return p.to !== "self" && (!p.replyTo || p.house) && localDay(e.at, store.timeZone) === today;
   }).length;
   return { woke, mail, used: woke + mail };
 }

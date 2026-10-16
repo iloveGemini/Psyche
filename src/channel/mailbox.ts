@@ -2,7 +2,7 @@
  * 通道的口子（notes/plan/m6.md §一 §五）：来信、写信、翻开、来往的信、在哪、通道设置。
  *
  * - 来信（POST /v1/mail/in）：通道交进来，`mail.in` 不挂处境（信不在哪段对话里）。外部消息 id 做幂等。
- * - 写信（POST /v1/mail/out）：给登记过的人，或给自己（交接信）。系统补记写信处 from: { harness, session }。
+ * - 写信（POST /v1/mail/out）：给登记过的人、屋里别的住户（m6.md §八），或给自己（交接信）。系统补记写信处 from: { harness, session }。
  *   回她的信挂 replyTo 不算额度；主动写给人的每封算 1 次，和它约的醒同一份额度，用完拒。
  * - 翻开（POST /v1/mail/open）：给全文，没读过的记 `mail.read`（它的动作，m6.md §〇.2）。
  * - 通道设置是 Joy 的：发给谁经哪些通道、外部地址。改一次记 `param.changed`；地址不进事件。
@@ -96,13 +96,23 @@ function resolve(store: EventStore, ref: unknown): PsycheEvent | null {
   return store.get(r) ?? store.byArchiveNo(r);
 }
 
-export function sendMail(store: EventStore, body: Record<string, unknown>): { ev: PsycheEvent; id: string; archiveNo: string; budget: { used: number; of: number } } {
+/**
+ * housemates：屋里别的住户的 id（不含自己）。写给他们不用登记通道，每封都算额度——回信也算：
+ * 两个住户互相回信、互相叫醒，不算就停不下来（m6.md §八）。
+ */
+export function sendMail(
+  store: EventStore,
+  body: Record<string, unknown>,
+  housemates: string[] = [],
+): { ev: PsycheEvent; id: string; archiveNo: string; budget: { used: number; of: number } } {
   const { to, text, subject, replyTo, for: dest } = body;
   if (!nonEmpty(text)) throw new MailError("text 是空的");
-  if (!nonEmpty(to)) throw new MailError("to 是空的：写给谁（Joy），或 self（交接信）");
+  if (!nonEmpty(to)) throw new MailError("to 是空的：写给谁（Joy、屋里的住户），或 self（交接信）");
   const who = to.trim();
   const people = Object.keys(getChannels(store).channels);
-  if (who !== "self" && !people.includes(who)) throw new MailError(`没登记 ${who}：现在能写给 ${people.join("、")}，或 self（交接信）`);
+  const housemate = housemates.includes(who);
+  if (who !== "self" && !people.includes(who) && !housemate)
+    throw new MailError(`没登记 ${who}：现在能写给 ${[...people, ...housemates].join("、")}，或 self（交接信）`);
   if (subject !== undefined && typeof subject !== "string") throw new MailError("subject 应为字符串");
   if (dest !== undefined) {
     if (who !== "self") throw new MailError("for 只给交接信用（to: self）");
@@ -115,9 +125,9 @@ export function sendMail(store: EventStore, body: Record<string, unknown>): { ev
     if (!reply || reply.kind !== "mail.in" || (reply.payload as { from: string }).from !== who) throw new MailError(`replyTo 要指向 ${who} 发来的一封信（档号）`);
   }
   const settings = getSettings(store);
-  if (who !== "self" && !reply) {
+  if (who !== "self" && (!reply || housemate)) {
     const b = budgetToday(store);
-    if (b.used >= settings.wakeBudget) throw new MailError(`今天额度 ${b.used}/${settings.wakeBudget} 用完了（醒 ${b.woke} · 写信 ${b.mail}），明天 0 点重置；回她的信（挂 replyTo）不算额度`);
+    if (b.used >= settings.wakeBudget) throw new MailError(`今天额度 ${b.used}/${settings.wakeBudget} 用完了（醒 ${b.woke} · 写信 ${b.mail}），明天 0 点重置；${housemate ? "写给住户每封都算" : "回她的信（挂 replyTo）不算额度"}`);
   }
   const here = placeOf(store);
   const ev = store.append({
@@ -130,6 +140,8 @@ export function sendMail(store: EventStore, body: Record<string, unknown>): { ev
       ...(nonEmpty(subject) ? { subject: subject.trim() } : {}),
       ...(reply ? { replyTo: reply.id } : {}),
       ...(nonEmpty(dest) ? { for: dest.trim() } : {}),
+      // 写给住户：回信也算额度（budgetToday 认这个）
+      ...(housemate ? { house: true } : {}),
       from: { harness: here?.harness ?? null, session: here?.session ?? null },
     },
   });

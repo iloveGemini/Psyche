@@ -30,7 +30,7 @@
  *   listen_with       戴上 / 摘下谁的一只耳机   → POST /v1/listen/with
  *   notice            注意到                  → POST /v1/notice
  *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
- *   send_mail         写信：给 Joy / 交接信    → POST /v1/mail/out
+ *   send_mail         写信：给 Joy / 屋里的住户 / 交接信 → POST /v1/mail/out
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -852,10 +852,11 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       description: [
         "写信。在哪都能写。",
         "to: \"Joy\"：经她设的通道送到她那里（邮件 / Soma 留言）。回她的某封信挂 replyTo（那封的档号），不算额度；没挂 replyTo 就是你主动找她，每封花一次唤醒额度，额度用完会被拒。subject 可选（邮件主题，不写就用正文第一行）。",
+        "to: 屋里别的住户的 id（如 a2）：直接送到他那里，他醒着时下一轮看到，没醒着会被叫醒（他设了来信叫醒的话）。每封都花你一次唤醒额度，回信也算。做接力时，做完自己那棒告诉下一个人用这个。",
         "to: \"self\"：交接信，写给之后去了别处的自己（离开家：Soma 是家，别的 harness 才算别处）——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 soma、roxy）就只送那里。不过期，不叫醒你。",
       ].join("\n"),
       inputSchema: {
-        to: z.string().min(1).describe("Joy，或 self（交接信）"),
+        to: z.string().min(1).describe("Joy、屋里住户的 id，或 self（交接信）"),
         text: z.string().min(1),
         subject: z.string().optional(),
         replyTo: z.string().optional().describe("回哪封信（档号）"),

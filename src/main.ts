@@ -109,7 +109,7 @@ function openResident({ id, dir, config }: Resident) {
     const to = (ev.payload as { to: string }).to;
     for (const ch of getChannels(store).channels[to] ?? []) if (ch === "email") void deliverEmail(store, ev);
   };
-  const app = createApp({ store, projections, token: config.token, embedder, outbox, storeOf, selfId: id });
+  const app = createApp({ store, projections, token: config.token, embedder, outbox, storeOf, selfId: id, residentIds: () => viewers.map((v) => v.id) });
 
   if (config.email) {
     startEmailWatch(store, { onError: (e) => console.error(`${tag}收邮件出错：${e.message}`) });

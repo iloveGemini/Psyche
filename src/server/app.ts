@@ -57,11 +57,13 @@ export interface AppDeps {
   storeOf?: (id: string) => EventStore | undefined;
   /** 我是谁（屋里的 id）：去别人库里记"谁戴上了耳机"用 */
   selfId?: string;
+  /** 屋里所有住户的 id（含自己）：写信给住户用（m6.md §八） */
+  residentIds?: () => string[];
 }
 
 const num = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
 
-export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox, music = netease, storeOf, selfId }: AppDeps) {
+export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox, music = netease, storeOf, selfId, residentIds }: AppDeps) {
   const sound: SoundDeps = {
     music,
     storeOf,
@@ -362,8 +364,18 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   };
   app.post("/v1/mail/in", async (c) => c.json(receiveMail(store, await body(c))));
   app.post("/v1/mail/out", async (c) => {
-    const { ev, ...r } = sendMail(store, await body(c));
-    if ((ev.payload as { to: string }).to !== "self") outbox?.(ev);
+    const housemates = (residentIds?.() ?? []).filter((id) => id !== selfId && storeOf?.(id));
+    const { ev, ...r } = sendMail(store, await body(c), housemates);
+    const p = ev.payload as { to: string; text: string; subject?: string };
+    if (housemates.includes(p.to)) {
+      // 屋里的信：直接进对方的库，之后跟 Joy 来信一样（报有信、叫醒、翻开、回信）
+      try {
+        receiveMail(storeOf!(p.to)!, { from: selfId, text: p.text, via: "house", ...(p.subject ? { subject: p.subject } : {}), ext: ev.id });
+        store.syslog("mail.sent", { ref: ev.id, via: "house", ok: true });
+      } catch (e) {
+        store.syslog("mail.sent", { ref: ev.id, via: "house", ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    } else if (p.to !== "self") outbox?.(ev);
     return c.json(r);
   });
   app.get("/v1/mail", (c) => c.json(listMail(store, num(c.req.query("days")) ?? 7, c.req.query("full") === "1")));

@@ -9,7 +9,7 @@ import { intake } from "../src/archive/intake.ts";
 import { experienceProjector, readExperience } from "../src/archive/experience.ts";
 import { createApp } from "../src/server/app.ts";
 import { tick } from "../src/heartbeat/scheduler.ts";
-import { held, type DndRule } from "../src/channel/inbox.ts";
+import { factsNow, held, mailCandidates, type DndRule } from "../src/channel/inbox.ts";
 import { emailArgs, takeEmail, parseWatchLine, plainBody } from "../src/channel/email.ts";
 import type { PsycheEvent } from "../src/store/events.ts";
 
@@ -491,5 +491,44 @@ describe("写信那一边看（Soma 留言页）", () => {
     expect((await h.get("/v1/mail?full=1")).mails[0]).toMatchObject({ text: "留给你的话", read: false });
     expect((await h.get("/v1/mail")).mails[0].text).toBeUndefined();
     expect(h.store.list({ kinds: ["mail.read"] })).toHaveLength(0);
+  });
+});
+
+describe("住户之间写信（m6.md §八）", () => {
+  function house() {
+    const a1 = setup();
+    const a2 = setup();
+    const storeOf = (id: string) => (id === "a1" ? a1.store : id === "a2" ? a2.store : undefined);
+    const residentIds = () => ["a1", "a2"];
+    const appOf = (h: H, id: string) => createApp({ store: h.store, projections: new Projections(h.store), storeOf, selfId: id, residentIds });
+    const send = async (h: H, id: string, body: unknown) => {
+      const r = await appOf(h, id).request("/v1/mail/out", { method: "POST", headers: JSON_H, body: JSON.stringify(body) });
+      return { status: r.status, j: (await r.json()) as Record<string, any> };
+    };
+    return { a1, a2, send };
+  }
+
+  test("写给住户：进对方库（from = 寄信人、经屋里），对方 <now> 报有信、会被叫醒；记 mail.sent", async () => {
+    const { a1, a2, send } = house();
+    const r = await send(a1, "a1", { to: "a2", text: "分镜好了，在 project/绘本/STATE.md，轮到你上色" });
+    expect(r.status).toBe(200);
+    const got = a2.store.list({ kinds: ["mail.in"], fonds: "", limit: 10 });
+    expect(got.map((e) => e.payload)).toEqual([{ from: "a1", text: "分镜好了，在 project/绘本/STATE.md，轮到你上色", via: "house", ext: r.j.id }]);
+    expect(mailCandidates(a2.store, factsNow(a2.store, null)).map((c) => c.by)).toEqual(["mail"]);
+    expect(await a2.now()).toContain("来信（a1 · 屋里");
+    expect(a1.store.readSyslog({ kind: "mail.sent", limit: 10 }).map((l) => l.detail)).toEqual([{ ref: r.j.id, via: "house", ok: true }]);
+  });
+
+  test("写给住户每封都算额度，回信也算；写给自己 / 屋里没有的人 → 拒", async () => {
+    const { a1, a2, send } = house();
+    const first = await send(a1, "a1", { to: "a2", text: "好了" });
+    expect(first.j.budget.used).toBe(1);
+    const letter = a2.store.list({ kinds: ["mail.in"], fonds: "", limit: 10 })[0];
+    const back = await send(a2, "a2", { to: "a1", text: "收到", replyTo: letter.id });
+    expect(back.status).toBe(200);
+    expect(back.j.budget.used).toBe(1);
+    expect((await send(a1, "a1", { to: "a1", text: "我自己" })).status).toBe(400);
+    const nobody = await send(a1, "a1", { to: "a3", text: "在吗" });
+    expect(nobody.j.error).toContain("能写给 Joy、a2");
   });
 });
