@@ -62,12 +62,16 @@ const places = [
   ...(process.env.PSYCHE_COMMONS ? [{ label: "commons", dir: expand(process.env.PSYCHE_COMMONS) }] : []),
 ];
 const houseTokens = residents.map((r) => r.config.token).filter((t): t is string => !!t);
+const agentTokens: Record<string, string> = Object.fromEntries(
+  residents.map((r) => [r.id, r.config.token]).filter((entry): entry is [string, string] => !!entry[1]),
+);
 const house = openHouse(dataDir, viewers, Date.now, undefined, places, {
   onAddResident: (r) => {
     const resolved: Resident = { ...r, config: { ...r.config, token: r.config.token ?? process.env.PSYCHE_TOKEN } };
     const { app, store } = openResident(resolved);
     apps.set(r.id, app.fetch);
     if (resolved.config.token && !houseTokens.includes(resolved.config.token)) houseTokens.push(resolved.config.token);
+    if (resolved.config.token) agentTokens[resolved.id] = resolved.config.token;
     const v = { id: r.id, store };
     viewers.push(v);
     return v;
@@ -81,7 +85,7 @@ setInterval(() => {
     console.error(`屋子看一圈出错：${e instanceof Error ? e.message : e}`);
   }
 }, TICK_MS);
-Bun.serve({ port, hostname: "127.0.0.1", fetch: createHouse(apps, { tokens: houseTokens, handle: house.handle }) });
+Bun.serve({ port, hostname: "127.0.0.1", fetch: createHouse(apps, { tokens: houseTokens, handle: house.handle, agentTokens }) });
 console.log(
   `Psyche 在 http://127.0.0.1:${port}，数据在 ${dataDir}，住着 ${residents.map((r) => r.id).join("、") || "（没人）"}${embedder ? `，向量：${embedder.model}` : "，没配向量"}`,
 );

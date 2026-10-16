@@ -1,8 +1,10 @@
 /**
  * Psyche Dashboard 单页前端（notes/design/dashboard.md）：
  * 挂在 GET /dashboard，直出零依赖 HTML，通过浏览器 fetch 调 /v1/*。
+ * 服务端在直出 HTML 时自动注入各住户的 Token 映射，实现人类在本地免输 Token、机器间保持严格租户隔离。
  */
-export function renderDashboardHtml(): string {
+export function renderDashboardHtml(deps: { agentTokens?: Record<string, string> } = {}): string {
+  const tokensJson = JSON.stringify(deps.agentTokens || {});
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -124,7 +126,25 @@ export function renderDashboardHtml(): string {
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+    }
+    .badge-auth {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--ok);
+      background: var(--ok-bg);
+      padding: 3px 8px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+      display: inline-block;
     }
     input, textarea, select {
       background: var(--surface);
@@ -429,7 +449,7 @@ export function renderDashboardHtml(): string {
         <button class="nav-btn active" onclick="selectResident(null)">屋子总览</button>
       </div>
       <div class="header-actions">
-        <input type="password" id="token-input" placeholder="Bearer Token（可选）" style="width:150px;" onchange="saveToken(this.value)">
+        <span class="badge-auth" id="auth-badge"><span class="badge-dot"></span> 租户隔离 · 本地直通</span>
         <button class="btn" onclick="openBirthModal()">+ 添加 / 出生</button>
         <button class="btn" onclick="toggleTheme()" id="theme-btn">🌙 深夜台灯</button>
       </div>
@@ -452,6 +472,7 @@ export function renderDashboardHtml(): string {
   </div>
 
   <script>
+    const INJECTED_TOKENS = ${tokensJson};
     const STATE = {
       token: localStorage.getItem('psyche_token') || '',
       agent: new URLSearchParams(location.search).get('agent') || null,
@@ -460,7 +481,6 @@ export function renderDashboardHtml(): string {
       shelfFilter: '',
       house: null,
     };
-    document.getElementById('token-input').value = STATE.token;
 
     function esc(s) {
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -478,7 +498,13 @@ export function renderDashboardHtml(): string {
     }
     async function api(path, opts = {}) {
       const headers = { ...(opts.headers || {}) };
-      if (STATE.token) headers['authorization'] = 'Bearer ' + STATE.token;
+      // 自动匹配 token：优先取目标 agent 的 token，全屋请求取任意一个有效 token
+      const url = new URL(path, location.origin);
+      const targetAgent = url.searchParams.get('agent') || STATE.agent;
+      const autoToken = (targetAgent && INJECTED_TOKENS[targetAgent]) || Object.values(INJECTED_TOKENS)[0] || '';
+      const token = STATE.token || autoToken;
+      if (token) headers['authorization'] = 'Bearer ' + token;
+
       if (opts.body && typeof opts.body === 'object') {
         headers['content-type'] = 'application/json';
         opts.body = JSON.stringify(opts.body);
@@ -493,11 +519,6 @@ export function renderDashboardHtml(): string {
       if (!msg) { el.style.display = 'none'; return; }
       el.style.display = 'flex';
       el.innerHTML = \`<span>⚠️ \${esc(msg)}</span><button class="btn" onclick="showError(null)">关闭</button>\`;
-    }
-    function saveToken(val) {
-      STATE.token = val.trim();
-      localStorage.setItem('psyche_token', STATE.token);
-      refresh();
     }
     function toggleTheme() {
       const dark = document.body.getAttribute('data-theme') === 'dark';

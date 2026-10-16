@@ -18,14 +18,15 @@ export function agentOf(req: Request): string | undefined {
 export interface HouseRoutes {
   tokens: string[];
   handle: (req: Request) => Response | Promise<Response>;
+  agentTokens?: Record<string, string>;
 }
 
 export function createHouse(residents: Map<string, Fetch>, house?: HouseRoutes): Fetch {
   return (req) => {
     const path = new URL(req.url).pathname;
     if (path === "/health") return Response.json({ ok: true });
-    if (req.method === "GET" && (path === "/dashboard" || path === "/dashboard/")) {
-      return new Response(renderDashboardHtml(), { headers: { "content-type": "text/html; charset=utf-8" } });
+    if (req.method === "GET" && (path === "/" || path === "/dashboard" || path === "/dashboard/")) {
+      return new Response(renderDashboardHtml({ agentTokens: house?.agentTokens }), { headers: { "content-type": "text/html; charset=utf-8" } });
     }
     if (house && path.startsWith("/v1/house")) {
       const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
