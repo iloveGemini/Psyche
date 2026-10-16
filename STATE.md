@@ -71,7 +71,9 @@
 - ✅ **屋里的东西（10-16，m8 §6.2）**：`src/house/files.ts`，home / commons 文件多了 / 改了 / 没了，谁动的只在工具调用对得上时说，否则「不知道是谁」；自己动的不报给自己，home 只主人看。测试库：agents.json 加了 a1 / a2 的 `home`，launch 加 `PSYCHE_COMMONS=~/.soma-test/commons`（我新建的空目录，放了一个测试用 README.md，可删）。考卷 `tests/files.test.ts` 3 题，全套 277 过；实测 a1、a2 库里都记下了 `commons/README.md 新出现`（还没递给它）。
 - ✅ **S3 群的底座（10-16，Soma，`soma2.md` §5.6）**：`lib/soma/rooms.ts`（`SOMA_HOME/rooms/<id>.jsonl` + `.json`：成员、游标、在场 here / away / muted；客人照实记名）、`rooms-flow.ts`（只有 Joy 的话和 @ 叫人，住户在群里说的只记不叫——轮次留给 S4；推进去 = 他没读的整段，推完算读过）、session 只把一轮里最后一次工具调用之后说出口的进群（没说 = pass）、单聊走 `dm-<id>` 前端不变。API `/api/rooms`（建 / 列）、`/api/rooms/<id>`、`/say`（按 `?viewer=` 认人）、`/presence`。测试 4 题，Soma 全套 31 过。
   - 端到端（soma-test）：建「S3 测试」（a1、a2、Claude），我 @ 两人 → 各回一句、只有说出口的进群、游标前移；给 a2 单聊 → `dm-a2` 记下、回「通」。
-- 下一步 S4：多人群的轮次（独立首轮、Joy 先回应、依次问在场的、连续两次 pass 静音）+ 群页面。
+- ✅ **S4 群的轮次（10-16，Soma，`soma2.md` §5.7）**：`lib/soma/rooms-round.ts`（纯规则，可测）+ `rooms-flow.ts`（接房子）。一轮由 Joy 起：依次问在场的住户、每人一次、后问的看得到这一轮前面的；勾「新话题」= 独立首轮（同时问、只看得到她那句、到齐一起进记录）；没说话或只说 pass = pass（记进群、不推给别人），连续两次静音到她开新话题或被 @；@ 照问离席 / 静音的；一人最多等 5 分钟，过时算 pass 问下一个；她中途再说话，旧一轮剩下的作废。session 的群回复先交给等着的那一轮决定（`roomWaiters`）。群页面 `/room`（主页顶栏「群」）：选群、建群、看记录（3 秒刷新、pass 显示「过了」）、在场 / 静音、发言、勾新话题。测试 6 题，Soma 全套 37 过。
+  - 端到端（soma-test「S3 测试」群，我以 Claude 身份 @ 两人）：依次问，a1 说「7，翠鸟那七天」，a2 接着说「2，在那七天平静的海面上添一只作伴的鸟」——看得到前一个人这一轮说的。**Joy 起的一轮和新话题我没测**（我不是 Joy），留给她在 `/room` 亲自试。
+- 下一步：Joy 试 `/room`；S5 分工（commons + 项目 STATE.md + 忙碌灯 + 插话 / 停下）。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
