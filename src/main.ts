@@ -83,6 +83,8 @@ function openResident({ id, dir, config }: Resident) {
 function startScheduler(id: string, store: EventStore, config: ResidentConfig, tag: string) {
   const model = bornRecord(store)?.model ?? config.model;
   const soma = config.soma?.replace(/\/+$/, "");
+  // Soma 里住着几个人：醒来按 id 推到他那条线（Soma residents.ts）
+  const wakeUrl = `${soma}/api/line/wake?agent=${encodeURIComponent(id)}`;
   if (!model) {
     console.error(`${tag}调度器没开：不知道他的模型（出生时没记，agents.json 里也没写 model）`);
     return;
@@ -92,7 +94,7 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
   const bodyUp = async () => {
     if (!soma) return false;
     try {
-      return (await fetch(`${soma}/api/line/wake`, { signal: AbortSignal.timeout(3_000) })).ok;
+      return (await fetch(wakeUrl, { signal: AbortSignal.timeout(3_000) })).ok;
     } catch {
       return false;
     }
@@ -103,7 +105,7 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
     const { by, note, session, key } = d.wake;
     if (!asleepWork(d.wake)) {
       console.log(`${tag}叫醒（${BY_NAME[by] ?? by}${note ? `：${note}` : ""}）→ Soma`);
-      fetch(`${soma}/api/line/wake`, {
+      fetch(wakeUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ by, key, ...(note ? { note } : {}) }),
