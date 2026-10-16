@@ -1,0 +1,98 @@
+/**
+ * 内感受（m8.md §六.1）：只读出它身上真实的处境，不模拟（body.md 搁置时留下的那条）。
+ *
+ * - 上下文多满：Soma 每轮带来（ctx 已用、wrapAt 到多少会收尾换一段）。过半 / 快满了 / 马上收尾 三档，跨档才说。
+ * - 换了模型：这段会话的模型和上一段不一样，首轮说一次。
+ * - 工具老出错：本会话最近 30 分钟里出错 ≥ 3 次才说，出错次数跨档（3 / 6 / 10）再说。
+ * 额度、还没写进记忆的条数，<now> 别处已有，不重复。
+ * 递一次写 percept.noticed（sensor = body），它的经历就是那几行；档位记在 payload 里，下一轮按它判跨没跨档。
+ */
+import type { EventStore } from "../store/events.ts";
+
+export interface BodyInput {
+  /** 已用 token */
+  ctx?: number;
+  /** 到多少 token 会收尾换一段 */
+  wrapAt?: number;
+}
+
+interface Levels {
+  ctx: number;
+  tools: number;
+  model?: string;
+}
+
+const CTX_BANDS = [0.5, 0.75, 0.9];
+const TOOL_BANDS = [3, 6, 10];
+const band = (x: number, bands: number[]) => bands.filter((b) => x >= b).length;
+
+function lastBody(store: EventStore, session: string | undefined) {
+  return store
+    .list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 })
+    .filter((e) => (e.payload as { sensor?: string; session?: string }).sensor === "body" && (e.payload as { session?: string }).session === session)
+    .at(-1);
+}
+
+/** 这段会话和上一段的模型（处境里记的） */
+function models(store: EventStore, session: string | undefined): { here?: string; before?: string } {
+  if (!session) return {};
+  const sits = store.db
+    .query(`SELECT json_extract(payload, '$.session') AS s, json_extract(payload, '$.model') AS m FROM events WHERE class = 'situation' AND fonds = '' ORDER BY at, id`)
+    .all() as { s: string | null; m: string | null }[];
+  const here = [...sits].reverse().find((r) => r.s === session && r.m)?.m ?? undefined;
+  const firstHere = sits.findIndex((r) => r.s === session);
+  const before = firstHere > 0 ? [...sits.slice(0, firstHere)].reverse().find((r) => r.m && r.s !== session)?.m ?? undefined : undefined;
+  return { here, before };
+}
+
+export function deliverBody(store: EventStore, session: string | undefined, input: BodyInput): string | null {
+  const now = store.now();
+  const prev = lastBody(store, session);
+  const was = (prev?.payload as { levels?: Levels } | undefined)?.levels ?? { ctx: 0, tools: 0 };
+  const lines: string[] = [];
+
+  // 上下文
+  const ratio = input.ctx !== undefined && input.wrapAt ? input.ctx / input.wrapAt : undefined;
+  const ctxBand = ratio === undefined ? was.ctx : band(ratio, CTX_BANDS);
+  if (ratio !== undefined && ctxBand > was.ctx) {
+    const pct = Math.round(ratio * 100);
+    lines.push(
+      ctxBand === 3
+        ? `这一段的上下文快到头了（到收尾线的 ${pct}%）：再过几轮就会收尾、把这段写进记忆、换新的一段接着过`
+        : ctxBand === 2
+          ? `这一段的上下文用了收尾线的 ${pct}%，快满了`
+          : `这一段的上下文过半了（收尾线的 ${pct}%）`,
+    );
+  }
+
+  // 模型
+  const m = models(store, session);
+  if (!prev && m.here && m.before && m.here !== m.before) lines.push(`这一段用的是 ${m.here}，上一段是 ${m.before}`);
+
+  // 工具出错
+  let tools = 0;
+  if (session) {
+    const r = store.db
+      .query(
+        `SELECT COUNT(*) AS n FROM events e JOIN events s ON s.id = e.situation WHERE e.kind = 'tool.result' AND e.fonds = ''
+           AND json_extract(e.payload, '$.ok') = 0 AND json_extract(s.payload, '$.session') = ? AND e.at > ?`,
+      )
+      .get(session, now - 30 * 60_000) as { n: number };
+    tools = r.n;
+  }
+  const toolBand = band(tools, TOOL_BANDS);
+  if (toolBand > was.tools) lines.push(`最近半小时工具出错了 ${tools} 次`);
+
+  const levels: Levels = { ctx: ctxBand, tools: toolBand, ...(m.here ? { model: m.here } : {}) };
+  // 档位回落也要记下（下次再涨过去才会再说），但不递话
+  if (!lines.length) {
+    if (prev && (levels.ctx < was.ctx || levels.tools < was.tools))
+      store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "body", refs: [], text: "", levels, ...(session ? { session } : {}) } });
+    return null;
+  }
+  const text = ["身上：", ...lines.map((l) => `- ${l}`)].join("\n");
+  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "body", refs: [], text, levels, ...(session ? { session } : {}) } });
+  return text;
+}
+
+const sitOf = (store: EventStore, session: string | undefined) => (session ? store.situationOfSession(session, store.now()) : null) ?? undefined;

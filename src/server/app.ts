@@ -36,6 +36,7 @@ import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, 
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { analyzeTrack } from "../perception/features.ts";
 import { NoticeError, writeNotice } from "../perception/env.ts";
+import { deliverBody } from "../perception/body.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 
 export interface AppDeps {
@@ -221,7 +222,9 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     // 屋里有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
     const house = deliverPresence(store, session);
     const heard = await deliverSound(store, sound, session).catch(() => null);
-    for (const block of [just, house, heard, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
+    // 内感受（m8.md §六.1）：上下文多满由 Soma 带来
+    const body = deliverBody(store, session, { ctx: num(c.req.query("ctx")), wrapAt: num(c.req.query("wrapAt")) });
+    for (const block of [just, body, house, heard, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
     return c.json({ text });
   });
 

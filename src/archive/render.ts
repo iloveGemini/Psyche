@@ -61,6 +61,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "percept":
       return null; // 屋子记下的变化不等于它经历过的；递到眼前的在 percept.noticed 里（m8.md §五）
     case "percept.noticed":
+      if (!p.text) return null; // 只记档位回落、没递话的那种
       return p.looked ? `（我看了看）${p.text}` : p.text;
     case "played": {
       const ts = p.tracks as { title: string; artist: string }[];
