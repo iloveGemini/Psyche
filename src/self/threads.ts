@@ -62,7 +62,8 @@ function resolveCites(store: EventStore, cites: unknown) {
   for (const c of cites) {
     const ev = typeof c === "string" ? store.byArchiveNo(c.trim().replace(/^\[|\]$/g, "")) : null;
     if (!ev) throw new ThreadError(`引的 ${String(c)} 查不到`);
-    if (ev.fonds || !(ev.class === "experience" || ev.kind === "episode")) throw new ThreadError(`引的 ${c} 不是你的经历或情节，不能当证据`);
+    // 自己写出去的信也算（10-16 a1：回 Joy 的那封被拒，"我自己写、自己发的却不算我的经历"）
+    if (ev.fonds || !(ev.class === "experience" || ev.kind === "episode" || ev.kind === "mail.out")) throw new ThreadError(`引的 ${c} 不是你的经历、情节或你写的信，不能当证据`);
     out.set(ev.id, ev);
   }
   return [...out.values()].map((e) => ({ to: e.id, rel: "evidence" }));

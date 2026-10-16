@@ -20,7 +20,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=BAAI/bge-m3; PSYCHE_DATA_DIR=/Users/joy/.psyche/test PSYCHE_PORT=7450 exec bun run src/main.ts"
+        "export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=BAAI/bge-m3; PSYCHE_NCM_COOKIE=/Users/joy/.roxy/agent/music/cookies.json PSYCHE_DATA_DIR=/Users/joy/.psyche/test PSYCHE_PORT=7450 exec bun run src/main.ts"
       ],
       "port": 7450
     },
@@ -29,7 +29,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=BAAI/bge-m3; PSYCHE_DATA_DIR=/Users/joy/.psyche/test PSYCHE_PORT=7450 PSYCHE_SCHEDULER=1 exec bun run src/main.ts"
+        "export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=BAAI/bge-m3; PSYCHE_NCM_COOKIE=/Users/joy/.roxy/agent/music/cookies.json PSYCHE_DATA_DIR=/Users/joy/.psyche/test PSYCHE_PORT=7450 PSYCHE_SCHEDULER=1 exec bun run src/main.ts"
       ],
       "port": 7450
     },

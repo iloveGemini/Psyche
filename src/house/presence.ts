@@ -165,8 +165,10 @@ function changeLine(evs: PsycheEvent[], tz: string): string {
   return evs.length === 1 ? `${now}（${hhmm(evs[0].at, tz)}）` : `${now}（${hhmm(evs[0].at, tz)} 起变了 ${evs.length} 次）`;
 }
 
-const noticedIn = (store: EventStore, session: string | undefined) =>
-  store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { session?: string }).session === session);
+/** 递过的屋里那几行（声音的另算，sound.ts） */
+const presenceNoticed = (store: EventStore) =>
+  store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).filter((e) => ((e.payload as { sensor?: string }).sensor ?? "presence") === "presence");
+const noticedIn = (store: EventStore, session: string | undefined) => presenceNoticed(store).filter((e) => (e.payload as { session?: string }).session === session);
 
 /**
  * <now> 的「这段时间屋里」：本会话上次递到之后的变化。本会话还没递过 = 首轮：给全貌 + 上一会话以来的次数。
@@ -194,7 +196,7 @@ export function deliverPresence(store: EventStore, session: string | undefined):
     const current = lastSeenPresence(store);
     if (!current.size) return null;
     // 上一次递到（任何会话）之后变过几次
-    const anyNoticed = store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).at(-1);
+    const anyNoticed = presenceNoticed(store).at(-1);
     const since = anyNoticed?.id;
     const nameOf = (k: string) => (current.get(k)?.ev.payload as { name?: string } | undefined)?.name ?? k;
     const counts = since === undefined ? [] : [...countBy(all.filter((e) => e.id > since))].map(([k, n]) => `${nameOf(k)} 变过 ${n} 次`);
@@ -205,7 +207,7 @@ export function deliverPresence(store: EventStore, session: string | undefined):
     ].join("\n");
     refs = [...current.values()].map((c) => c.ev.id);
   }
-  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { refs, text, ...(session ? { session } : {}) } });
+  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "presence", refs, text, ...(session ? { session } : {}) } });
   return text;
 }
 
@@ -234,6 +236,6 @@ export function lookPresence(store: EventStore, session: string | undefined): st
   const text = current.size
     ? ["屋里：", ...[...current.entries()].map(([k, { value, ev }]) => `- ${describe(k, (ev.payload as { name: string }).name, value)}`)].join("\n")
     : "屋里还没看到别人。";
-  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { refs: [...current.values()].map((c) => c.ev.id), text, looked: true, ...(session ? { session } : {}) } });
+  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "presence", refs: [...current.values()].map((c) => c.ev.id), text, looked: true, ...(session ? { session } : {}) } });
   return text;
 }

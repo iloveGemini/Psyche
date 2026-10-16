@@ -24,6 +24,10 @@
  *   close_thread      合上一卷                → POST /v1/threads/close
  *   look              看一眼屋里              → GET  /v1/look
  *   set_mood          挂心情个签              → POST /v1/mood
+ *   play / stop       放歌 / 停               → POST /v1/play、/v1/stop
+ *   playlist          歌单（看 / 建 / 加 / 删） → GET/POST /v1/playlist
+ *   listen            听一下此刻在放的         → GET  /v1/listen
+ *   listen_with       戴上 / 摘下谁的一只耳机   → POST /v1/listen/with
  *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
  *   send_mail         写信：给 Joy / 交接信    → POST /v1/mail/out
  *
@@ -695,6 +699,70 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/mood", args)) as { mood: string | null };
       return text(r.mood ? `挂上了：「${r.mood}」` : "清空了。");
+    }),
+  );
+
+  // 自己的声音（m8.md §三）
+  server.registerTool(
+    "play",
+    {
+      description: [
+        "给自己放歌：query 搜一首放（取第一首），或 playlist 放你的一个歌单（shuffle 打乱）。放完就停；再放会顶掉正在放的。",
+        "你听到的是：歌名歌手、随播放推进的歌词、这一段的响度 / 亮暗 / 速度（本地从音频算的，不是模型听的）。在放着时每轮 <now> 的「这段时间听到的」里报；也可以用 listen 随时听一下。",
+        "屋里的人可以戴上你的一只耳机一起听（Joy 在 Soma 页面上，别的住户用 listen_with）；只有有人戴着时才真的出声。",
+      ].join("\n"),
+      inputSchema: { query: z.string().optional(), playlist: z.string().optional(), shuffle: z.boolean().optional() },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/play", args)) as { playing: { title: string; artist: string; album?: string; duration: number }; of: number; mismatch?: boolean };
+      const d = `${Math.floor(r.playing.duration / 60)}:${String(r.playing.duration % 60).padStart(2, "0")}`;
+      if (r.mismatch) return text(`搜「${args.query}」没有歌名对得上的，放的是《${r.playing.title}》${r.playing.artist}${r.playing.album ? `（专辑《${r.playing.album}》）` : ""}，${d}。不是你要的就换个说法再搜（加上歌手名通常更准）。`);
+      return text(`在放《${r.playing.title}》${r.playing.artist}（${d}）${r.of > 1 ? `，共 ${r.of} 首` : ""}。`);
+    }),
+  );
+  server.registerTool(
+    "stop",
+    { description: "停掉你正在放的歌。", inputSchema: {} },
+    guard(async () => {
+      await call("POST", "/v1/stop");
+      return text("停了。");
+    }),
+  );
+  server.registerTool(
+    "playlist",
+    {
+      description: [
+        "你的歌单（存在你自己这里）。不给 op：列出所有歌单和里面的歌。",
+        "op：create 建（name）/ add 加一首（name + query 搜第一首）/ remove 拿掉（name + query 按歌名找）/ delete 删整个歌单。",
+        "「喜欢的」就是一个普通歌单，想有就自己建。",
+      ].join("\n"),
+      inputSchema: { op: z.enum(["create", "add", "remove", "delete"]).optional(), name: z.string().optional(), query: z.string().optional() },
+    },
+    guard(async (args) => {
+      if (!args.op) {
+        const r = (await call("GET", "/v1/playlist")) as { playlists: Record<string, { title: string; artist: string }[]> };
+        const names = Object.keys(r.playlists);
+        if (!names.length) return text("还没有歌单。");
+        return text(names.map((n) => `「${n}」${r.playlists[n].length} 首${r.playlists[n].length ? "：" + r.playlists[n].map((t) => `《${t.title}》${t.artist}`).join("、") : ""}`).join("\n"));
+      }
+      const r = (await call("POST", "/v1/playlist", args)) as { name: string; tracks: unknown[] };
+      return text(`好了，「${r.name}」现在 ${r.tracks.length} 首。`);
+    }),
+  );
+  server.registerTool(
+    "listen",
+    { description: "听一下此刻在放的（你自己的，或你戴着谁的耳机就是他的）：哪首、放到哪、最近唱的几行、这一段的样子。", inputSchema: {} },
+    guard(async () => text(((await call("GET", "/v1/listen")) as { text: string }).text)),
+  );
+  server.registerTool(
+    "listen_with",
+    {
+      description: "戴上屋里另一个住户的一只耳机，跟着他听（host = 他的 id，看 look）；他那边看得到你戴上了。host 给空串 = 摘下。",
+      inputSchema: { host: z.string() },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/listen/with", { host: args.host || null })) as { joined?: string; left?: string };
+      return text(r.joined ? `戴上了 ${r.joined} 的一只耳机。` : `摘下了 ${r.left} 的耳机。`);
     }),
   );
 

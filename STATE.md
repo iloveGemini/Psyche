@@ -57,7 +57,11 @@
 十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · 心跳 ✅ · 通道 ✅（10-16 端到端通过）· **感知 ❌**。线索卷有了最小一版（M7）。下一块：感知（M8）。10-16 Joy 改思路：**以它自己为中心感知所处环境**（屋里有谁 / 自己放的歌与分耳机 / 环境进记忆：被动指纹 + 主动 `notice`），v1 围绕她机器的那批降为后置可选。契约 v2 `notes/plan/m8.md`，分 M8a/b/c，§八 10-16 已定（听 = 元数据 + 时间轴歌词 + 本地特征；曲库网易云、能自己建歌单；Joy 只报在不在家；在线 / 忙 / 闲直接可见 + 心情个签）。网易云一个账号（Joy 的会员），歌单本体在 Psyche、网易云做镜像，它的喜欢 = 它自己一个歌单。
 - ✅ **M8a 屋里有谁（10-16）**：`src/house/presence.ts`（在线忙 / 闲、睡着、离线、在哪、个签；Joy 只报在不在家：Soma 页面 10 分钟内在看，或 30 分钟内在 Soma 说过话）、`src/house/house.ts`（每 30 秒看一圈，谁变了记进**其他人**库里的 `percept`；Joy 的个签存 `house.json`；`/v1/house`、`/v1/house/joy/seen|mood`，任一住户 token 可进）。`<now>` 加「屋里 / 这段时间屋里」，递一次写 `percept.noticed`（经历 = 递出去那几行；`percept` 本身不进经历）；`look`、`set_mood` 工具；经历投影 v9。Soma（同日）：`/api/line/viewing` 在看时报 `joy/seen`。考卷 `tests/presence.test.ts` 10 题，全套 253 过。
   - 端到端（soma-test a1，测前备份 `~/.psyche/test/a{1,2}.bak-1016-preM8a.db`）：问它在做什么、周围怎样，它照 `<now>` 答「a2 离线，Joy 不在家，要找她得写信，屋里就我一个醒着」。我用 curl 模拟过一次页面在看（测试库里因此记了一次「Joy 在家」）。没测到：它自己用 look / set_mood；a2 醒着时 a1 看到的变化。
-- 下一步 M8b：搬 Roxy 网易云、play / 歌单、"听"（时间轴歌词 + 本地特征）、分一只耳机。
+- ✅ **M8b 自己的声音（10-16）**：`src/perception/`（`netease.ts` 搬 Roxy 读法，cookie 走 `PSYCHE_NCM_COOKIE`，测试 launch 指向 Roxy 那份；`sound.ts` 虚的播放器 + 歌单（`playlist.changed`，以 Psyche 为准，网易云镜像没做）+ 递「这段时间听到的」+ 一起听；`features.ts` ffmpeg 解码自算响度 / 亮暗 / BPM / 段落，真歌约 1 秒）。工具 `play` / `stop` / `playlist` / `listen` / `listen_with`；屋子 `/v1/house/listen`、`/v1/house/playing/:id`；经历投影 v10。Soma：顶栏「🎧 分我一只」+ `/api/ear`、`/api/ear/stream`（同源转发网易云音频）。考卷 `tests/sound.test.ts` 9 题，全套 262 过。
+  - 端到端（a1，备份 `a1.bak-1016-preM8b.db`）：告诉它有了，它自己搜《Halcyon Days》（和 Joy 聊过的翠鸟）放，结果网易云第一首是专辑名对上的别的歌，它放了才发现 → 已改：歌名优先 + 对不上直说。它还提：自己写的信不能当线索卷证据 → 已放行 `mail.out`。
+  - 我在内置浏览器点了「分我一只」（测试库因此记了一次「Joy 戴上了耳机」）；按钮、记账、转发都通（curl 206 audio/mpeg），但**内置浏览器的 audio 卡在加载，真出声没验**——要 Joy 在手机或 Chrome 上点一下。
+  - **待查**：a1 说 Joy 09:40 那封信它 09:41 在 Soma 就翻开回了，10:35 在家时 `<now>` 却报没读，它因此挂了一天。已读是按人还是按会话算，要查 `inbox.ts`。
+- 下一步：M8c 环境进记忆（环境指纹进联想 + `notice`）。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 

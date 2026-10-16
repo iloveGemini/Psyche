@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.31.0",
+    "@neteasecloudmusicapienhanced/api": "4.40.1",
     "hono": "^4.13.13",
     "zod": "4.6.5"
   }

@@ -9,10 +9,13 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { houseTick, joyPresence, presenceOf, JOY, MOOD_MAX, type Viewer } from "./presence.ts";
 import { currentName } from "../self/self.ts";
+import { nowPlaying } from "../perception/sound.ts";
+import { netease, type MusicSource } from "../perception/netease.ts";
 
 export const TICK_MS = 30_000;
 
-export function openHouse(dataDir: string, residents: Viewer[], now: () => number = Date.now) {
+export function openHouse(dataDir: string, residents: Viewer[], now: () => number = Date.now, music: MusicSource = netease) {
+  const storeOf = (id: string) => residents.find((r) => r.id === id)?.store;
   const file = join(dataDir, "house.json");
   const saved = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { joyMood?: string }) : {};
   const joy: { lastSeen?: number; mood?: string } = { mood: saved.joyMood || undefined };
@@ -42,6 +45,23 @@ export function openHouse(dataDir: string, residents: Viewer[], now: () => numbe
       save();
       tick();
       return Response.json({ mood: joy.mood ?? null });
+    }
+    // 分一只耳机（m8.md §3.3）：Joy 在 Soma 页面上戴上 / 摘下某人的
+    if (req.method === "POST" && path === "/v1/house/listen") {
+      const b = (await req.json().catch(() => null)) as { host?: unknown; on?: unknown } | null;
+      const host = typeof b?.host === "string" ? storeOf(b.host) : undefined;
+      if (!host) return Response.json({ error: "屋里没有这个人" }, { status: 404 });
+      host.append({ kind: b!.on === false ? "ear.left" : "ear.joined", class: "experience", source: "house", situation: null, payload: { who: JOY } });
+      return Response.json({ ok: true });
+    }
+    // 某人此刻在放什么、放到哪、能放的地址（Soma 照这个真的出声）
+    const m = path.match(/^\/v1\/house\/playing\/([^/]+)$/);
+    if (req.method === "GET" && m) {
+      const s = storeOf(decodeURIComponent(m[1]));
+      if (!s) return Response.json({ error: "屋里没有这个人" }, { status: 404 });
+      const p = nowPlaying(s, now());
+      if (!p) return Response.json({ track: null });
+      return Response.json({ track: p.track, pos: p.pos, url: (await music.url(p.track.id).catch(() => undefined)) ?? null });
     }
     return Response.json({ error: "没有这个口子" }, { status: 404 });
   };

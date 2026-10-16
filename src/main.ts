@@ -8,6 +8,7 @@
  *   PSYCHE_PORT      端口（缺省 7450）
  *   PSYCHE_EMBED_*   嵌入服务（archive/vectors.ts）；不设 = 只用字面检索。大家共用
  *   PSYCHE_SCHEDULER 设成 1 才开调度器（m5.md §六：缺省关，开着才会醒）；每人一个
+ *   PSYCHE_NCM_COOKIE 网易云登录（cookies.json 的路径，Roxy 那份的格式）：全屋共用一个账号放歌（m8.md §三）
  *   只住一个人时给他当缺省（住几个人就写进 agents.json）：
  *   PSYCHE_MODEL     他的模型，出生时没记下的库用它（睡着时整理用）
  *   SOMA_URL         他的家（Soma，如 http://127.0.0.1:30151）：醒来推到这里。不设 = 只做睡着时的整理，不叫醒
@@ -46,6 +47,8 @@ if (residents.filter((r) => r.config.email).length > 1) console.error("不止一
 
 const apps = new Map<string, (req: Request) => Response | Promise<Response>>();
 const viewers: { id: string; store: EventStore }[] = [];
+// 屋里别人的库：一起听要跨住户读播放器、记 ear.*（openResident 时还没全开，用到时才查）
+const storeOf = (id: string) => viewers.find((v) => v.id === id)?.store;
 for (const r of residents) {
   const { app, store } = openResident(r);
   apps.set(r.id, app.fetch);
@@ -85,7 +88,7 @@ function openResident({ id, dir, config }: Resident) {
     const to = (ev.payload as { to: string }).to;
     for (const ch of getChannels(store).channels[to] ?? []) if (ch === "email") void deliverEmail(store, ev);
   };
-  const app = createApp({ store, projections, token: config.token, embedder, outbox });
+  const app = createApp({ store, projections, token: config.token, embedder, outbox, storeOf, selfId: id });
 
   if (config.email) {
     startEmailWatch(store, { onError: (e) => console.error(`${tag}收邮件出错：${e.message}`) });

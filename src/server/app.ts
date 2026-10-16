@@ -32,6 +32,9 @@ import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, writeGist } from "../catalog/gist.ts";
 import { renderContinuity } from "../archive/continuity.ts";
 import { deliverPresence, lookPresence, MoodError, setMood } from "../house/presence.ts";
+import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, readPlaylists, SoundError, stop, type SoundDeps } from "../perception/sound.ts";
+import { netease, type MusicSource } from "../perception/netease.ts";
+import { analyzeTrack } from "../perception/features.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 
 export interface AppDeps {
@@ -44,11 +47,22 @@ export interface AppDeps {
   embedder?: Embedder;
   /** 写给人的信交出站（main.ts 按通道设置投递、记 mail.sent）；测试换成收集器 */
   outbox?: (ev: PsycheEvent) => void;
+  /** 放歌的源（缺省网易云）；考卷换成假的 */
+  music?: MusicSource;
+  /** 屋里别人的库（一起听：跟着对方的播放器听、在对方库里记 ear.*）；只住一个人时没有 */
+  storeOf?: (id: string) => EventStore | undefined;
+  /** 我是谁（屋里的 id）：去别人库里记"谁戴上了耳机"用 */
+  selfId?: string;
 }
 
 const num = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
 
-export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox }: AppDeps) {
+export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox, music = netease, storeOf, selfId }: AppDeps) {
+  const sound: SoundDeps = {
+    music,
+    storeOf,
+    analyze: (t) => void music.url(t.id).then((u) => analyzeTrack(store, t.id, u)).catch(() => {}),
+  };
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -56,7 +70,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError || err instanceof SoundError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -205,7 +219,8 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const s = renderSurfaced(await surface(store, embedder, { session }));
     // 屋里有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
     const house = deliverPresence(store, session);
-    for (const block of [just, house, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
+    const heard = await deliverSound(store, sound, session).catch(() => null);
+    for (const block of [just, house, heard, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
     return c.json({ text });
   });
 
@@ -279,6 +294,39 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const b = await c.req.json();
     if (!b || typeof b !== "object" || Array.isArray(b)) throw new MoodError("body 必须是对象");
     return c.json(setMood(store, b as Record<string, unknown>));
+  });
+
+  // 自己的声音（m8.md §三）
+  const obj2 = async (c: { req: { json: () => Promise<unknown> } }) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b || typeof b !== "object" || Array.isArray(b)) throw new SoundError("body 必须是对象");
+    return b as Record<string, unknown>;
+  };
+  app.post("/v1/play", async (c) => {
+    const { playing, of, mismatch } = await play(store, music, await obj2(c));
+    void ensureFirst(playing.id);
+    return c.json({ playing, of, ...(mismatch ? { mismatch } : {}) });
+  });
+  const ensureFirst = (id: string) => music.url(id).then((u) => analyzeTrack(store, id, u)).catch(() => {});
+  app.post("/v1/stop", (c) => c.json(stop(store)));
+  app.get("/v1/playlist", (c) => c.json({ playlists: Object.fromEntries(readPlaylists(store)) }));
+  app.post("/v1/playlist", async (c) => c.json(await changePlaylist(store, music, await obj2(c))));
+  app.get("/v1/listen", async (c) => c.json({ text: await listenNow(store, sound, c.req.query("session") || undefined) }));
+  app.post("/v1/listen/with", async (c) => {
+    const b = await obj2(c);
+    const host = b.host === null || b.host === "" ? null : typeof b.host === "string" ? b.host.trim() : undefined;
+    if (host === undefined) throw new SoundError("host 应为住户 id（摘下给 null）");
+    if (host === selfId) throw new SoundError("那是你自己的播放器");
+    if (host !== null && !storeOf?.(host)) throw new SoundError(`屋里没有 ${host}`);
+    const r: { joined?: string; left?: string } = listenWith(store, host);
+    const me = selfId ?? "?";
+    if (r.left) storeOf?.(r.left)?.append({ kind: "ear.left", class: "experience", source: "house", situation: null, payload: { who: me } });
+    if (r.joined) storeOf?.(r.joined)?.append({ kind: "ear.joined", class: "experience", source: "house", situation: null, payload: { who: me } });
+    return c.json(r);
+  });
+  app.get("/v1/playing", (c) => {
+    const p = nowPlaying(store);
+    return c.json(p ? { track: p.track, pos: p.pos, index: p.index, of: p.of } : { track: null });
   });
 
   // 收件箱与通道（m6.md §五）

@@ -51,6 +51,14 @@ export const KINDS: Record<string, KindSpec> = {
   "thread.closed": { class: "self", required: { target: "string", title: "string", how: "string", why: "string" }, rels: ["evidence"] },
   // 心情个签（m8.md §二）：本人挂，空串 = 清空
   "mood.set": { class: "self", required: { text: "string" } },
+  // 自己的声音（m8.md §三）：放、停、歌单、跟着谁听——它的动作；别人来戴 / 摘它的耳机是它经历到的
+  played: { class: "self", required: { tracks: "array", startAt: "number" } }, // + playlist?
+  stopped: { class: "self", required: {} },
+  "playlist.changed": { class: "self", required: { name: "string", op: "string" } }, // + track?
+  "listen.joined": { class: "self", required: { host: "string" } },
+  "listen.left": { class: "self", required: { host: "string" } },
+  "ear.joined": { class: "experience", required: { who: "string" } },
+  "ear.left": { class: "experience", required: { who: "string" } },
   "focus.changed": { class: "self", required: { items: "array" } },
   loaded: { class: "self", required: { refs: "array" } },
   evicted: { class: "self", required: { refs: "array" } },
