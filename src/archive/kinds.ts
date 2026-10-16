@@ -26,7 +26,9 @@ export const KINDS: Record<string, KindSpec> = {
   "message.out": { class: "experience", required: { text: "string" } }, // + to?, session?
   "tool.call": { class: "experience", required: { name: "string", callId: "string" } }, // + args?
   "tool.result": { class: "experience", required: { callId: "string", name: "string", ok: "boolean" } }, // + text? | result?: MaterialRef
-  percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + sensitive?: string[], precision?
+  percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + subject?, name?, prev?（m8.md：屋子记下的变化；不进经历，递到才算）
+  // 递到它眼前的感知（m8.md §五）：text 是递出去的原文，它的经历就是这几行；looked = 它自己 look 的
+  "percept.noticed": { class: "experience", required: { refs: "array", text: "string" } }, // + session?, looked?
   // 来信（m6.md §一）：经通道口子写，不挂处境；没翻开前经历里不给正文
   "mail.in": { class: "experience", required: { from: "string", text: "string", via: "string" } }, // + subject?, urgent?, ext?（外部通道的消息 id）
   surfaced: { class: "experience", required: { ref: "string" } }, // + clarity?；线索记在 cue 里但不渲染给它看
@@ -47,6 +49,8 @@ export const KINDS: Record<string, KindSpec> = {
   "thread.opened": { class: "self", required: { type: "string", title: "string" }, rels: ["evidence"] }, // + to?, note?
   "thread.noted": { class: "self", required: { target: "string", title: "string", text: "string" }, rels: ["evidence"] },
   "thread.closed": { class: "self", required: { target: "string", title: "string", how: "string", why: "string" }, rels: ["evidence"] },
+  // 心情个签（m8.md §二）：本人挂，空串 = 清空
+  "mood.set": { class: "self", required: { text: "string" } },
   "focus.changed": { class: "self", required: { items: "array" } },
   loaded: { class: "self", required: { refs: "array" } },
   evicted: { class: "self", required: { refs: "array" } },

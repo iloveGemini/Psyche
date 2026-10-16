@@ -51,11 +51,11 @@ describe("经历投影", () => {
     store.setSituation({ harness: "roxy", model: "gemini-3.8-flash" });
     intake(store, { kind: "message.in", source: "roxy", payload: { from: "Joy", text: "早" }, at: T("2026-10-13T09:00:00+08:00") });
     intake(store, { kind: "message.out", source: "roxy", payload: { text: "早，睡得怎么样" }, at: T("2026-10-13T09:00:05+08:00") });
-    // 晚到的感知：发生得更早
-    intake(store, { kind: "percept", source: "phone", payload: { sensor: "屏幕", value: "解锁" }, at: T("2026-10-13T08:59:00+08:00") });
+    // 晚到的事件：发生得更早（感知 10-16 起不直接进经历，见 m8.md §五）
+    intake(store, { kind: "woke", source: "soma", payload: { by: "manual" }, at: T("2026-10-13T08:59:00+08:00") });
     store.append({ kind: "message.in", class: "experience", source: "import", fonds: "ROY", payload: { from: "Joy", text: "前世的话" } });
     const lines = readExperience(store.db).map((l) => l.text);
-    expect(lines).toEqual(["（此后：在 roxy，用 gemini-3.8-flash）", "（感知 · 屏幕）解锁", "Joy：早", "我说：早，睡得怎么样"]);
+    expect(lines).toEqual(["（此后：在 roxy，用 gemini-3.8-flash）", "（醒来 · 手动）", "Joy：早", "我说：早，睡得怎么样"]);
   });
 
   test("提示词改动：角标指向资料，带上为什么", () => {

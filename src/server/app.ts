@@ -31,6 +31,7 @@ import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setC
 import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, writeGist } from "../catalog/gist.ts";
 import { renderContinuity } from "../archive/continuity.ts";
+import { deliverPresence, lookPresence, MoodError, setMood } from "../house/presence.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 
 export interface AppDeps {
@@ -55,7 +56,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -202,7 +203,9 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store)].filter(Boolean).join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session }));
-    for (const block of [just, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
+    // 屋里有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
+    const house = deliverPresence(store, session);
+    for (const block of [just, house, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
     return c.json({ text });
   });
 
@@ -269,6 +272,14 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.post("/v1/threads", async (c) => c.json(openThread(store, await obj(c))));
   app.post("/v1/threads/note", async (c) => c.json(noteThread(store, await obj(c))));
   app.post("/v1/threads/close", async (c) => c.json(closeThread(store, await obj(c))));
+
+  // 感知：看一眼屋里、挂个签（m8.md §二 §五）
+  app.get("/v1/look", (c) => c.json({ text: lookPresence(store, c.req.query("session") || undefined) }));
+  app.post("/v1/mood", async (c) => {
+    const b = await c.req.json();
+    if (!b || typeof b !== "object" || Array.isArray(b)) throw new MoodError("body 必须是对象");
+    return c.json(setMood(store, b as Record<string, unknown>));
+  });
 
   // 收件箱与通道（m6.md §五）
   const body = async (c: { req: { json: () => Promise<unknown> } }) => {

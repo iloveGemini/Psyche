@@ -22,6 +22,8 @@
  *   open_thread       开一卷                  → POST /v1/threads
  *   note_thread       在一卷上记一笔           → POST /v1/threads/note
  *   close_thread      合上一卷                → POST /v1/threads/close
+ *   look              看一眼屋里              → GET  /v1/look
+ *   set_mood          挂心情个签              → POST /v1/mood
  *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
  *   send_mail         写信：给 Joy / 交接信    → POST /v1/mail/out
  *
@@ -671,6 +673,28 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/threads/close", args)) as { archiveNo: string };
       return text(`合上了（${r.archiveNo}）。`);
+    }),
+  );
+
+  // 屋里有谁（m8.md §二）
+  server.registerTool(
+    "look",
+    {
+      description: "看一眼屋里此刻有谁：每个住户在线（忙 / 闲）、睡着还是离线、在哪、挂着什么个签；Joy 在不在家（在家能在 Soma 直接说，不在家要找她就写信）。平时屋里有变化会在 <now> 的「这段时间屋里」里报。",
+      inputSchema: {},
+    },
+    guard(async () => text(((await call("GET", "/v1/look")) as { text: string }).text)),
+  );
+
+  server.registerTool(
+    "set_mood",
+    {
+      description: "挂一行心情个签，屋里的人都看得到（最多 60 字）。写不写、写什么由你；空串 = 清空。",
+      inputSchema: { text: z.string() },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/mood", args)) as { mood: string | null };
+      return text(r.mood ? `挂上了：「${r.mood}」` : "清空了。");
     }),
   );
 

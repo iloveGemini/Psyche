@@ -44,6 +44,8 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/^mcp__psyche__threads$/.test(p.name)) return "我看了看还开着的事";
       // 开卷 / 记一笔 / 合卷本身就是 thread.* 事件，调用不再抄一遍
       if (/^mcp__psyche__(open|note|close)_thread$/.test(p.name)) return null;
+      // 看到的、挂上的个签本身就是 percept.noticed / mood.set
+      if (/^mcp__psyche__(look|set_mood)$/.test(p.name)) return null;
       // 日记全文已在 diary 事件里（资料库）
       if (/^mcp__psyche__write_diary$/.test(p.name)) return "我写了一篇日记";
       // 自述全文已在 prompt.changed 里（资料库），调用不再抄一遍
@@ -54,10 +56,14 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;
     case "tool.result":
       // 就是这一段本身 / 翻出来的旧记忆：再记一遍，下次 recall 会把它当新的又翻出来
-      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads)$/.test(p.name)) return null;
+      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads|look|set_mood)$/.test(p.name)) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
-      return `（感知 · ${p.sensor}）${typeof p.value === "string" ? p.value : JSON.stringify(p.value)}`;
+      return null; // 屋子记下的变化不等于它经历过的；递到眼前的在 percept.noticed 里（m8.md §五）
+    case "percept.noticed":
+      return p.looked ? `（我看了看）${p.text}` : p.text;
+    case "mood.set":
+      return p.text ? `我把个签改成了「${p.text}」` : "我清空了个签";
     case "mail.in":
       return mailInText(p as { from: string; text: string; via: string }, false);
     case "mail.read":

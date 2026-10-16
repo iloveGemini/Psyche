@@ -12,10 +12,22 @@ export function agentOf(req: Request): string | undefined {
   return req.headers.get(AGENT_HEADER)?.trim() || new URL(req.url).searchParams.get("agent")?.trim() || undefined;
 }
 
-export function createHouse(residents: Map<string, Fetch>): Fetch {
+/** 屋子自己的口子（/v1/house/*，m8.md §二）：不属于哪一个人；tokens 里任何一个都能进 */
+export interface HouseRoutes {
+  tokens: string[];
+  handle: (req: Request) => Response | Promise<Response>;
+}
+
+export function createHouse(residents: Map<string, Fetch>, house?: HouseRoutes): Fetch {
   const only = residents.size === 1 ? [...residents.keys()][0] : undefined;
   return (req) => {
-    if (new URL(req.url).pathname === "/health") return Response.json({ ok: true });
+    const path = new URL(req.url).pathname;
+    if (path === "/health") return Response.json({ ok: true });
+    if (house && path.startsWith("/v1/house")) {
+      const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+      if (house.tokens.length && !house.tokens.includes(bearer ?? "")) return Response.json({ error: "Unauthorized" }, { status: 401 });
+      return house.handle(req);
+    }
     const id = agentOf(req) ?? only;
     if (!id) return Response.json({ error: `这里住着不止一个人：用 ${AGENT_HEADER} 头或 ?agent=<id> 说明是谁` }, { status: 400 });
     const fetch = residents.get(id);

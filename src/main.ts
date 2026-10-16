@@ -31,6 +31,7 @@ import { deliverEmail, startEmailWatch, WORKSPACE } from "./channel/email.ts";
 import type { PsycheEvent } from "./store/events.ts";
 import { readResidents, type Resident, type ResidentConfig } from "./house/residents.ts";
 import { createHouse } from "./server/house.ts";
+import { openHouse, TICK_MS } from "./house/house.ts";
 
 const dataDir = process.env.PSYCHE_DATA_DIR ?? join(homedir(), ".psyche/data");
 mkdirSync(dataDir, { recursive: true });
@@ -44,8 +45,23 @@ if (new Set(tokens).size < tokens.length) console.error("有人共用一个 toke
 if (residents.filter((r) => r.config.email).length > 1) console.error("不止一个人收房子的邮箱：按 @ 分信还没做（S6），先只给一个人开");
 
 const apps = new Map<string, (req: Request) => Response | Promise<Response>>();
-for (const r of residents) apps.set(r.id, openResident(r).fetch);
-Bun.serve({ port, hostname: "127.0.0.1", fetch: createHouse(apps) });
+const viewers: { id: string; store: EventStore }[] = [];
+for (const r of residents) {
+  const { app, store } = openResident(r);
+  apps.set(r.id, app.fetch);
+  viewers.push({ id: r.id, store });
+}
+// 屋子：每 30 秒看一圈谁变了，记进其他人的库（m8.md §二）
+const house = openHouse(dataDir, viewers);
+house.tick();
+setInterval(() => {
+  try {
+    house.tick();
+  } catch (e) {
+    console.error(`屋子看一圈出错：${e instanceof Error ? e.message : e}`);
+  }
+}, TICK_MS);
+Bun.serve({ port, hostname: "127.0.0.1", fetch: createHouse(apps, { tokens: residents.map((r) => r.config.token).filter((t): t is string => !!t), handle: house.handle }) });
 console.log(
   `Psyche 在 http://127.0.0.1:${port}，数据在 ${dataDir}，住着 ${residents.map((r) => r.id).join("、") || "（没人）"}${embedder ? `，向量：${embedder.model}` : "，没配向量"}`,
 );
@@ -76,7 +92,7 @@ function openResident({ id, dir, config }: Resident) {
     console.log(`${tag}收邮件（agently-cli，workspace ${WORKSPACE}）`);
   }
   if (process.env.PSYCHE_SCHEDULER === "1") startScheduler(id, store, config, tag);
-  return app;
+  return { app, store };
 }
 
 // 调度器（m5.md §二；10-16 家 = Soma）：每人一个，每分钟判一次。醒来推给他的 Soma（同一条会话）；补写、整理在睡着时另起无头会话

@@ -67,18 +67,18 @@ describe("段与游标", () => {
     tick(1000);
     const c = say("出发了");
     // 晚到：发生在 a、b 之间（同一会话里），但入库更晚
-    const late = intake(store, { kind: "percept", source: "phone", payload: { sensor: "屏幕", value: "解锁" }, at: a.at + 500 });
+    const late = intake(store, { kind: "woke", source: "soma", payload: { by: "manual" }, at: a.at + 500 });
     expect(late.id > b.id).toBe(true);
     const seg2 = await get();
     expect(seg2.upTo).toBe(late.id);
-    expect(seg2.lines.map((l: { text: string }) => l.text)).toEqual(["（感知 · 屏幕）解锁", "Joy：出发了"]);
+    expect(seg2.lines.map((l: { text: string }) => l.text)).toEqual(["（醒来 · 手动）", "Joy：出发了"]);
     expect(seg2.lines[0].at).toBeLessThan(b.at);
 
     // 经历：a、b 被情节替换；晚到的和新的照旧是原话
     expect(readExperience(store.db).map((l) => l.text)).toEqual([
       "（此后：在 soma）",
       "她约我去爬山，我提醒她带外套。（当时：有点期待）",
-      "（感知 · 屏幕）解锁",
+      "（醒来 · 手动）",
       "Joy：出发了",
     ]);
     expect(readExperience(store.db, { includeCovered: true })).toHaveLength(6);
