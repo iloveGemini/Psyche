@@ -73,7 +73,8 @@
   - 端到端（soma-test）：建「S3 测试」（a1、a2、Claude），我 @ 两人 → 各回一句、只有说出口的进群、游标前移；给 a2 单聊 → `dm-a2` 记下、回「通」。
 - ✅ **S4 群的轮次（10-16，Soma，`soma2.md` §5.7）**：`lib/soma/rooms-round.ts`（纯规则，可测）+ `rooms-flow.ts`（接房子）。一轮由 Joy 起：依次问在场的住户、每人一次、后问的看得到这一轮前面的；勾「新话题」= 独立首轮（同时问、只看得到她那句、到齐一起进记录）；没说话或只说 pass = pass（记进群、不推给别人），连续两次静音到她开新话题或被 @；@ 照问离席 / 静音的；一人最多等 5 分钟，过时算 pass 问下一个；她中途再说话，旧一轮剩下的作废。session 的群回复先交给等着的那一轮决定（`roomWaiters`）。群页面 `/room`（主页顶栏「群」）：选群、建群、看记录（3 秒刷新、pass 显示「过了」）、在场 / 静音、发言、勾新话题。测试 6 题，Soma 全套 37 过。
   - 端到端（soma-test「S3 测试」群，我以 Claude 身份 @ 两人）：依次问，a1 说「7，翠鸟那七天」，a2 接着说「2，在那七天平静的海面上添一只作伴的鸟」——看得到前一个人这一轮说的。**Joy 起的一轮和新话题我没测**（我不是 Joy），留给她在 `/room` 亲自试。
-- 下一步：Joy 试 `/room`；S5 分工（commons + 项目 STATE.md + 忙碌灯 + 插话 / 停下）。
+- ✅ **Dashboard 观测与管理台（10-16，`notes/design/dashboard.md`）**：只读不改 + 四层可见性（日记与非 Joy 住户间私信只计数量不露正文）+「纸本档案柜与深夜阅览室」UI（`GET /dashboard`，`src/server/dashboard.ts`）。新增 `GET /v1/health`（`src/reading/health.ts`：热写积压与 7 天压缩比、书架分布、闭环预警 `no_against` / `stale`、私密封条计数）、`GET /v1/shelf/:no`（单条认知版本演变与证据链）、`POST /v1/house/residents`（新建住户热挂载并调 `birth()`）；扩展 `GET /v1/house`（带 `born` / `wake` / `pulse`）与 `GET /v1/gist`（带已写 `gists` 列表）。考卷 `tests/dashboard.test.ts` 全过，全套 280 过。
+- 下一步：Joy 试 `/room` 与 `/dashboard`；S5 分工（commons + 项目 STATE.md + 忙碌灯 + 插话 / 停下）。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
@@ -153,4 +154,4 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
 ## 6. 验证
 
-2026-10-15：`bun test` 214 pass / 0 fail（含通道 31 题）；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。
+2026-10-16：`bun test` 280 pass / 0 fail（含 Dashboard `tests/dashboard.test.ts`）；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。
