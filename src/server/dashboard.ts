@@ -473,8 +473,11 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
 
   <script>
     const INJECTED_TOKENS = ${tokensJson};
+    // 清除可能存留在本地浏览器里的旧单 Token，完全走服务端注入的住户 Token 分发
+    try { localStorage.removeItem('psyche_token'); } catch (e) {}
+
     const STATE = {
-      token: localStorage.getItem('psyche_token') || '',
+      token: '',
       agent: new URLSearchParams(location.search).get('agent') || null,
       subTab: 'health',
       shelfTab: 'shelf',
@@ -498,11 +501,11 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
     }
     async function api(path, opts = {}) {
       const headers = { ...(opts.headers || {}) };
-      // 自动匹配 token：优先取目标 agent 的 token，全屋请求取任意一个有效 token
+      // 自动匹配 token：优先取目标 agent 的专属 token；若全屋请求（如 /v1/house）则取任意一个有效 token
       const url = new URL(path, location.origin);
       const targetAgent = url.searchParams.get('agent') || STATE.agent;
-      const autoToken = (targetAgent && INJECTED_TOKENS[targetAgent]) || Object.values(INJECTED_TOKENS)[0] || '';
-      const token = STATE.token || autoToken;
+      const autoToken = (targetAgent && INJECTED_TOKENS[targetAgent]) || (targetAgent ? '' : Object.values(INJECTED_TOKENS)[0]) || '';
+      const token = autoToken || STATE.token;
       if (token) headers['authorization'] = 'Bearer ' + token;
 
       if (opts.body && typeof opts.body === 'object') {
