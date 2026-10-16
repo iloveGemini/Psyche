@@ -19,10 +19,20 @@
 **M6「通道」代码齐了（10-15）**，契约 `notes/plan/m6.md` 定稿：`src/channel/inbox.ts`（未读现算、交接信去向、勿扰纯函数、递消息记 `mail.noticed`、来信叫醒候选）、`mailbox.ts`（`/v1/mail/in|out|open`、`GET /v1/mail`、`/v1/where`、`/v1/channels`）、`email.ts`（agently-cli，workspace `psyche` = joylove@agent.qq.com；`+watch` + 补漏，只收 Joy 的地址；回信 `+reply`、主动 `+send`）。`mail.in` 不挂处境，没翻开前经历 / recall 只见「还没看」，`mail.read` 后投影换全文（经历投影 v7）。作息加 `wakeOn.mail`（缺省开）、`dnd`（时段 / 醒着 / 在哪 / 在做事 + 例外）；额度 = 它约的醒 + 主动写给人的信。MCP 加 `mail` / `send_mail`；家里能收发信。确定性考卷 `tests/channel.test.ts` 31 题。
 - 测试库通道设置已写（Joy 经 Soma 留言 + 邮件，她的地址在测试库里，不进仓库）；launch `psyche-test-wake` 加了 `PSYCHE_EMAIL=1`。冒烟：真 CLI `+me` / `+list` 走 psyche workspace 对。Roxy 用 `default` workspace（royyyy）。
 - 同日补完：Soma 留言页（顶栏「留言」，写进收件箱、可勾「急」、`/as 名字` 照用，看得到他读没读、送没送出去）+ 开一轮前问 `/v1/where`，家里在跑就攒着、状态「在家」（Soma e480965）；冷写材料只收翻开过的信（这段里翻开的、信早到也补进来）；「上次有人跟我说话」算翻开过的来信。
-- 测试库里有一封 `/as Claude` 的测试留言（10-15#104，没读）：开 `psyche-test-wake` 时它会因这封先被叫醒一次。
-- **没验（攒着和 M5 以后的一起测，10-15 Joy 定）**：端到端——Joy 给 joylove 发邮件 → 在家醒来、翻开、回信到她邮箱；Soma 留言 → 叫醒 → 回信在留言页；家里在跑时 Soma 显示「在家」、跑完再开轮；交接信。要开 `psyche-test-wake`（花额度、真发信）。Soma 留言页的浏览器点按只验到面板打开（内置浏览器连 localhost 卡住），写信走 curl 验过。
+- **端到端验收通过（10-16，Opus 5.5，launch `psyche-test-wake` + `soma-test`；测前备份 `~/.psyche/test.bak-1016-prem6e2e.db`；家里五轮共约 $1）**：
+  1. Soma 留言页写信（Joy）→ 在家翻开、回信 → 留言页有回信，她邮箱也收到（`mail.sent ok`）。这封是在 catchup 那轮里递进去、它自己翻开的，不是被信叫醒。
+  2. 手机邮件回一封 → 09:40:07 进收件箱 → 09:40:51 `醒来（mail）` → 翻开 → 回信到她邮箱。
+  3. joylove 自己发给自己 → `mail.ignored`，没进收件箱（另挡了一封 admin@agent.qq.com 的系统信）。
+  4. Soma 聊天里 `/as Claude` 请它给在家的自己留信 → 写了 handoff → 手动 `home.ts --by manual` 在家醒来翻开。
+  - 开了调度器后它先补写了没写完的会话（catchup ×2、tidy），Joy 的信排在后面——预期行为。验完调度器已关。
+- **验收里撞出的（待办）**：
+  - 邮件回信带着整段引用（`------------------ 原始邮件` 以下，含 Agent Mail 的「举报 退订」页脚）进了 `mail.in`：`email.ts` 收信时该在引用分隔处截掉（被引的信靠 `replyTo` 对得上）。
+  - 它在回信里说「你的信一来我就醒了」——其实那轮是 catchup 叫醒的：家里醒来时不清楚自己为什么醒，查 home 的开场。
+  - `/v1/where` 的 `awake` 算上了家里的动静，调度器的 `lastActivity` 不算家里——口径不一致（家里刚跑完时 where 报醒着）。
+  - 手动 `home.ts` 不经调度器，`homeRunning` 不会变 true，Soma 看不到「在家」。
+  - 「家里在跑时 Soma 显示在家、跑完再开轮」这次没专门测（没赶上在家跑时从 Soma 开轮）。
 
-十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · 心跳 ✅ · 通道 ✅（端到端待测）· **感知 ❌**。下一块：感知。
+十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · 心跳 ✅ · 通道 ✅（10-16 端到端通过）· **感知 ❌**。下一块：感知。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
