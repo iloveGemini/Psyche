@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-15
+> 最后更新：2026-10-16
 
 ## 1. 当前阶段
 
@@ -42,7 +42,13 @@
 6. ✅ 交接信只在离开家时用（`for` 不再认 home）；考卷跟着改，227 过（Soma 25）。
 - **没做 / 待验**：「还开着的事」（承诺 / 事项）Psyche 里还没有，种子先不带；`<now>` 的「本会话从…起」换会话后从新会话算；圆桌的已读游标留到 Soma 二代；调度器推醒来 + 睡着时梗概的端到端（要开调度器、花额度）没跑；收尾那轮自己的 hotwrite 调用会不会再招一次补写，旧流程就有，没查。
 
-**Soma 二代草案（10-16，`notes/design/soma2.md`）**：一个房子几个住户（一个模型一个 Agent，每人 home + 一条线 + 一个记忆库）；身体 = adapter（Claude 走 Agent SDK，别的模型走 pi 当依赖不 fork）；房间 = 公共记录 + 每人已读游标（roundtable 的思路），圆桌用独立首轮 + 举手；每人各记自己视角的情节。§九 六件等 Joy 拍板，S1（抽出 claude-sdk 身体）是纯重构可先做。
+**Soma 二代（10-16，`notes/design/soma2.md`，Joy 已拍板 §十）**：一个房子几个住户，每人 home + 一条线 + 一个记忆库；身体 = adapter（Claude 走 Agent SDK，别的模型走 pi 当依赖）；群只讨论、分工后离群、交接在项目 STATE.md。
+- ✅ S1（Soma a3d9180）：`lib/soma/bodies/claude-sdk.ts` 是身体，`session.ts` 只管线；一代行为不变，soma-test 冒烟过（说话 / 工具 / 醒来 / 上报 / 热写换会话）。权限卡没测到。
+- ✅ P1 多租户：`src/house/residents.ts`（谁住在这：`<数据目录>/<id>/psyche.db` + 可选 `agents.json` 每人 token / soma / model / email）、`src/server/house.ts`（`x-psyche-agent` 头或 `?agent=` 分到各人的 app，各自验 token；只住一个人可不说）；调度器、邮箱每人一份；MCP / asleep / sleep 认 `PSYCHE_AGENT`。一代布局（数据目录下直接是库）还认，考卷照旧。考卷 `tests/house.test.ts` 9 题。
+  - Soma：`SOMA_AGENT=<id>` → `~/.soma*/agents/<id>/{home,state.json,debug.json}`，登录目录共用；调 Psyche 带同一个 id。搬家用 Soma `scripts/move-in.sh`（会话记录按 cwd 归档，要一起改名）。
+  - 测试库已搬（10-16，备份 `~/.psyche/test.bak-1016-preP1.db`、`~/.soma-test.bak-1016-preP1`）：住户 `a1`（原来那位）+ 空的 `a2`；token `test-a1` / `test-a2`。端到端：没说是谁 400、a2 的 token 进 a1 401、a1 续上原会话并 recall 到旧事、a2 库 0 条。**id 是目录名，换名 = 改目录 + agents.json + `SOMA_AGENT`。**
+  - 正式的 `~/.soma` 还是一代布局（Joy 的，没动）。
+- 下一步 S2：Gemini（argon）住 pi。
 
 十块的进度（10-15 盘点）：档案馆 ✅（差前世今生、文件快照）· 编目 ✅ · 阅览室 🟡（差经验、印象、实体卡）· 联想 🟡 · 门户 🟡（差能力表、位置状态表、单实例）· 组装器 🟡（只有 `<now>` + 想起）· 自我 ✅ · 心跳 ✅ · 通道 ✅（10-16 端到端通过）· **感知 ❌**。下一块：感知。
 
@@ -120,7 +126,7 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 ## 5. 运行备忘
 
 - `bun test`（含 `tests/hotwrite-check.test.ts`）· `bun run typecheck` · `bun run src/main.ts`（127.0.0.1:7450）
-- launch.json：`psyche-test`（7450，测试库）/ `soma-test`（30152，连测试 Psyche；监听 0.0.0.0，手机走 `http://192.168.2.80:30152`，Soma 无登录，只在家里网络用）。Soma 顶栏有临时观测面板（用量、`<now>`、提示词、Psyche 连通，快照存 `~/.soma-test/debug.json`）
+- launch.json：`psyche-test`（7450，测试库，住着 a1、a2）/ `soma-test`（30152，住户 a1，连测试 Psyche；监听 0.0.0.0，手机走 `http://192.168.2.80:30152`，Soma 无登录，只在家里网络用）。Soma 顶栏有临时观测面板（用量、`<now>`、提示词、Psyche 连通，快照存 `~/.soma-test/agents/a1/debug.json`）
 
 ## 6. 验证
 

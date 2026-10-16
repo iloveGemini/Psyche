@@ -7,13 +7,14 @@
  * situation.harness = "sleep"：不算地方、不算醒着、不补写（inbox.ts NOT_PLACES）。对话、工具调用照样报成事件。
  * 第一条消息只放事实（<now>）和该用的工具名，不用它的口吻。
  *
- * 只经 REST 和 Psyche 说话（PSYCHE_URL / PSYCHE_TOKEN），手动也能跑：
+ * 只经 REST 和 Psyche 说话（PSYCHE_URL / PSYCHE_AGENT / PSYCHE_TOKEN），手动也能跑：
  *   bun run src/asleep.ts --by tidy [--model claude-opus-5-5]
  *   bun run src/asleep.ts --by catchup --session <会话>
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AGENT_HEADER } from "./server/house.ts";
 
 export interface WakeReason {
   by: string;
@@ -24,6 +25,8 @@ export interface WakeReason {
 
 export interface AsleepOptions {
   base: string;
+  /** 谁（多租户时必须说，server/house.ts） */
+  agent?: string;
   token?: string;
   model: string;
   wake: WakeReason;
@@ -46,7 +49,11 @@ export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
   const rest = async (method: "GET" | "POST", path: string, body?: unknown): Promise<any> => {
     const res = await fetch(`${base}${path}`, {
       method,
-      headers: { ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}), ...(body ? { "content-type": "application/json" } : {}) },
+      headers: {
+        ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}),
+        ...(opts.agent ? { [AGENT_HEADER]: opts.agent } : {}),
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     const json = await res.json();
@@ -77,7 +84,7 @@ export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
         type: "stdio",
         command: "bun",
         args: ["run", join(import.meta.dir, "mcp.ts")],
-        env: { PSYCHE_URL: base, ...(opts.token ? { PSYCHE_TOKEN: opts.token } : {}) },
+        env: { PSYCHE_URL: base, ...(opts.agent ? { PSYCHE_AGENT: opts.agent } : {}), ...(opts.token ? { PSYCHE_TOKEN: opts.token } : {}) },
       },
     },
   };
@@ -156,6 +163,7 @@ if (import.meta.main) {
   if (!model) throw new Error("要 --model 或 PSYCHE_MODEL：这个 Agent 的模型");
   const run = await runAsleep({
     base: process.env.PSYCHE_URL ?? "http://127.0.0.1:7450",
+    agent: process.env.PSYCHE_AGENT,
     token: process.env.PSYCHE_TOKEN,
     model,
     wake: { by: opt("--by") ?? "tidy", note: opt("--note"), session: opt("--session") },

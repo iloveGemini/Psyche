@@ -26,6 +26,7 @@
  *
  * 环境变量：
  *   PSYCHE_URL    缺省 http://127.0.0.1:7450
+ *   PSYCHE_AGENT  他是谁（Psyche 住着不止一个人时必须有，server/house.ts）
  *   PSYCHE_TOKEN  REST 鉴权（Psyche 没配 token 就不用）
  *   PSYCHE_TZ     不带时区的日期/时间按哪个时区理解（缺省 Asia/Shanghai，与档号切日一致）
  */
@@ -35,9 +36,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { renderStats, TRACK_KEYS, type Stats } from "./reading/stats.ts";
+import { AGENT_HEADER } from "./server/house.ts";
 
 export interface McpOptions {
   url?: string;
+  agent?: string;
   token?: string;
   timeZone?: string;
   /** 测试时换成假的 */
@@ -94,6 +97,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   async function call(method: "GET" | "POST", path: string, body?: unknown): Promise<any> {
     const headers: Record<string, string> = {};
     if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+    if (opts.agent) headers[AGENT_HEADER] = opts.agent;
     if (body !== undefined) headers["content-type"] = "application/json";
     let res: Response;
     try {
@@ -682,6 +686,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
 if (import.meta.main) {
   const server = createPsycheMcp({
     url: process.env.PSYCHE_URL,
+    agent: process.env.PSYCHE_AGENT,
     token: process.env.PSYCHE_TOKEN,
     timeZone: process.env.PSYCHE_TZ,
   });
