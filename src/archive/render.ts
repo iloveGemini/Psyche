@@ -13,7 +13,7 @@ const cut = (s: string, n: number) => {
   const cps = Array.from(s);
   return cps.length > n ? `${cps.slice(0, n).join("")}…` : s;
 };
-const WOKE_BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
+const WOKE_BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动", retry: "重试" };
 export const VIA: Record<string, string> = { "soma-note": "Soma 留言", email: "邮件" };
 
 /** 来信在经历里的样子：没翻开只说有信（m6.md §〇.2），翻开后（mail.read）投影换成全文 */
