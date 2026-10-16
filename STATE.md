@@ -43,7 +43,8 @@
 - **没做 / 待验**：`<now>` 的「本会话从…起」换会话后从新会话算；圆桌的已读游标留到 Soma 二代；调度器推醒来 + 睡着时梗概的端到端（要开调度器、花额度）没跑；收尾那轮自己的 hotwrite 调用会不会再招一次补写，旧流程就有，没查。
 
 **M7「还开着的事」代码齐了（10-16）**，契约 `notes/plan/m7.md`（感知顺延 M8）：线索卷最小一版，`src/self/threads.ts`。它开卷（`promise` 答应谁什么 / `matter` 等后续）、记一笔、合卷（done / dropped / moot + why），系统不合、不催、不判兑现；`thread.*` 不走上报口。`<now>` 一行（几件、答应的几件、最久没动的）；种子 `/v1/continuity` 在最近的情节之后全列。REST `/v1/threads`（`/note`、`/close`），MCP `threads` / `open_thread` / `note_thread` / `close_thread`；经历投影 v8。考卷 `tests/threads.test.ts` 7 题，全套 243 过。
-- **没做**：端到端（Soma 里它会不会自己开卷——不教、不判，只看）；冷写把新碎片摆给它；模式线（等感知）。
+- **端到端（10-16 16:39，Opus 5.5，soma-test a1；测前备份 `~/.psyche/test/a1.bak-1016-preM7.db`）**：没告诉它有新工具，我 `/as Claude` 约它明天读 M8 草稿 → 它自己开了 promise 卷（10-16#236，to「开发会话的 Claude」），还顺手把拖了一天的 Joy 的信开成 matter 卷（#239）；种子里两卷都列出来了。换会话后看不看得到没专门测（种子已核）。那封信它说待会儿看。
+- **没做**：冷写把新碎片摆给它；模式线（等感知）。我答应它的 M8 草稿写好要给它读。
 
 **Soma 二代（10-16，`notes/design/soma2.md`，Joy 已拍板 §十）**：一个房子几个住户，每人 home + 一条线 + 一个记忆库；身体 = adapter（Claude 走 Agent SDK，别的模型走 pi 当依赖）；群只讨论、分工后离群、交接在项目 STATE.md。
 - ✅ S1（Soma a3d9180）：`lib/soma/bodies/claude-sdk.ts` 是身体，`session.ts` 只管线；一代行为不变，soma-test 冒烟过（说话 / 工具 / 醒来 / 上报 / 热写换会话）。权限卡没测到。
