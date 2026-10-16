@@ -29,6 +29,8 @@ import { composePrompt, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfEr
 import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../channel/inbox.ts";
 import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
 import type { PsycheEvent } from "../store/events.ts";
+import { GIST_LIMIT, GistError, pendingGists, writeGist } from "../catalog/gist.ts";
+import { renderContinuity } from "../archive/continuity.ts";
 
 export interface AppDeps {
   store: EventStore;
@@ -52,7 +54,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -133,6 +135,21 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const version = typeof body.promptVersion === "number" ? body.promptVersion : readPrompt("cold-write.md", promptsDir).version;
     return c.json(writeColdwrite(store, body, version));
   });
+
+  // 梗概（10-16）：过完了还没写的段 + 材料；交回一段
+  app.get("/v1/gist", (c) => {
+    const prompt = readPrompt("gist.md", promptsDir);
+    return c.json({ pending: pendingGists(store), limits: GIST_LIMIT, prompt: prompt.text, promptVersion: prompt.version });
+  });
+
+  app.post("/v1/gist", async (c) => {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") throw new GistError("body 必须是对象");
+    return c.json(writeGist(store, body, typeof body.promptVersion === "number" ? body.promptVersion : readPrompt("gist.md", promptsDir).version));
+  });
+
+  // 接着往下过：Soma 换会话时新会话的开头（梗概 + 最近的情节）
+  app.get("/v1/continuity", (c) => c.json({ text: renderContinuity(store) }));
 
   // 书架：现行条目 + 证据计数
   app.get("/v1/shelf", (c) => {

@@ -5,8 +5,8 @@
  * - **醒来**（来信、闹钟、定点、心跳）：往它那条连续的会话（Soma）推一轮。Soma 不在 = 当它睡着，不叫、不记账，等它在了再叫。
  *   它正忙着（一轮没完）也照推：Soma 排在后面。那一轮取 `<now>` 时把到点的事写成 `due`、带一次（deliverDue）；
  *   在那之前它自己的哪一轮先取了 `<now>`，就算递过了（`delivered`），不再推。
- * - **睡着时整理**（补写 > 整理）：Psyche 另起一个无头的它（asleep.ts），不进连续会话，同一时间只一个。
- * - 补写、整理、来信不花额度；它约的（闹钟、定点、心跳）走额度，到点时它醒着（30 分钟内有动静）的不花（10-15 Joy 定）。暂停 = 一律不叫。
+ * - **睡着时整理**（补写 > 整理 > 梗概）：Psyche 另起一个无头的它（asleep.ts），不进连续会话，同一时间只一个。
+ * - 补写、整理、梗概、来信不花额度；它约的（闹钟、定点、心跳）走额度，到点时它醒着（30 分钟内有动静）的不花（10-15 Joy 定）。暂停 = 一律不叫。
  * - 每个候选有 key：叫过、跳过、递过的 key 不再叫（整理 / 补写不会因为没交就每分钟再醒）。
  * - 来信（m6.md §二.3）：她的信没报过就叫醒；勿扰挡住 / 它关了来信叫醒，记一次账（换 key），出了勿扰再叫。
  * - 额度 = 它约的醒（闹钟、定点、心跳）+ 主动写给人的信（没挂 replyTo 的 mail.out，m6.md §〇.3）。
@@ -17,18 +17,19 @@ import { readSegment, segmentEvents } from "../catalog/hotwrite.ts";
 import { ownSince } from "../self/self.ts";
 import { alarmKey, dailyKey, firedKeys, getSettings, readSchedule, type Settings } from "./schedule.ts";
 import { factsNow, lastActive, mailCandidates, NOT_PLACE_SQL } from "../channel/inbox.ts";
+import { pendingGists } from "../catalog/gist.ts";
 
 export const AWAKE_MS = 30 * 60_000;
 export const IDLE_MS = 3 * 3600_000;
 export const TIDY_EPISODES = 5;
 export const TIDY_GAP_MS = 3 * 86_400_000;
 
-export type By = "catchup" | "tidy" | "mail" | "alarm" | "daily" | "heartbeat";
+export type By = "catchup" | "tidy" | "gist" | "mail" | "alarm" | "daily" | "heartbeat";
 export const BUDGETED: ReadonlySet<By> = new Set(["alarm", "daily", "heartbeat"]);
 /** 睡着时做的：另起无头会话（asleep.ts），不进连续会话 */
-export const ASLEEP: ReadonlySet<By> = new Set(["catchup", "tidy"]);
+export const ASLEEP: ReadonlySet<By> = new Set(["catchup", "tidy", "gist"]);
 export const asleepWork = (c: Candidate) => ASLEEP.has(c.by);
-export const BY_NAME: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
+export const BY_NAME: Record<string, string> = { catchup: "补写", tidy: "整理", gist: "梗概", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
 
 export interface Candidate {
   by: By;
@@ -182,6 +183,15 @@ function tidyDue(store: EventStore): Candidate | null {
   return { by: "tidy", key: `tidy:${eps.newest}` };
 }
 
+/** 该写梗概了：空闲 ≥ 3h，有过完了还没写的天 / 周 / 月（同一批只叫一次） */
+function gistDue(store: EventStore): Candidate | null {
+  const last = lastActivity(store);
+  if (last !== null && store.now() - last < IDLE_MS) return null;
+  const pending = pendingGists(store);
+  if (!pending.length) return null;
+  return { by: "gist", key: `gist:${pending.map((p) => p.key).join(",")}` };
+}
+
 /** 有段没写进记忆：会话 ≥ 3h 没动静、还剩 ≥ 1 条；睡着时整理的会话（和以前的家）不算 */
 function catchupDue(store: EventStore): Candidate[] {
   const rows = store.db
@@ -211,7 +221,7 @@ export function gather(store: EventStore, opts: GatherOpts = {}): State {
   const settings = getSettings(store);
   const logged = new Set(wakeLogs(store).map((l) => l.key));
   const hb = heartbeatDue(store, settings);
-  const candidates = [...catchupDue(store), tidyDue(store), ...mailCandidates(store, factsNow(store)), ...pendingDue(store), hb].filter((c): c is Candidate => !!c && !logged.has(c.key));
+  const candidates = [...catchupDue(store), tidyDue(store), gistDue(store), ...mailCandidates(store, factsNow(store)), ...pendingDue(store), hb].filter((c): c is Candidate => !!c && !logged.has(c.key));
   return {
     asleep: !!opts.asleep,
     bodyUp: opts.bodyUp ?? true,

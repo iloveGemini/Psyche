@@ -8,6 +8,8 @@
  *   revise_episode    改写自己的一条情节     → POST /v1/episodes/revise
  *   coldwrite_material 睡前整理的材料        → GET  /v1/coldwrite
  *   coldwrite         写回书架               → POST /v1/coldwrite
+ *   gist_material     过完了还没写梗概的段     → GET  /v1/gist
+ *   gist              交一段梗概             → POST /v1/gist
  *   shelf             看书架                 → GET  /v1/shelf
  *   stats             看互动统计（全表）      → GET  /v1/stats
  *   self              看自己：名字、自述      → GET  /v1/self
@@ -262,6 +264,55 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     ]
       .filter(Boolean)
       .join("\n");
+
+  server.registerTool(
+    "gist_material",
+    {
+      description: "睡着时写梗概用：过完了、还没写梗概的天 / 周 / 月，和写每一段要看的东西（天看那天的情节，周看那周的天，月看那月的周），附写法说明。写好一段用 gist 交一段。",
+      inputSchema: {},
+    },
+    guard(async () => {
+      const m = (await call("GET", "/v1/gist")) as {
+        pending: { span: "day" | "week" | "month"; key: string; source: { label: string; text: string }[] }[];
+        limits: Record<string, number>;
+        prompt: string;
+        promptVersion: number;
+      };
+      if (!m.pending.length) return text("没有过完了还没写梗概的段。");
+      const name = { day: "天", week: "周", month: "月" } as const;
+      return text(
+        [
+          m.prompt.trim(),
+          "",
+          `promptVersion: ${m.promptVersion}`,
+          "",
+          ...m.pending.flatMap((p) => [
+            `<${p.span} key="${p.key}" limit="${m.limits[p.span]}">`,
+            ...(p.source.length ? p.source.map((x) => (p.span === "day" ? x.text : `${x.label}：${x.text}`)) : [`（这${name[p.span]}没有下一级的梗概可看）`]),
+            `</${p.span}>`,
+            "",
+          ]),
+        ].join("\n"),
+      );
+    }),
+  );
+
+  server.registerTool(
+    "gist",
+    {
+      description: "交一段梗概：span（day / week / month）、key（2026-10-15 / 2026-W42 / 2026-10）、text（第一人称，你自己的话；天 ≤300 字、周 ≤500、月 ≤800）。同一段可以重写，后写的算数。",
+      inputSchema: {
+        span: z.enum(["day", "week", "month"]),
+        key: z.string().min(1),
+        text: z.string().min(1),
+        promptVersion: z.number().int().optional().describe("gist_material 给的 promptVersion，原样传回"),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/gist", args)) as { span: string; key: string };
+      return text(`收下了：${r.key} 的梗概。`);
+    }),
+  );
 
   server.registerTool(
     "coldwrite_material",

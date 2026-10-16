@@ -207,6 +207,7 @@ describe("不醒着：叫醒", () => {
     await h.mail("睡了吗");
     expect(tick(h.store)).toMatchObject({ skip: { by: "mail" }, reason: "dnd" });
     h.set("2026-10-16T02:00:00");
+    expect(tick(h.store)).toMatchObject({ wake: { by: "gist" } }); // 15 号过完了：睡着时写梗概（勿扰不管）
     expect(tick(h.store)).toBeNull();
     await h.mail("急事", { urgent: true });
     expect(tick(h.store)).toMatchObject({ wake: { by: "mail" } });

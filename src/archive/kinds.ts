@@ -41,6 +41,8 @@ export const KINDS: Record<string, KindSpec> = {
   // revises：改写自己的一条情节，旧条留着，经历里显示新的
   episode: { class: "self", required: { text: "string" }, rels: ["cites", "revises"] },
   diary: { class: "self", required: { doc: "object" } }, // doc: MaterialRef（+ path?）
+  // 梗概（10-16）：天 / 周 / 月，它睡着时自己写（catalog/gist.ts）
+  gist: { class: "self", required: { span: "string", key: "string", text: "string" } },
   "focus.changed": { class: "self", required: { items: "array" } },
   loaded: { class: "self", required: { refs: "array" } },
   evicted: { class: "self", required: { refs: "array" } },

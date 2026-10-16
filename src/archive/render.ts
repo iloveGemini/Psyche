@@ -71,6 +71,8 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return null; // 情节不走模板：经历投影直接用它写的正文（experience.ts），热写清单里也不列
     case "diary":
       return `我写了日记${p.title ? `《${p.title}》` : ""}${ref(p.doc)}`;
+    case "gist":
+      return `我给 ${p.key} 写了梗概：${p.text}`;
     case "focus.changed":
       return p.items.length ? `我眼下关注：${p.items.join("；")}` : "我清空了眼下的关注";
     case "loaded":

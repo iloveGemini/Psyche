@@ -1,5 +1,5 @@
 /**
- * 睡着时的整理（10-16 收束，notes/design/lib-vs-harness.md「家 = Soma」）：补写、整理（以后还有 gist）。
+ * 睡着时的整理（10-16 收束，notes/design/lib-vs-harness.md「家 = Soma」）：补写、整理、梗概。
  * 不进它那条连续的会话——材料大，也不是它醒着经历的事；调度器在这里另起一个无头的它。
  * 10-15 这里是"家"（home.ts，心跳 / 来信 / 闹钟也在这里醒）；家挪到 Soma 后只剩睡着时的活。
  *
@@ -63,6 +63,7 @@ export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
   const now = (await rest("GET", `/v1/now?session=${encodeURIComponent(session)}`)).text as string;
 
   let task = "";
+  if (opts.wake.by === "gist") task = "该写梗概了：用 gist_material 看哪些天 / 周 / 月过完了还没写，一段一段用 gist 交。";
   if (opts.wake.by === "tidy") task = "该整理了：用 coldwrite_material 取上次整理之后的经历和书架，整理完用 coldwrite 写回。";
   if (opts.wake.by === "catchup" && opts.wake.session) {
     const seg = await rest("GET", `/v1/hotwrite?session=${encodeURIComponent(opts.wake.session)}`);

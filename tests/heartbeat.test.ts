@@ -213,6 +213,7 @@ describe("暂停与额度", () => {
     cover(h);
     for (let i = 0; i < 5; i++) h.episode();
     expect(tick(h.store)).toMatchObject({ wake: { by: "tidy" } }); // 有活，不花额度
+    expect(tick(h.store)).toMatchObject({ wake: { by: "gist" } }); // 14 号过完了，也不花
     h.set("2026-10-15T09:00:00");
     expect(tick(h.store)).toMatchObject({ wake: { by: "alarm", note: "一" } });
     h.set("2026-10-15T09:30:00");
@@ -256,6 +257,7 @@ describe("整理", () => {
     quietSince(h, "2026-10-10T08:00:00");
     h.episode();
     h.set("2026-10-12T08:00:00");
+    expect(tick(h.store)).toMatchObject({ wake: { by: "gist" } }); // 10 号的梗概，不是整理
     expect(tick(h.store)).toBeNull();
     h.set("2026-10-13T08:01:00");
     expect(tick(h.store)).toMatchObject({ wake: { by: "tidy" } });
