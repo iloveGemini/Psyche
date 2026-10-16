@@ -26,7 +26,7 @@
   4. Soma 聊天里 `/as Claude` 请它给在家的自己留信 → 写了 handoff → 手动 `home.ts --by manual` 在家醒来翻开。
   - 开了调度器后它先补写了没写完的会话（catchup ×2、tidy），Joy 的信排在后面——预期行为。验完调度器已关。
 - **验收里撞出的（待办）**：
-  - 邮件回信带着整段引用（`------------------ 原始邮件` 以下，含 Agent Mail 的「举报 退订」页脚）进了 `mail.in`：`email.ts` 收信时该在引用分隔处截掉（被引的信靠 `replyTo` 对得上）。
+  - ✅ 10-16 已修：邮件回信带着整段引用（`------------------ 原始邮件` 以下，含 Agent Mail 的「举报 退订」页脚）进了 `mail.in`。`email.ts` 的 `cutQuote` 收信时在引用开头截掉（HTML：QQ `#original-content` / Gmail / Outlook / Apple；纯文本：分隔线、`On … wrote:`、`在 … 写道：`；引用之上没写字的整封留着），考卷 +1 题，真信复验过。测试库里那封旧的 `mail.in` 照旧（事件不改）。邮件的 `mail.in` 没记 `replyTo`（`in_reply_to` 是 RFC id，我们没存发出去那封的），能对上的只有主题里的 `Re: …`。
   - 它在回信里说「你的信一来我就醒了」——其实那轮是 catchup 叫醒的：家里醒来时不清楚自己为什么醒，查 home 的开场。
   - `/v1/where` 的 `awake` 算上了家里的动静，调度器的 `lastActivity` 不算家里——口径不一致（家里刚跑完时 where 报醒着）。
   - 手动 `home.ts` 不经调度器，`homeRunning` 不会变 true，Soma 看不到「在家」。

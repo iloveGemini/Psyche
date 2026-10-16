@@ -412,6 +412,23 @@ describe("邮箱通道（agently-cli，不跑 CLI）", () => {
     expect(plainBody({ message_id: "m", body: "<div>你好<br>明天见</div><style>x{}</style>", body_format: "HTML" })).toBe("你好\n明天见");
   });
 
+  test("回信里引用的原信截掉（连页脚）；只在引用里夹着写的不截", () => {
+    // 10-16 真信的样子（QQ 邮箱回 Agent Mail 的信）
+    const qq =
+      `<div>嗯？</div><div>你的边界感呢？🤨</div><div id="original-content"><br  /><div class="xm_mail_oringinal_describe"><div>------------------ 原始邮件 ------------------</div>` +
+      `<div><b>发件人:</b> joylove &lt;joylove@agent.qq.com&gt;</div></div><div>看到了👀 这是我收到你的第一封信</div><div data-xmail_bot_mail_report="true">此邮件由 Agent Mail 自动发送。举报 退订</div></div>`;
+    expect(plainBody({ message_id: "m", body: qq, body_format: "HTML" })).toBe("嗯？\n你的边界感呢？🤨");
+    expect(plainBody({ message_id: "m", body: `<div dir="ltr">好</div><div class="gmail_quote"><div>On Thu wrote:</div><blockquote>旧的</blockquote></div>`, body_format: "HTML" })).toBe("好");
+    expect(plainBody({ message_id: "m", body: "好呀\n\n------------------ 原始邮件 ------------------\n发件人: joylove\n旧的" })).toBe("好呀");
+    expect(plainBody({ message_id: "m", body: "嗯\n\nOn Thu, Oct 16, 2026 at 9:37 AM joylove <joylove@agent.qq.com> wrote:\n> 旧的" })).toBe("嗯");
+    expect(plainBody({ message_id: "m", body: "行\n\n在 2026年10月16日 09:37，joylove 写道：\n> 旧的" })).toBe("行");
+    // 引用之上什么都没写（夹在引用里回）：整封留着
+    const inline = `<div id="original-content"><div>旧的</div><div>我在这里回：好</div></div>`;
+    expect(plainBody({ message_id: "m", body: inline, body_format: "HTML" })).toBe("旧的\n我在这里回：好");
+    // 正文里提到「原始邮件」不算分隔
+    expect(plainBody({ message_id: "m", body: "原始邮件我删了\n明天说" })).toBe("原始邮件我删了\n明天说");
+  });
+
   test("只收她的地址：是她的 → mail.in（from Joy、幂等）；别人的只计数", async () => {
     const h = setup();
     await h.ok("/v1/channels", { channels: { Joy: ["soma-note", "email"] }, addresses: { Joy: { email: "Joy@Example.com" } } });

@@ -41,10 +41,24 @@ export function parseWatchLine(line: string): MailMessage | undefined {
   return typeof m.message_id === "string" && m.message_id ? (m as MailMessage) : undefined;
 }
 
+/** HTML 里引用块的开头：QQ 邮箱 / Gmail / Outlook / Apple Mail */
+const HTML_QUOTE = [/<div[^>]*\bid=["']original-content["']/i, /<div[^>]*\bclass=["'][^"']*\bgmail_quote\b/i, /<div[^>]*\bid=["']divRplyFwdMsg["']/i, /<blockquote[^>]*\btype=["']cite["']/i];
+/** 纯文本里引用的开头：分隔线、「On … wrote:」「在 … 写道：」 */
+const TEXT_QUOTE = [/^-{4,}\s*(原始邮件|Original Message)\s*-{4,}\s*$/im, /^On .{1,300}wrote:\s*$/im, /^在 ?.{1,300}写道[:：]\s*$/m];
+
+/** 回信里引用的原信截掉：那是它自己写过的、已在它的经历里（连带 Agent Mail 的页脚）；截完是空的（只在引用里夹着写）就不截 */
+export function cutQuote(text: string, patterns: RegExp[]): string {
+  const at = Math.min(...patterns.map((p) => text.search(p)).filter((i) => i >= 0));
+  if (!Number.isFinite(at)) return text;
+  const head = text.slice(0, at);
+  return head.replace(/<[^>]+>|&nbsp;|\s/g, "") ? head.trimEnd() : text;
+}
+
 export function plainBody(m: MailMessage): string {
-  const raw = (m.body ?? "").trim();
+  const html = m.body_format === "HTML";
+  const raw = cutQuote((m.body ?? "").trim(), html ? HTML_QUOTE : TEXT_QUOTE);
   const text =
-    m.body_format === "HTML"
+    html
       ? raw
           .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
           .replace(/<br\s*\/?>/gi, "\n")
