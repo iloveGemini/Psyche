@@ -5,9 +5,11 @@
  * 计数从证据链接数出来（按次，不按行），不让它自评；强弱曲线（敏感化 / 钝化）后置，读时另算。
  */
 import type { Database } from "bun:sqlite";
-import type { PsycheEvent } from "../store/events.ts";
+import { displayArchiveNo, type EventStore, type PsycheEvent } from "../store/events.ts";
 import type { Projector } from "../store/projections.ts";
 import { sessionOf } from "../archive/experience.ts";
+import { localDay } from "../core/time.ts";
+import { renderExperience } from "../archive/render.ts";
 
 export const SHELVES = ["fact", "told", "rule", "mirror", "attend", "relation"] as const;
 export type Shelf = (typeof SHELVES)[number];
@@ -194,4 +196,85 @@ export function renderEntry(e: ShelfEntry): string {
   if (e.track?.length) parts.push(`盯着：${e.track.join("、")}`);
   parts.push(`印证 ${e.for} · 反例 ${e.against}${e.irrelevant ? ` · 判无关 ${e.irrelevant}` : ""}${e.retired ? " · 已作废" : ""}`);
   return parts.join("；");
+}
+
+/** 单条书架认知的完整演变链与证据明细（GET /v1/shelf/:no，dashboard.md §4.2.3） */
+export function shelfDetail(store: EventStore, archiveNo: string) {
+  if (!store.db.query(`SELECT 1 FROM sqlite_master WHERE name = 'p_shelf'`).get()) return null;
+  const targetEv = store.byArchiveNo(archiveNo.trim().replace(/^\[|\]$/g, ""));
+  if (!targetEv) return null;
+  const root = rootOf(store.db, targetEv.id);
+  if (!root) return null;
+  const entry = readShelf(store.db, { includeRetired: true }).find((e) => e.root === root);
+  if (!entry) return null;
+
+  const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
+  const showNo = (no: string) => displayArchiveNo(no, year);
+
+  const verIds = (store.db.query(`SELECT id FROM p_shelf_ver WHERE root = ? ORDER BY id`).all(root) as { id: string }[]).map((r) => r.id);
+  const versions = verIds
+    .map((id) => store.get(id))
+    .filter((ev): ev is PsycheEvent => !!ev)
+    .map((ev) => {
+      const p = ev.payload as Record<string, unknown>;
+      const fields = Object.fromEntries(ENTRY_FIELDS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]]));
+      return {
+        archiveNo: showNo(ev.archiveNo),
+        at: ev.at,
+        kind: ev.kind,
+        ...(typeof p.why === "string" ? { why: p.why } : {}),
+        fields,
+      };
+    });
+
+  // 关联到该 root 的所有 semantic.* 事件（用于取 note 与判定时间）
+  const semEvents = store.db
+    .query(
+      `SELECT id FROM events
+       WHERE fonds = '' AND (id IN (SELECT id FROM p_shelf_ver WHERE root = ?)
+         OR (kind IN ('semantic.evidence', 'semantic.retired') AND json_extract(payload, '$.target') IN (SELECT id FROM p_shelf_ver WHERE root = ?)))
+       ORDER BY id`,
+    )
+    .all(root, root) as { id: string }[];
+
+  const judgedMeta = new Map<string, { judgedAt: number; note?: string }>();
+  for (const { id } of semEvents) {
+    const sev = store.get(id);
+    if (!sev) continue;
+    const p = sev.payload as { note?: string };
+    for (const l of store.linksFrom(sev.id)) {
+      if (l.rel !== "evidence" || judgedMeta.has(l.to)) continue;
+      judgedMeta.set(l.to, { judgedAt: sev.at, ...(typeof p.note === "string" ? { note: p.note } : {}) });
+    }
+  }
+
+  const evRows = store.db
+    .query(`SELECT event_id, stance FROM p_shelf_ev WHERE root = ? ORDER BY rowid`)
+    .all(root) as { event_id: string; stance: string }[];
+
+  const evidences = evRows
+    .map(({ event_id, stance }) => {
+      const ev = store.get(event_id);
+      if (!ev) return null;
+      const meta = judgedMeta.get(event_id);
+      const text = ev.kind === "episode" ? ((ev.payload as { text?: string })?.text ?? "") : (renderExperience(ev) ?? "");
+      return {
+        archiveNo: showNo(ev.archiveNo),
+        at: ev.at,
+        stance,
+        judgedAt: meta?.judgedAt ?? ev.at,
+        ...(meta?.note ? { note: meta.note } : {}),
+        text,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
+  return {
+    root,
+    currentArchiveNo: showNo(entry.archiveNo),
+    shelf: entry.shelf,
+    retired: entry.retired,
+    versions,
+    evidences,
+  };
 }

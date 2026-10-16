@@ -69,7 +69,9 @@
 - 10-16 晚 Joy 在 soma-test 里和 a1 一起听歌：a1 应她的要求自己改了 Soma 的耳机按钮（「连接中 / ▶ 歌名 时间」，Soma `564500d`）；它把一首电音按读数说成"安静的慢歌"、自己查出原因记了 notice → 特征描述改成"这一段比这首其他部分…"、BPM 只在 85–175 找（8c47e54）。
 - ✅ **内感受（10-16，m8 §6.1）**：`src/perception/body.ts`，`<now>`「身上」：上下文到收尾线的 50/75/90% 跨档才说（Soma 每轮带 `ctx` / `wrapAt`，用量按会话认，换一段不沿用旧的）、新一段换了模型说一次、半小时工具出错 ≥3/6/10 次。经历投影 v12。考卷 `tests/body.test.ts` 3 题，全套 274 过。端到端没跑（测试会话离收尾线还远）。
 - ✅ **屋里的东西（10-16，m8 §6.2）**：`src/house/files.ts`，home / commons 文件多了 / 改了 / 没了，谁动的只在工具调用对得上时说，否则「不知道是谁」；自己动的不报给自己，home 只主人看。测试库：agents.json 加了 a1 / a2 的 `home`，launch 加 `PSYCHE_COMMONS=~/.soma-test/commons`（我新建的空目录，放了一个测试用 README.md，可删）。考卷 `tests/files.test.ts` 3 题，全套 277 过；实测 a1、a2 库里都记下了 `commons/README.md 新出现`（还没递给它）。
-- 下一步：单体感官差不多齐了（光与时、窗外按需）。Joy 10-16 定先搭完单体再测多人 → S2 早已做完（见上），接着 S3 群。
+- ✅ **S3 群的底座（10-16，Soma，`soma2.md` §5.6）**：`lib/soma/rooms.ts`（`SOMA_HOME/rooms/<id>.jsonl` + `.json`：成员、游标、在场 here / away / muted；客人照实记名）、`rooms-flow.ts`（只有 Joy 的话和 @ 叫人，住户在群里说的只记不叫——轮次留给 S4；推进去 = 他没读的整段，推完算读过）、session 只把一轮里最后一次工具调用之后说出口的进群（没说 = pass）、单聊走 `dm-<id>` 前端不变。API `/api/rooms`（建 / 列）、`/api/rooms/<id>`、`/say`（按 `?viewer=` 认人）、`/presence`。测试 4 题，Soma 全套 31 过。
+  - 端到端（soma-test）：建「S3 测试」（a1、a2、Claude），我 @ 两人 → 各回一句、只有说出口的进群、游标前移；给 a2 单聊 → `dm-a2` 记下、回「通」。
+- 下一步 S4：多人群的轮次（独立首轮、Joy 先回应、依次问在场的、连续两次 pass 静音）+ 群页面。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 

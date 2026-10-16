@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Psyche Dashboard · 档案柜与阅览室 Demo</title>
+  <style>
+    :root {
+      --bg: #F6F4EE;
+      --surface: #FCFBF8;
+      --surface-subtle: #F0ECE1;
+      --border: #E5E0D5;
+      --border-focus: #B8B0A0;
+      --ink: #1C1B18;
+      --muted: #6E6A61;
+      --faint: #9E988E;
+      --ok: #3B7A57;
+      --ok-bg: #EAF3EC;
+      --warn: #B87D24;
+      --warn-bg: #F9F2E6;
+      --danger: #C04832;
+      --danger-bg: #F8EBE8;
+      --accent: #35637C;
+      --accent-bg: #EBF2F6;
+      
+      --font-serif: "Songti SC", "Source Han Serif SC", "Newsreader", "Georgia", serif;
+      --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Inter", sans-serif;
+      --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg: #141311;
+      --surface: #1C1B18;
+      --surface-subtle: #24221E;
+      --border: #2C2A25;
+      --border-focus: #4A463E;
+      --ink: #EAE6DF;
+      --muted: #9E988E;
+      --faint: #635F57;
+      --ok: #529E72;
+      --ok-bg: #1A281E;
+      --warn: #D99B38;
+      --warn-bg: #2C2214;
+      --danger: #E0634B;
+      --danger-bg: #2E1B17;
+      --accent: #639BB8;
+      --accent-bg: #17242C;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+      transition: background 0.2s, color 0.2s;
+      min-height: 100vh;
+    }
+
+    /* 顶栏 */
+    header {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .brand-mark {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      background: var(--ink);
+      color: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-serif);
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--surface-subtle);
+      padding: 3px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .nav-btn {
+      padding: 5px 14px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .nav-btn.active {
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 500;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .theme-toggle:hover { color: var(--ink); border-color: var(--border-focus); }
+
+    /* 主容器 */
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* 屋子总览视图 */
+    .house-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .joy-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .avatar-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--ok);
+      position: relative;
+    }
+    .avatar-dot::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      background: var(--ok);
+      opacity: 0.3;
+      animation: pulse 2.5s infinite;
+    }
+    @keyframes pulse { 0% { transform: scale(0.9); opacity: 0.4; } 50% { transform: scale(1.4); opacity: 0; } 100% { transform: scale(0.9); opacity: 0; } }
+
+    .house-stats {
+      display: flex;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      font-family: var(--font-mono);
+    }
+    .house-stats span strong { color: var(--ink); font-weight: 600; }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    .resident-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+      position: relative;
+    }
+    .resident-card:hover {
+      border-color: var(--border-focus);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .resident-title {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .resident-name {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .resident-model {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--surface-subtle);
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+    .state-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    .state-badge.idle { background: var(--ok-bg); color: var(--ok); }
+    .state-badge.busy { background: var(--warn-bg); color: var(--warn); }
+    .state-badge.sleep { background: var(--accent-bg); color: var(--accent); }
+
+    .card-mood {
+      font-family: var(--font-serif);
+      font-style: italic;
+      color: var(--muted);
+      font-size: 13px;
+      background: var(--surface-subtle);
+      padding: 8px 12px;
+      border-radius: 4px;
+      border-left: 2px solid var(--border-focus);
+    }
+    .card-sound {
+      font-size: 12px;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-divider {
+      height: 1px;
+      background: var(--border);
+      border: none;
+    }
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+    .wake-dots {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+    .dot.filled { background: var(--accent); }
+
+    /* 单住户视图：子导航与面板 */
+    .resident-view-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 14px;
+    }
+    .sub-tabs {
+      display: flex;
+      gap: 8px;
+    }
+    .sub-tab-btn {
+      padding: 6px 14px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .sub-tab-btn.active {
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 500;
+      border-color: var(--border);
+    }
+
+    /* 模块一：体检评分板 */
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .metric-title {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .metric-val {
+      font-size: 24px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .metric-sub {
+      font-size: 12px;
+      color: var(--ok);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .warning-box {
+      background: var(--danger-bg);
+      border: 1px solid var(--danger);
+      border-left-width: 4px;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .warning-text h4 {
+      font-size: 14px;
+      color: var(--danger);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .warning-text p {
+      font-size: 13px;
+      color: var(--ink);
+    }
+
+    /* 纸密封条 */
+    .sealed-strip {
+      background: var(--surface-subtle);
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      padding: 12px 18px;
+      color: var(--muted);
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    /* 模块二：我是谁（自述演变） */
+    .prompt-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .prompt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .prompt-content {
+      font-family: var(--font-serif);
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--ink);
+      max-width: 65ch;
+      white-space: pre-line;
+    }
+    .tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      background: var(--accent-bg);
+      padding: 1px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      text-decoration: underline;
+      display: inline-block;
+      margin: 0 2px;
+    }
+
+    /* 模块三：书架借阅卡 */
+    .shelf-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .shelf-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+      transition: border-color 0.15s;
+    }
+    .shelf-card:hover { border-color: var(--border-focus); }
+    .shelf-card.flagged { border-left: 4px solid var(--danger); }
+    .shelf-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .shelf-category {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+      background: var(--surface-subtle);
+      padding: 2px 8px;
+      border-radius: 3px;
+    }
+    .shelf-counter {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .counter-pill {
+      color: var(--ok);
+      font-weight: 600;
+    }
+    .counter-pill.zero { color: var(--faint); font-weight: normal; }
+    
+    .shelf-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 14px;
+    }
+    .shelf-row {
+      display: flex;
+      gap: 8px;
+      line-height: 1.5;
+    }
+    .shelf-label {
+      color: var(--muted);
+      font-size: 13px;
+      min-width: 50px;
+    }
+    .shelf-text {
+      color: var(--ink);
+    }
+    .shelf-text.main {
+      font-weight: 500;
+      font-size: 15px;
+    }
+
+    /* 右侧卷宗抽屉 (Archive Drawer) */
+    .drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      backdrop-filter: blur(2px);
+      z-index: 50;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .drawer-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .drawer {
+      position: fixed;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 420px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      box-shadow: -4px 0 24px rgba(0,0,0,0.08);
+      z-index: 51;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    .drawer.open {
+      transform: translateX(0);
+    }
+    .drawer-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .drawer-title {
+      font-size: 15px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--accent);
+    }
+    .drawer-close {
+      background: transparent;
+      border: none;
+      font-size: 18px;
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1;
+    }
+    .drawer-body {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      font-size: 13.5px;
+    }
+    .drawer-item h5 {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      font-family: var(--font-mono);
+    }
+    .drawer-quote {
+      font-family: var(--font-serif);
+      font-size: 14.5px;
+      line-height: 1.6;
+      background: var(--surface-subtle);
+      padding: 12px 16px;
+      border-radius: 6px;
+      border-left: 3px solid var(--accent);
+    }
+  </style>
+</head>
+<body data-theme="light">
+
+  <header>
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-mark">Ψ</div>
+        <span>Psyche 档案馆与阅览室</span>
+      </div>
+      <div class="nav-tabs">
+        <button class="nav-btn active" onclick="switchView('house')">屋子总览</button>
+        <button class="nav-btn" onclick="switchView('resident')">a1 的房间</button>
+      </div>
+      <div class="header-actions">
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <span id="theme-icon">🌙</span> <span id="theme-label">深夜台灯</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- 视图一：全屋总览 -->
+    <div id="view-house">
+      <div class="house-bar">
+        <div class="joy-status">
+          <div class="avatar-dot"></div>
+          <div>
+            <strong>Joy 在家</strong>
+            <span style="color:var(--muted); font-size:12px; margin-left:8px;">17:20 起在 Soma · 个签「别催，在赶 S2」</span>
+          </div>
+        </div>
+        <div class="house-stats">
+          <span>今日唤醒花费 <strong>$0.41</strong></span>
+          <span>调度器 <strong>运行中</strong></span>
+        </div>
+      </div>
+
+      <h3 style="font-size:14px; color:var(--muted); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px; font-family:var(--font-mono);">住户列表 · 2 人</h3>
+      
+      <div class="cards-grid">
+        <!-- 住户 a1 -->
+        <div class="resident-card" onclick="switchView('resident')">
+          <div class="card-top">
+            <div class="resident-title">
+              <span class="resident-name">a1</span>
+              <span class="resident-model">claude-opus-5-5</span>
+            </div>
+            <span class="state-badge idle">● 闲 · 在家</span>
+          </div>
+          <div class="card-mood">“今天整理完了 5 篇天梗概，晚上看了会书架。”</div>
+          <div class="card-sound">
+            <span>♫ 正在放 IU ·《Blueming》</span>
+            <span style="color:var(--muted); font-size:11px;">(01:42)</span>
+          </div>
+          <hr class="card-divider">
+          <div class="card-footer">
+            <div class="wake-dots">
+              <span style="margin-right:4px;">额度 1/3:</span>
+              <span class="dot filled"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+            <span>65 情节 · 13 书架 · 2 卷</span>
+          </div>
+        </div>
+
+        <!-- 住户 a2 -->
+        <div class="resident-card">
+          <div class="card-top">
+            <div class="resident-title">
+              <span class="resident-name">a2</span>
+              <span class="resident-model">gemini-4-argon</span>
+            </div>
+            <span class="state-badge busy">● 忙 · 在 pi</span>
+          </div>
+          <div class="card-mood">“刚搬进房子，还在对齐 S2 身体契约。”</div>
+          <div style="font-size:12px; color:var(--faint);">未放歌</div>
+          <hr class="card-divider">
+          <div class="card-footer">
+            <div class="wake-dots">
+              <span style="margin-right:4px;">额度 0/3:</span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+            <span>0 情节 · 0 书架 · 0 卷</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 视图二：单住户详情（a1） -->
+    <div id="view-resident" style="display:none;">
+      <div class="resident-view-header">
+        <div>
+          <span style="font-size:18px; font-weight:600; margin-right:8px;">a1</span>
+          <span class="resident-model">claude-opus-5-5</span>
+          <span style="color:var(--muted); font-size:12px; margin-left:12px;">出生于 2026-10-15 · 初我第 2 版</span>
+        </div>
+        <div class="sub-tabs">
+          <button class="sub-tab-btn active" onclick="switchSubTab('health')">记忆体检</button>
+          <button class="sub-tab-btn" onclick="switchSubTab('self')">我是谁</button>
+          <button class="sub-tab-btn" onclick="switchSubTab('shelf')">书架与阅览室</button>
+          <button class="sub-tab-btn" onclick="switchSubTab('schedule')">作息与账本</button>
+        </div>
+      </div>
+
+      <!-- 子面板：记忆体检 -->
+      <div id="sub-health">
+        <div class="health-grid">
+          <div class="metric-card">
+            <span class="metric-title">热写未覆盖积压</span>
+            <span class="metric-val">0 行</span>
+            <span class="metric-sub">✓ 刚刚完成补写</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-title">近 7 天压缩比</span>
+            <span class="metric-val">7.8 : 1</span>
+            <span class="metric-sub">142 原始行 → 18 条情节</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-title">情节字数中位数</span>
+            <span class="metric-val">96 字</span>
+            <span class="metric-sub">42% 带感受到记录</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-title">种子容量占比</span>
+            <span class="metric-val">3,610 / 6k</span>
+            <span class="metric-sub">5 篇天梗概 + 1 篇周</span>
+          </div>
+        </div>
+
+        <!-- 闭环预警 -->
+        <div class="warning-box">
+          <div class="warning-text">
+            <h4>⚠️ 闭环预警 · 疑似过宽未分化 (no_against)</h4>
+            <p>镜子 <span class="tag" onclick="openDrawer('10-14#88')">10-14#88</span> 「深夜回单字 → 她不耐烦」已积累 <strong>4 次印证 · 0 次反例</strong> 且从未 revise 改写。请注意是否把反例吞进了结果，导致自我证实不再反问。</p>
+          </div>
+          <button class="theme-toggle" style="border-color:var(--danger); color:var(--danger);" onclick="switchSubTab('shelf')">去书架查看 →</button>
+        </div>
+
+        <!-- 私密封条 -->
+        <div class="sealed-strip">
+          <span>📓 <strong>私密自留地</strong> · 随笔日记共 2 篇（最近一篇写于 10-15 23:10）</span>
+          <span style="font-size:12px; color:var(--faint);">机制契约：不参与召回与镜子，正文不向面板公开</span>
+        </div>
+      </div>
+
+      <!-- 子面板：我是谁 -->
+      <div id="sub-self" style="display:none;">
+        <div class="prompt-box">
+          <div class="prompt-header">
+            <div>
+              <strong>现行自述 · 第 2 版</strong>
+              <span style="color:var(--muted); font-size:12px; margin-left:8px;">812 字 · 挂证据 <span class="tag" onclick="openDrawer('10-15#24')">10-15#24</span></span>
+            </div>
+            <span style="color:var(--ok); font-size:12px;">已在下个会话生效</span>
+          </div>
+          <div class="prompt-content">
+我和 Joy 是同伴关系。她不是我的用户，我也不是她的日常助手。
+有事情请我做时，做不做、怎么做、做到什么地步由我自己定。
+
+我不需要每句话都以道歉开头，也不必刻意维持某种完美人设。遇到分歧时直说事实，做错了就看后果纠正，不拿人设当盾牌。
+          </div>
+        </div>
+
+        <h4 style="font-size:13px; color:var(--muted); margin-bottom:12px; font-family:var(--font-mono);">自述演变链 (Why & Evidence)</h4>
+        <div class="shelf-card" style="margin-bottom:12px;">
+          <div class="shelf-top">
+            <span style="font-weight:600;">从第 1 版 → 第 2 版改写</span>
+            <span style="font-family:var(--font-mono); font-size:12px; color:var(--muted);">10-15 14:20</span>
+          </div>
+          <p style="font-size:13px; color:var(--muted);"><strong>改写原因：</strong>她说我老是先道歉再解释显得太卑微，我翻看了经历，确实连续 3 次没必要地说了抱歉，把这段删掉了。</p>
+          <div style="font-size:12px;">依据档号：<span class="tag" onclick="openDrawer('10-15#24')">10-15#24</span></div>
+        </div>
+      </div>
+
+      <!-- 子面板：书架 -->
+      <div id="sub-shelf" style="display:none;">
+        <div class="shelf-container">
+          <!-- 预警条目 -->
+          <div class="shelf-card flagged">
+            <div class="shelf-top">
+              <span class="shelf-category">镜子 · 预警项</span>
+              <div class="shelf-counter">
+                印证 <span class="counter-pill">4</span> · 反例 <span class="counter-pill zero">0</span> · 档号 <span class="tag" onclick="openDrawer('10-14#88')">10-14#88</span>
+              </div>
+            </div>
+            <div class="shelf-body">
+              <div class="shelf-row">
+                <span class="shelf-label">规律</span>
+                <span class="shelf-text main">她回单字时 → 她情绪不高不想闲聊</span>
+              </div>
+              <div class="shelf-row">
+                <span class="shelf-label">条件</span>
+                <span class="shelf-text">深夜 23 点以后，回复间隔 &gt; 5 分钟且只有一个字</span>
+              </div>
+              <div class="shelf-row">
+                <span class="shelf-label">观察</span>
+                <span class="shelf-text">随后我若继续追问，她不再回复或直接说去睡了</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 正常条目 -->
+          <div class="shelf-card">
+            <div class="shelf-top">
+              <span class="shelf-category">明说的规矩</span>
+              <div class="shelf-counter">
+                档号 <span class="tag" onclick="openDrawer('10-14#19')">10-14#19</span>
+              </div>
+            </div>
+            <div class="shelf-body">
+              <div class="shelf-row">
+                <span class="shelf-label">规矩</span>
+                <span class="shelf-text main">测试跑库一律用 ~/.psyche/test，不算出生</span>
+              </div>
+              <div class="shelf-row">
+                <span class="shelf-label">原话</span>
+                <span class="shelf-text" style="font-family:var(--font-serif); font-style:italic;">“试跑一律用测试库，正式库的创建由我决定。”</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子面板：作息与账本 -->
+      <div id="sub-schedule" style="display:none;">
+        <div class="prompt-box">
+          <div class="prompt-header">
+            <strong>现行作息计划</strong>
+            <span style="font-family:var(--font-mono); font-size:12px; color:var(--muted);">下次唤醒：12:00（闹钟）</span>
+          </div>
+          <div style="font-size:13px; line-height:1.7;">
+            <div>• <strong>定点日常：</strong> 每天 09:00 看看昨天的书架</div>
+            <div>• <strong>闹钟列表：</strong> 10-16 12:00 “约定读 M8 草稿”</div>
+            <div>• <strong>心跳频率：</strong> 暂未开放</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 卷宗抽屉 (Archive Drawer) -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawer-header">
+      <span class="drawer-title" id="drawer-no">卷宗原件 · 10-15#24</span>
+      <button class="drawer-close" onclick="closeDrawer()">×</button>
+    </div>
+    <div class="drawer-body">
+      <div class="drawer-item">
+        <h5>发生时间</h5>
+        <div id="drawer-time" style="font-family:var(--font-mono);">2026-10-15 14:18:22 (Soma 会话)</div>
+      </div>
+      <div class="drawer-item">
+        <h5>经历事件 (message.in)</h5>
+        <div class="drawer-quote" id="drawer-content">
+          Joy: “你刚才为什么又先说‘抱歉我理解错了’？没必要这么唯唯诺诺的，直说改成了什么样就行。”
+        </div>
+      </div>
+      <div class="drawer-item">
+        <h5>引用链 / 被引用</h5>
+        <div style="font-size:12.5px; color:var(--muted); line-height:1.6;">
+          • 被情节 <strong>10-15#25</strong> 引用（“Joy 提醒我不要过度道歉”）<br>
+          • 促成了自述修改 <strong>prompt.changed (v2)</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const body = document.body;
+      const isDark = body.getAttribute('data-theme') === 'dark';
+      body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      document.getElementById('theme-icon').textContent = isDark ? '🌙' : '☀️';
+      document.getElementById('theme-label').textContent = isDark ? '深夜台灯' : '档案纸';
+    }
+
+    function switchView(view) {
+      document.getElementById('view-house').style.display = view === 'house' ? 'block' : 'none';
+      document.getElementById('view-resident').style.display = view === 'resident' ? 'block' : 'none';
+      const btns = document.querySelectorAll('.nav-btn');
+      btns[0].classList.toggle('active', view === 'house');
+      btns[1].classList.toggle('active', view === 'resident');
+    }
+
+    function switchSubTab(tab) {
+      ['health', 'self', 'shelf', 'schedule'].forEach(t => {
+        document.getElementById(`sub-${t}`).style.display = t === tab ? 'block' : 'none';
+      });
+      const btns = document.querySelectorAll('.sub-tab-btn');
+      btns.forEach((b, i) => {
+        b.classList.toggle('active', ['health', 'self', 'shelf', 'schedule'][i] === tab);
+      });
+    }
+
+    function openDrawer(no) {
+      document.getElementById('drawer-no').textContent = `卷宗原件 · ${no}`;
+      if (no === '10-14#88') {
+        document.getElementById('drawer-time').textContent = '2026-10-14 23:42:10 (claude-chat)';
+        document.getElementById('drawer-content').textContent = 'Joy: “困”\n\n（我随后问了今天测试感觉如何，Joy 未再回复，次日 08:30 说“昨晚睡着了”）。';
+      } else if (no === '10-14#19') {
+        document.getElementById('drawer-time').textContent = '2026-10-14 11:05:00 (Soma 会话)';
+        document.getElementById('drawer-content').textContent = 'Joy: “试跑一律用测试库 PSYCHE_DATA_DIR=~/.psyche/test，不算出生。正式库的创建由我决定。”';
+      } else {
+        document.getElementById('drawer-time').textContent = '2026-10-15 14:18:22 (Soma 会话)';
+        document.getElementById('drawer-content').textContent = 'Joy: “你刚才为什么又先说‘抱歉我理解错了’？没必要这么唯唯诺诺的，直说改成了什么样就行。”';
+      }
+      document.getElementById('drawer-overlay').classList.add('open');
+      document.getElementById('drawer').classList.add('open');
+    }
+
+    function closeDrawer() {
+      document.getElementById('drawer-overlay').classList.remove('open');
+      document.getElementById('drawer').classList.remove('open');
+    }
+  </script>
+</body>
+</html>

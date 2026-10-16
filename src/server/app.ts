@@ -19,7 +19,8 @@ import { renderNow } from "../archive/now.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
-import { readShelf, renderEntry } from "../reading/shelf.ts";
+import { readShelf, renderEntry, shelfDetail } from "../reading/shelf.ts";
+import { computeHealth } from "../reading/health.ts";
 import { computeStats } from "../reading/stats.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
@@ -29,7 +30,7 @@ import { composePrompt, currentName, nameSelf, pendingSelfLine, readSelf, rewrit
 import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../channel/inbox.ts";
 import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
 import type { PsycheEvent } from "../store/events.ts";
-import { GIST_LIMIT, GistError, pendingGists, writeGist } from "../catalog/gist.ts";
+import { GIST_LIMIT, GistError, pendingGists, readGists, writeGist } from "../catalog/gist.ts";
 import { renderContinuity } from "../archive/continuity.ts";
 import { deliverPresence, lookPresence, MoodError, setMood } from "../house/presence.ts";
 import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, readPlaylists, SoundError, stop, type SoundDeps } from "../perception/sound.ts";
@@ -155,10 +156,11 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     return c.json(writeColdwrite(store, body, version));
   });
 
-  // 梗概（10-16）：过完了还没写的段 + 材料；交回一段
+  // 梗概（10-16）：已写出的梗概 + 过完了还没写的段 + 材料；交回一段
   app.get("/v1/gist", (c) => {
     const prompt = readPrompt("gist.md", promptsDir);
-    return c.json({ pending: pendingGists(store), limits: GIST_LIMIT, prompt: prompt.text, promptVersion: prompt.version });
+    const gists = readGists(store).map((g) => ({ ...g, chars: Array.from(g.text).length }));
+    return c.json({ gists, pending: pendingGists(store), limits: GIST_LIMIT, prompt: prompt.text, promptVersion: prompt.version });
   });
 
   app.post("/v1/gist", async (c) => {
@@ -170,12 +172,20 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   // 接着往下过：Soma 换会话时新会话的开头（梗概 + 最近的情节）
   app.get("/v1/continuity", (c) => c.json({ text: renderContinuity(store) }));
 
-  // 书架：现行条目 + 证据计数
+  // 书架：现行条目 + 证据计数；单条详情与证据链
   app.get("/v1/shelf", (c) => {
     const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
     const entries = readShelf(store.db, { shelf: c.req.query("shelf") || undefined, q: c.req.query("q") || undefined });
     return c.json({ entries: entries.map(({ root, current, ...e }) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year) })) });
   });
+
+  app.get("/v1/shelf/:no", (c) => {
+    const detail = shelfDetail(store, decodeURIComponent(c.req.param("no")));
+    return detail ? c.json(detail) : c.json({ error: "没有这条书架条目" }, 404);
+  });
+
+  // 记忆体检（dashboard.md §4.2.2）：不读私密正文，现算健康指标与闭环预警
+  app.get("/v1/health", (c) => c.json(computeHealth(store)));
 
   // 统计：from / to 收毫秒、日期或 ISO 时间；缺省最近 7 天
   app.get("/v1/stats", (c) => {
