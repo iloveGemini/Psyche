@@ -1,0 +1,6 @@
+{
+  "name": "psyche",
+  "version": "0.1.0",
+  "description": "把 Claude Code 接到 Psyche：开会话时给自述与接续，每轮带 <now>（含浮现），对话与工具报进经历，提供 Psyche 的记忆工具。契约见 notes/plan/claude-code.md。",
+  "author": { "name": "Joy" }
+}

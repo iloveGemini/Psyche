@@ -1,0 +1,12 @@
+{
+  "name": "psyche",
+  "description": "Psyche 的 harness 插件",
+  "owner": { "name": "Joy" },
+  "plugins": [
+    {
+      "name": "psyche",
+      "description": "Claude Code 接入 Psyche（工位）：上报对话与工具、每轮带 <now>、记忆工具",
+      "source": "./harness/claude-code"
+    }
+  ]
+}

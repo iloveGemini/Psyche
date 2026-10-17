@@ -5,9 +5,11 @@
  * 做两件库房不做的事：
  * 1. 校验 kind 与 payload（kinds.ts）。
  * 2. 大块内容自动转进资料库：工具返回超过阈值时，payload 里只留哈希（原文完整存，但不撑大事件表）。
+ * 3. 凭据先遮掉再写（redact.ts，claude-code.md §三）：遮过的带 `redacted: n`。
  */
 import type { EventStore, LinkInput, PsycheEvent } from "../store/events.ts";
 import { IntakeError, validate } from "./kinds.ts";
+import { redactPayload } from "./redact.ts";
 
 export const INLINE_LIMIT = 2000;
 
@@ -28,7 +30,8 @@ const GATED = /^(episode|semantic\..+|coldwrite\.done|prompt\.changed|named|sche
 export function intake(store: EventStore, item: IntakeItem): PsycheEvent {
   if (GATED.test(item.kind)) throw new IntakeError(`${item.kind} 要经热写 / 冷写 / 自我 / 作息 / 通道 / 线索卷的口子写，不走上报`);
   const spec = validate(item.kind, item.payload, item.links);
-  let payload = item.payload;
+  const r = redactPayload(item.payload);
+  let payload = r.n ? { ...r.value, redacted: r.n } : item.payload;
   if (item.kind === "tool.result" && typeof payload.text === "string" && payload.text.length > INLINE_LIMIT) {
     const { text, ...rest } = payload;
     payload = { ...rest, result: { hash: store.putMaterial(text as string), mime: "text/plain" }, size: (text as string).length };

@@ -1,0 +1,14 @@
+{
+  "psyche": {
+    "type": "stdio",
+    "command": "bun",
+    "args": [
+      "${PSYCHE_REPO:-/Users/joy/workspace/Psyche}/src/mcp.ts"
+    ],
+    "env": {
+      "PSYCHE_URL": "${PSYCHE_URL:-http://127.0.0.1:7450}",
+      "PSYCHE_AGENT": "${PSYCHE_AGENT:-}",
+      "PSYCHE_TOKEN": "${PSYCHE_TOKEN:-}"
+    }
+  }
+}

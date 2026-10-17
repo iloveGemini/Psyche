@@ -1,0 +1,9 @@
+{
+  "description": "Psyche：开会话给自述与接续、每轮带 <now>、把经过报进经历",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/src/hook.ts\" session-start", "timeout": 15 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/src/hook.ts\" user-prompt", "timeout": 10 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/src/hook.ts\" stop", "timeout": 30 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "bun \"${CLAUDE_PLUGIN_ROOT}/src/hook.ts\" session-end", "timeout": 30 }] }]
+  }
+}
