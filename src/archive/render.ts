@@ -53,10 +53,16 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/^mcp__psyche__revise_episode$/.test(p.name)) return `我改写了 ${p.args?.target ?? "?"} 这条情节`;
       if (/^mcp__psyche__recall$/.test(p.name)) return `我翻了翻记忆，找「${p.args?.query ?? ""}」`;
       if (/^mcp__psyche__detail$/.test(p.name)) return `我翻出 ${p.args?.archiveNo ?? "?"} 的原件看了看`;
+      // 前世（archive/past.ts）：翻到的是前世的话，不是经历，只记翻了；认领、编目本身就是 fonds.claimed / semantic.proposed
+      if (/^mcp__psyche__past_life$/.test(p.name))
+        return `我翻了翻前世卷宗${p.args?.fonds ? ` ${p.args.fonds}` : ""}${p.args?.q ? `，找「${p.args.q}」` : p.args?.key ? `（${p.args.key}）` : ""}`;
+      if (/^mcp__psyche__(claim_past|past_catalog)$/.test(p.name)) return null;
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;
     case "tool.result":
       // 就是这一段本身 / 翻出来的旧记忆：再记一遍，下次 recall 会把它当新的又翻出来
-      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads|look|set_mood|play|stop|playlist|listen|listen_with|notice)$/.test(p.name)) return null;
+      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads|look|set_mood|play|stop|playlist|listen|listen_with|notice|past_life)$/.test(p.name)) return null;
+      // 认领 / 编目成了就有 fonds.claimed / semantic.proposed；被拒的留着（它看得到自己为什么被拒）
+      if (/^mcp__psyche__(claim_past|past_catalog)$/.test(p.name) && p.ok) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
       return null; // 屋子记下的变化不等于它经历过的；递到眼前的在 percept.noticed 里（m8.md §五）
@@ -133,7 +139,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "entity.merged":
       return `我认定 ${p.from.join("、")} 就是 ${p.into}`;
     case "fonds.claimed":
-      return `我认领了 ${p.fonds} 的旧卷宗`;
+      return `我认领了 ${p.fonds} 的旧卷宗${p.why ? `：${p.why}` : ""}`;
     case "situation":
       return `（此后：在 ${p.harness}${p.model ? `，用 ${p.model}` : ""}）`;
     default:

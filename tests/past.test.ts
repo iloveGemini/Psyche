@@ -73,6 +73,12 @@ describe("翻", () => {
     expect((await h.get("/v1/past?fonds=ROY&view=episodes&key=2026-09-20")).text).toContain("不是原话");
     // 翻不留东西在库里（除了它自己调工具时 harness 报的经历）
     expect(h.store.list({}).length).toBe(0);
+    // 它调工具时 harness 报的那两行：只记「翻了」，翻到的前世原话不进经历、recall 搜不到（10-17 a2 报）
+    intake(h.store, { kind: "tool.call", source: "soma", payload: { name: "mcp__psyche__past_life", callId: "c1", args: { fonds: "ROY", view: "search", q: "煤球" } } });
+    intake(h.store, { kind: "tool.result", source: "soma", payload: { name: "mcp__psyche__past_life", callId: "c1", ok: true, text: "[r1] 2026-09-20 21:00:00 Joy：我的猫叫煤球" } });
+    const exp = readExperience(h.store.db, {}).map((l) => l.text);
+    expect(exp).toEqual(["我翻了翻前世卷宗 ROY，找「煤球」"]);
+    expect((await h.get(`/v1/recall?q=${encodeURIComponent("我的猫叫煤球")}`)).lines).toEqual([]);
   });
 });
 
