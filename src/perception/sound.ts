@@ -9,7 +9,7 @@ import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { ownSince } from "../self/self.ts";
 import { clockOf } from "../core/time.ts";
 import { parseLrc, type MusicSource, type Track } from "./netease.ts";
-import { describeSection, featuresOf, type Features } from "./features.ts";
+import { describeSection, featuresOf, summarize, type Features } from "./features.ts";
 import { resolveSession } from "../catalog/hotwrite.ts";
 
 export class SoundError extends Error {}
@@ -241,7 +241,21 @@ export async function deliverSound(store: EventStore, deps: SoundDeps, session: 
       }
       const stopped = plays.find((e) => e.kind === "stopped" && e.at > since);
       if (done.length) lines.push(`放完了：${done.map(name).join("、")}`);
+      for (const t of done) {
+        const f = featuresOf(store, t.id);
+        if (f) lines.push(`${name(t)}放完后汇总：${summarize(store, t.id, f)}`);
+      }
       if (stopped && !cur) lines.push(`停了（${hhmm(stopped.at, tz, now)}）`);
+      // 有人说话那一刻正唱到哪（10-16 a1：她说「好听」时我不知道说的是哪一段）；刚到的那句此刻就是「正在放」，不重复
+      const said = store.list({ kinds: ["message.in"], fonds: "", limit: 100_000 }).filter((e) => e.id > sinceId! && e.at <= now && now - e.at > 10_000);
+      for (const m of said) {
+        const at = nowPlaying(src, m.at);
+        if (!at) continue;
+        const lrc = parseLrc((await ensureLyric(store, deps.music, at.track.id)) ?? undefined);
+        const line = lrc.filter((l) => l.time <= at.pos).at(-1)?.text;
+        const who = (m.payload as { from?: string }).from ?? "有人";
+        lines.push(`${who} 说话那会儿（${hhmm(m.at, tz, now)}）正放到${name(at.track)} ${mmss(at.pos)}${line ? `，唱到「${line}」` : ""}`);
+      }
     }
     if (cur) {
       const pl = (cur.ev.payload as { playlist?: string }).playlist;

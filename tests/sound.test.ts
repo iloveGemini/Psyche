@@ -213,3 +213,58 @@ test("从没递过：只翻最近 6 小时", async () => {
   h.clock.t = T("2026-10-17T09:00:00");
   expect(await deliverSound(h.a1, h.deps, "s1")).toBeNull();
 });
+
+describe("氛围（v2：频谱、调式；10-17 a1）", () => {
+  const tones = (secs: number, hz: number[], amp = 0.1) => {
+    const pcm = new Float32Array(secs * RATE);
+    for (let i = 0; i < pcm.length; i++) for (const f of hz) pcm[i] += amp * Math.sin((2 * Math.PI * f * i) / RATE);
+    return pcm;
+  };
+  // 和弦里每个音带两个八度
+  const chord = (...midi: number[]) => midi.flatMap((m) => [m, m + 12]).map((m) => 440 * 2 ** ((m - 69) / 12));
+
+  test("大调 / 小调：C 大三和弦 → C 大调；A 小三和弦 + 小调属音 → A 小调", () => {
+    expect(analyzePcm(tones(10, chord(48, 52, 55))).key).toMatchObject({ tonic: "C", mode: "大调" });
+    expect(analyzePcm(tones(10, chord(57, 60, 64, 62, 59))).key).toMatchObject({ tonic: "A", mode: "小调" });
+  });
+
+  test("亮暗按质心、颗粒感按平坦度；说成一行时跟同一首比", () => {
+    // 前 20 秒低音正弦，后 20 秒白噪声
+    const pcm = new Float32Array(40 * RATE);
+    let seed = 1;
+    for (let i = 0; i < pcm.length; i++) {
+      seed = (seed * 16807) % 2147483647;
+      pcm[i] = i < 20 * RATE ? 0.1 * Math.sin((2 * Math.PI * 200 * i) / RATE) : 0.1 * ((seed / 2147483647) * 2 - 1);
+    }
+    const f = analyzePcm(pcm);
+    expect(f.v).toBe(2);
+    expect(f.centroid![6]).toBeGreaterThan(f.centroid![1] * 5);
+    expect(f.flat![6]).toBeGreaterThan(0.5);
+    expect(f.flat![1]).toBeLessThan(0.05);
+    expect(describeSection(f, 32)).toContain("音色比其他部分亮、尖，颗粒感、噪声比其他部分多");
+    expect(describeSection(f, 2)).toContain("音色比其他部分暗、闷，比其他部分干净、音高清楚");
+  });
+
+  test("老版本的特征当没算过（会重算）", async () => {
+    const { featuresOf } = await import("../src/perception/features.ts");
+    const store = new EventStore(":memory:");
+    store.syslog("track.features", { id: "1", hash: store.putMaterial(JSON.stringify({ step: 5, loud: [-20], bright: [1000], bpm: null, sections: [0] }), "application/json") });
+    expect(featuresOf(store, "1")).toBeNull();
+  });
+
+  test("放完给一张汇总；有人说话那一刻正唱到哪", async () => {
+    const h = setup();
+    h.a1.setSituation({ harness: "soma", session: "s1" }, "soma");
+    const f = analyzePcm(tones(60, chord(48, 52, 55)));
+    h.a1.syslog("track.features", { id: "1", hash: h.a1.putMaterial(JSON.stringify(f), "application/json") });
+    await h.ok("a1", "/v1/play", { query: "晴天" });
+    h.pass(2);
+    await deliverSound(h.a1, h.deps, "s1");
+    h.pass(10); // 0:12，刚唱过「从出生那年就飘着」
+    intake(h.a1, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "这句好听" } });
+    h.pass(60);
+    const heard = (await deliverSound(h.a1, h.deps, "s1"))!;
+    expect(heard).toContain("Joy 说话那会儿（19:00）正放到《晴天》周杰伦 0:12，唱到「从出生那年就飘着」");
+    expect(heard).toMatch(/《晴天》周杰伦放完后汇总：大调（估 C 大调.*不是边听边听到的/);
+  });
+});
