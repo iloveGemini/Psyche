@@ -576,7 +576,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         if (s.why) out.push(`上次这么排的理由：${s.why}`);
       }
       out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
-      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在你没醒着时叫醒各花一次，主动写给 Joy 的信每封花一次；整理、补写、来信叫醒、回她的信不花；到点时你醒着（30 分钟内有动静）也不花）`);
+      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在你没醒着时叫醒各花一次，主动写给 Joy 的信、写给屋里住户的信（回信也算）每封花一次；整理、补写、来信叫醒、回 Joy 的信不花；到点时你醒着（30 分钟内有动静）也不花。勿扰只挡信，不挡闹钟、定点、心跳）`);
       if (s.settings.paused) out.push("Joy 暂停了叫醒（整理、补写也不叫）；你自己的哪一轮里到点的事照样递给你。");
       return text(out.join("\n"));
     }),
@@ -593,7 +593,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "到点时你醒着（30 分钟内有对话或工具调用）不花额度；没醒着的，闹钟、定点、心跳各花一次唤醒额度。",
         "wakeOn.mail：来信能不能在你没醒着时叫醒你（缺省能，不花额度）。",
         "dnd：勿扰，一条条规则；一条里的条件都满足才算。条件：time { from, to }（HH:MM，可跨零点）、awake（醒着）、in（在哪个地方，如 soma）、busy（最近 15 分钟用过记忆以外的工具，在做事）。",
-        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的。闹钟、定点不受勿扰影响。Joy 的暂停盖过例外。",
+        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的。闹钟、定点、心跳不受勿扰影响。Joy 的暂停盖过例外。",
       ].join("\n"),
       inputSchema: {
         schedule: z.object({
