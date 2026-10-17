@@ -24,9 +24,7 @@ import { experienceProjector } from "./archive/experience.ts";
 import { shelfProjector } from "./reading/shelf.ts";
 import { createApp } from "./server/app.ts";
 import { embedderFromEnv, syncVectors } from "./archive/vectors.ts";
-import { bornRecord } from "./self/self.ts";
 import { logRun, tick } from "./heartbeat/scheduler.ts";
-import { runAsleep } from "./asleep.ts";
 import { asleepWork, BY_NAME } from "./heartbeat/scheduler.ts";
 import { getChannels } from "./channel/mailbox.ts";
 import { deliverEmail, startEmailWatch, WORKSPACE } from "./channel/email.ts";
@@ -119,14 +117,14 @@ function openResident({ id, dir, config }: Resident) {
   return { app, store };
 }
 
-// 调度器（m5.md §二；10-16 家 = Soma）：每人一个，每分钟判一次。醒来推给他的 Soma（同一条会话）；补写、整理在睡着时另起无头会话
+// 调度器（m5.md §二；10-16 家 = Soma）：每人一个，每分钟判一次。醒来推给他的 Soma（同一条会话）；补写、整理、梗概也推给 Soma 另开一段（10-17）
 function startScheduler(id: string, store: EventStore, config: ResidentConfig, tag: string) {
-  const model = bornRecord(store)?.model ?? config.model;
   const soma = config.soma?.replace(/\/+$/, "");
   // Soma 里住着几个人：醒来按 id 推到他那条线（Soma residents.ts）
   const wakeUrl = `${soma}/api/line/wake?agent=${encodeURIComponent(id)}`;
-  if (!model) {
-    console.error(`${tag}调度器没开：不知道他的模型（出生时没记，agents.json 里也没写 model）`);
+  const asleepUrl = `${soma}/api/line/asleep?agent=${encodeURIComponent(id)}`;
+  if (!soma) {
+    console.error(`${tag}调度器没开：没设家（agents.json 的 soma / SOMA_URL）——醒来和睡着都在 Soma 跑`);
     return;
   }
   let asleep = false;
@@ -161,17 +159,25 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
       return;
     }
     asleep = true;
-    console.log(`${tag}睡着时${BY_NAME[by] ?? by}${session ? `（${session}）` : ""}`);
-    runAsleep({ base: `http://127.0.0.1:${port}`, agent: id, token: config.token, model, wake: { by, note, session } })
-      .then((run) => {
-        const produced = logRun(store, key, run);
+    console.log(`${tag}睡着时${BY_NAME[by] ?? by}${session ? `（${session}）` : ""} → Soma`);
+    // Soma 用醒着的同一个身体另开一段，跑完才回（m5.md §三 10-17 改）
+    fetch(asleepUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ by, key, ...(note ? { note } : {}), ...(session ? { session } : {}) }),
+      signal: AbortSignal.timeout(20 * 60_000),
+    })
+      .then(async (res) => {
+        const run = (await res.json().catch(() => ({}))) as { session?: string; costUsd?: number; ms?: number; error?: string };
+        if (!res.ok && !run.session) throw new Error(`${res.status} ${run.error ?? ""}`);
+        const produced = logRun(store, key, { session: run.session ?? "", ms: run.ms ?? 0, ...(run.costUsd !== undefined ? { costUsd: run.costUsd } : {}), ...(run.error ? { error: run.error } : {}) });
         console.log(`${tag}整理完：${JSON.stringify({ ...run, produced })}`);
       })
       .catch((e) => {
-        store.syslog("wake.run", { key, error: String(e) });
+        store.syslog("wake.run", { key, error: `推给 Soma 没成：${e instanceof Error ? e.message : e}` });
         console.error(`${tag}整理没跑成：${e instanceof Error ? e.message : e}`);
       })
       .finally(() => (asleep = false));
   }, 60_000);
-  console.log(`${tag}调度器开着（${model}${soma ? `，家在 ${soma}` : "，没设家：只做睡着时的整理"}）`);
+  console.log(`${tag}调度器开着（家在 ${soma}）`);
 }

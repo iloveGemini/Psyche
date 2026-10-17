@@ -62,9 +62,9 @@ function cover(h: ReturnType<typeof setup>) {
 describe("纯函数 decide", () => {
   const base: State = { asleep: false, bodyUp: true, paused: false, budgetLeft: 3, candidates: [{ by: "alarm", key: "alarm:a" }] };
   const tidy = { by: "tidy" as const, key: "tidy:x" };
-  test("Soma 不在：醒来不推（不记账），睡着时的整理照做", () => {
+  test("Soma 不在：醒来不推、睡着时的整理也不跑（都在 Soma 跑），不记账", () => {
     expect(decide({ ...base, bodyUp: false })).toBeNull();
-    expect(decide({ ...base, bodyUp: false, candidates: [base.candidates[0], tidy] })).toEqual({ wake: tidy });
+    expect(decide({ ...base, bodyUp: false, candidates: [base.candidates[0], tidy] })).toBeNull();
   });
   test("整理正在跑：不起第二个整理，醒来照推", () => {
     expect(decide({ ...base, asleep: true, candidates: [tidy] })).toBeNull();
@@ -385,5 +385,26 @@ describe("<now> 与账本", () => {
     expect(w.days).toEqual([{ day: "2026-10-15", woke: 1, delivered: 0, skipped: 0, by: { tidy: 1 }, costUsd: 0.1, empty: 0 }]);
     expect(w.entries[0].run.produced.diary).toBe(1);
     expect(readExperience(h.store.db, {}).map((l) => l.text)).toContainEqual(expect.stringMatching(/^我写了日记《三点》\[\^\w{8}\]$/));
+  });
+});
+
+describe("睡着那段的口子（10-17：Psyche 出内容，Soma 跑）", () => {
+  test("start：开 sleep 处境、记 woke，回自述 + 地方说明和第一条（<now> + 这次的活）；end：记 slept", async () => {
+    const h = setup();
+    h.sit("S1");
+    h.her("在吗");
+    h.pass(4 * HOUR);
+    const r = await h.ok("/v1/asleep/start", { by: "catchup", session: "S1", model: "gemini-4-argon" });
+    expect(r.system).toContain("这是睡着的时候");
+    expect(r.first).toContain("<now>");
+    expect(r.first).toContain("会话 S1 还有 1 条没写进记忆");
+    const sit = h.store.list({ kinds: ["situation"] }).at(-1)!;
+    expect(sit.payload).toMatchObject({ harness: "sleep", session: r.session, model: "gemini-4-argon" });
+    const woke = h.store.list({ kinds: ["woke"] }).at(-1)!;
+    expect(woke.payload).toMatchObject({ by: "catchup", for: "S1", session: r.session });
+    await h.ok("/v1/asleep/end", { session: r.session });
+    await h.ok("/v1/asleep/end", { session: r.session });
+    expect(h.store.list({ kinds: ["slept"] }).length).toBe(1);
+    expect((await h.post("/v1/asleep/start", {})).status).toBe(400);
   });
 });

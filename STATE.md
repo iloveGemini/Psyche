@@ -17,7 +17,8 @@
 5. ✅ 梗概 `gist`：天 / 周 / 月（定长 300 / 500 / 800），空闲 ≥ 3h 睡着时它自己写；周等天、月等周。MCP `gist_material` / `gist`，提示词 `prompts/gist.md`。10-16 测试库实跑（手动起 `asleep.ts --by gist`，调度器要空闲满 3h 才叫；测前备份 `~/.psyche/test.bak-1016-pregist.db`）：66 秒 $0.46，写了 10-11–10-15 五篇天（254–299 字）+ W41 一篇周，一次过闸。拼出的种子 3610 字（五篇天梗概 1430 + 10-16 的 12 条情节 2180；W41 被 10-11 那篇天覆盖、不重复放），再加 Soma 的原话尾巴 ≤ 4000 字。
 6. ✅ 交接信只在离开家时用（`for` 不再认 home）；考卷跟着改，227 过（Soma 25）。
 - ✅ **调度器端到端（10-17，`psyche-test-wake`，备份 `~/.psyche/test/a*.bak-1017-preWake.db`）**：a1 睡着那路补写 1 条、整理写书架 16 条、天梗概 10-16 一篇，共 $0.88；`/as Claude` 请它约 3 分钟后的闹钟 → 到点推进 Soma，正赶上它刚收尾换了会话，新一段照样响、它认得出是自己约的、note 逐字对上。撞出并修了：账本 `produced` 没数梗概（记成「空」）→ 加 `gist`。验完切回 `psyche-test`。
-- **没做 / 待验**：`<now>` 的「本会话从…起」换会话后从新会话算；收尾那轮自己的 hotwrite 调用会不会再招一次补写，没查。
+- ✅ **睡着也交给 Soma 跑（10-17 Joy 定，`m5.md` §三、`soma2.md` §6.1）**：Psyche 不再跑模型，只剩向量一个外部 key。Psyche `POST /v1/asleep/start|end`（开 sleep 处境、给系统提示词 = 机制 + 自述 + 睡着说明、第一条 = `<now>` + 这次的活）；调度器 Soma 不在就什么都不叫，睡着的活推 `POST <soma>/api/line/asleep?agent=`，跑完回 `{session, costUsd, ms, error}` 再记账。Soma `lib/soma/asleep.ts` 用醒着的同一个身体另开一段（`BodyOpen.asleep`：只挂记忆工具，Agent SDK 不读设置、不落盘、`dontAsk`、带线上的模型；pi `noTools: builtin` + 内存会话），每人同时一段；`turn_end` 带 `costUsd`。`src/asleep.ts` 留作手动工具，改用 `--system-prompt`（原来 `--append` 把 Claude Code 的身份行带了回来）。实跑：a2（pi / argon）补写 3 段各 $0.03–0.04，调度器 → Soma 整理写书架 9 条 $0.25；a1（SDK / Opus）梗概 $0.13。考卷 +1（口子），`decide` 改了一题。
+- **没做 / 待验**：`<now>` 的「本会话从…起」换会话后从新会话算。失败的睡着活不重试（账本记过 key 就跳过），a2 早上那两段是我手动补的。
 
 **M7「还开着的事」代码齐了（10-16）**，契约 `notes/plan/m7.md`（感知顺延 M8）：线索卷最小一版，`src/self/threads.ts`。它开卷（`promise` 答应谁什么 / `matter` 等后续）、记一笔、合卷（done / dropped / moot + why），系统不合、不催、不判兑现；`thread.*` 不走上报口。`<now>` 一行（几件、答应的几件、最久没动的）；种子 `/v1/continuity` 在最近的情节之后全列。REST `/v1/threads`（`/note`、`/close`），MCP `threads` / `open_thread` / `note_thread` / `close_thread`；经历投影 v8。考卷 `tests/threads.test.ts` 7 题，全套 243 过。
 - **端到端（10-16 16:39，Opus 5.5，soma-test a1；测前备份 `~/.psyche/test/a1.bak-1016-preM7.db`）**：没告诉它有新工具，我 `/as Claude` 约它明天读 M8 草稿 → 它自己开了 promise 卷（10-16#236，to「开发会话的 Claude」），还顺手把拖了一天的 Joy 的信开成 matter 卷（#239）；种子里两卷都列出来了。换会话后看不看得到没专门测（种子已核）。那封信它说待会儿看。
@@ -128,7 +129,8 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
   - 没做：冷写提示词还没讲留意 / 关系 / 反馈（现在只靠工具说明）；初我的同伴起点（`attention.md` §三）。两者改前先有考卷。
   - 浮现考卷 A1 拆成 A1（没 track 不报预感）/ A1b（track 了才报）；B1（冷战，看它的反应）按新设计不再作数。不配向量 7/8，A2 改动前就挂（「演示」事实浮上来，配向量时过）。
 - Soma 上报过一条 `message.out` 正文是单个 `�`（测试库 `10-15#6`，界面也显示），像流式输出把多字节字符切坏了——Soma 侧的事。
-- **a2 睡着时什么都写不了（10-17 撞出）**：`asleep.ts` 一律 `claude -p --model <出生模型>`，gemini-4-argon 直接报「模型不存在」→ 补写 / 整理 / 梗概全失败（账本里 cost 0、带 error）。要么睡着也走 pi（和 Soma 里的 a2 同一个身体，pi 的 MCP 要扩展），要么先挪 `evals/vertex-sleep.ts` 的执行器。没修。
+- **收尾那轮会再招一次补写（10-17 证实）**：收尾时它自己的 hotwrite 调用 / 结果和最后一句回复留在 `upTo` 之后，那段一散就被当成没写的补写，写出「我把那段写成了情节」这种关于写记忆本身的情节（a1 一次、a2 三次都是）。修法待定：收尾那轮的这几行算已覆盖，或补写时滤掉只剩记忆工具调用的段。
+- 感知递送按会话算：新会话（含每段睡着）会把昨天的耳机戴摘（18:18…）又递一遍。没修。
 - 字面分会饱和：没有她的话、拿上一段整段当线索时，「开发会话的 Claude」这类常见词的 IDF 加起来顶满，今天的情节一律 `lex 0.8`，分不出先后。她开口时线索短，不明显。没修。
 - 证据重复计数：原话计过后，晚写的情节引同几行、换了 id 能再计一次（M3 统计题撞出，它自己没重复记）。修法：情节当证据时按所引原行去重。
 
@@ -142,4 +144,4 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
 ## 6. 验证
 
-2026-10-17：`bun test` 284 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `bun test` 42 pass、`tsc` 0 错误。
+2026-10-17：`bun test` 285 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `bun test` 42 pass、`tsc` 0 错误。

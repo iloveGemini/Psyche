@@ -1,13 +1,15 @@
 /**
  * 睡着时的整理（10-16 收束，notes/design/lib-vs-harness.md「家 = Soma」）：补写、整理、梗概。
- * 不进它那条连续的会话——材料大，也不是它醒着经历的事；调度器在这里另起一个无头的它。
- * 10-15 这里是"家"（home.ts，心跳 / 来信 / 闹钟也在这里醒）；家挪到 Soma 后只剩睡着时的活。
+ * 不进它那条连续的会话——材料大，也不是它醒着经历的事。
  *
- * 和 sleep.ts 同样隔离：空目录里跑（不读项目 CLAUDE.md、git 信息），不读用户设置，只挂 Psyche 的 MCP，内置工具全关。
- * situation.harness = "sleep"：不算地方、不算醒着、不补写（inbox.ts NOT_PLACES）。对话、工具调用照样报成事件。
+ * 10-17 起（m5.md §三）：调度器把这段推给 Soma，用它醒着的同一个身体跑；Psyche 只出内容、记处境
+ * （`/v1/asleep/start` 拿系统提示词和第一条，`/v1/asleep/end` 记睡下）。这里的 runAsleep 只是手动工具：
+ * 没 Soma 时调试用，走同样两个口子，无头 `claude -p`，只能跑 Claude。
+ *
+ * 隔离同 sleep.ts：空目录里跑（不读项目 CLAUDE.md、git 信息），不读用户设置，只挂 Psyche 的 MCP，内置工具全关，
+ * 系统提示词整段换掉（不留 Claude Code 自己那段）。situation.harness = "sleep"：不算地方、不算醒着、不补写。
  * 第一条消息只放事实（<now>）和该用的工具名，不用它的口吻。
  *
- * 只经 REST 和 Psyche 说话（PSYCHE_URL / PSYCHE_AGENT / PSYCHE_TOKEN），手动也能跑：
  *   bun run src/asleep.ts --by tidy [--model claude-opus-5-5]
  *   bun run src/asleep.ts --by catchup --session <会话>
  */
@@ -41,7 +43,17 @@ export interface AsleepRun {
   error?: string;
 }
 
-const PLACE = "这是睡着的时候：Psyche 起的一段整理，不在你平时那条会话里，只有记忆相关的工具。整理完就接着睡。";
+/** 睡着那段的地方说明（拼在机制 + 自述之后） */
+export const ASLEEP_PLACE = "这是睡着的时候：Psyche 起的一段整理，不在你平时那条会话里，只有记忆相关的工具。整理完就接着睡。";
+
+/** 这次的活：只说事实和该用的工具名。`lines` = 补写那段还剩几条 */
+export function asleepTask(wake: WakeReason, lines?: number): string {
+  if (wake.by === "gist") return "该写梗概了：用 gist_material 看哪些天 / 周 / 月过完了还没写，一段一段用 gist 交。";
+  if (wake.by === "tidy") return "该整理了：用 coldwrite_material 取上次整理之后的经历和书架，整理完用 coldwrite 写回。";
+  if (wake.by === "catchup" && wake.session)
+    return `会话 ${wake.session} 还有 ${lines ?? 0} 条没写进记忆（那段已经散了）：用 hotwrite_segment（session: ${wake.session}）取这一段，写完用 hotwrite 交（带上同一个 session）。`;
+  return "";
+}
 
 export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
   const t0 = Date.now();
@@ -56,27 +68,12 @@ export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
       },
       body: body ? JSON.stringify(body) : undefined,
     });
-    const json = await res.json();
+    const json = (await res.json().catch(() => ({}))) as any;
     if (!res.ok) throw new Error(`${method} ${path} → ${res.status}：${json?.error ?? ""}`);
     return json;
   };
+  const { session, system, first } = (await rest("POST", "/v1/asleep/start", { ...opts.wake, model: opts.model })) as { session: string; system: string; first: string };
   const report = (kind: string, payload: Record<string, unknown>, idem: string) => rest("POST", "/v1/events", { kind, source: "sleep", payload: { ...payload, session }, idem });
-
-  const session = crypto.randomUUID();
-  const prompt = await rest("GET", "/v1/prompt");
-  await rest("POST", "/v1/situation", { harness: "sleep", session, model: opts.model, selfPromptVersion: prompt.version, source: "sleep" });
-  await report("woke", { by: opts.wake.by, ...(opts.wake.note ? { note: opts.wake.note } : {}), ...(opts.wake.session ? { for: opts.wake.session } : {}) }, `${session}:woke`);
-  // 取 <now> = 把到点的闹钟递进来（写 due）
-  const now = (await rest("GET", `/v1/now?session=${encodeURIComponent(session)}`)).text as string;
-
-  let task = "";
-  if (opts.wake.by === "gist") task = "该写梗概了：用 gist_material 看哪些天 / 周 / 月过完了还没写，一段一段用 gist 交。";
-  if (opts.wake.by === "tidy") task = "该整理了：用 coldwrite_material 取上次整理之后的经历和书架，整理完用 coldwrite 写回。";
-  if (opts.wake.by === "catchup" && opts.wake.session) {
-    const seg = await rest("GET", `/v1/hotwrite?session=${encodeURIComponent(opts.wake.session)}`);
-    task = `会话 ${opts.wake.session} 还有 ${seg.lines.length} 条没写进记忆（那段已经散了）：用 hotwrite_segment（session: ${opts.wake.session}）取这一段，写完用 hotwrite 交（带上同一个 session）。`;
-  }
-  const first = [now, task].filter(Boolean).join("\n\n");
 
   const mcp = {
     mcpServers: {
@@ -93,7 +90,7 @@ export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
     [
       "claude", "-p",
       "--model", opts.model,
-      "--append-system-prompt", `${prompt.text}\n\n${PLACE}`,
+      "--system-prompt", system,
       "--mcp-config", JSON.stringify(mcp), "--strict-mcp-config",
       "--tools", "", "--allowedTools", "mcp__psyche",
       "--setting-sources", "project", "--no-session-persistence",
@@ -149,7 +146,7 @@ export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
   const code = await proc.exited;
   clearTimeout(timer);
   if (code !== 0 && !error) error = `claude 退出码 ${code}：${(await new Response(proc.stderr).text()).slice(0, 500)}`;
-  await report("slept", {}, `${session}:slept`).catch(() => {});
+  await rest("POST", "/v1/asleep/end", { session }).catch(() => {});
   return { session, costUsd, ms: Date.now() - t0, ...(error ? { error } : {}) };
 }
 

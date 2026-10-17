@@ -162,7 +162,15 @@ S3 只做群的底座，轮次规则（独立首轮、依次问、两次 pass �
 
 ## 六、心跳与额度
 
-M5 的规矩每人一套：额度只管心跳和闹钟、有活醒不扣、睡着时整理另起（`asleep.ts`）。Psyche 调度器推醒来时打 `SOMA_URL/agents/<id>/wake`。
+M5 的规矩每人一套：额度只管心跳和闹钟、有活醒不扣、睡着时整理另起。Psyche 调度器推醒来时打 `SOMA_URL/api/line/wake?agent=<id>`。
+
+### 6.1 睡着的那段（10-17 Joy 定：Psyche 不跑模型）
+
+调度器打 `POST /api/line/asleep?agent=<id> { by, key, note?, session? }`，Soma 跑完才回 `{ session, costUsd?, ms, error? }`：
+- 先 `POST /v1/asleep/start` 拿 `{ session, system, first }`，用**这个住户醒着的同一个身体**（a1 Agent SDK、a2 pi，同一个模型）另开一段：系统提示词就是 `system`（不拼 Soma 的地方段），第一条就是 `first`。
+- 跟那条线分开：不进 `state.json`、不进聊天记录和群、不 resume、不压缩、不带 `<now>` 钩子；只挂 Psyche 的 MCP（Soma 工具、内置工具全关；Agent SDK 不读设置、不落盘，pi 用内存会话）。
+- 对话、工具调用照常报给 Psyche，`payload.session` = 睡着的会话，Psyche 按它挂到 sleep 处境上。跑完 `POST /v1/asleep/end`。
+- 每人同一时间只一段，超时 15 分钟。线上正忙也能跑（两段互不相干）。
 
 群的成本跟着 §五.2 走，不再单设推送节奏：讨论阶段每条发言最多问一遍**在场的**人；分工期间不算群的轮，算各自干活；收尾一轮。要不要另给群设"每人每天多少轮"的上限，先不设，跑起来看账（唤醒账本已有）。
 

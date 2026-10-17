@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * REST 入口（门户的最小一版）：harness 上报事实、取经历、查档号、存取资料；
  * 它自己用的：热写、冷写、书架、recall、<now>、提示词、自述与名字、作息、收发信（m1.md §二 §四、m2.md §三、m4.md、m5.md、m6.md，MCP 转调这里）。
@@ -16,6 +17,7 @@ import { readExperience } from "../archive/experience.ts";
 import { hybridRecall, queryVector, renderShelfHit, shelfRecall } from "../archive/recall.ts";
 import type { Embedder } from "../archive/vectors.ts";
 import { renderNow } from "../archive/now.ts";
+import { ASLEEP_PLACE, asleepTask } from "../asleep.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
@@ -221,15 +223,15 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   });
 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
-  app.get("/v1/now", async (c) => {
-    const session = c.req.query("session") || undefined;
+  // <now>（m1 / m5 / m6 / m8 拼起来的）：Soma 每轮取一次；睡着那段的第一条也用它
+  const nowText = async (session: string | undefined, q: { muted?: string; ctx?: string; wrapAt?: string } = {}) => {
     // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）；来信 / 交接信只报有信（m6.md §二）
     const here = placeOf(store, session);
     const facts = factsNow(store, here);
     const notices = noticeMail(store, here, facts);
     const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
     const mail = mailStateLines(store, here, facts, notices);
-    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store), mutedLine(c.req.query("muted"))]
+    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store), mutedLine(q.muted)]
       .filter(Boolean)
       .join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
@@ -238,13 +240,37 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const house = deliverPresence(store, session);
     const heard = await deliverSound(store, sound, session).catch(() => null);
     // 内感受（m8.md §六.1）：上下文多满由 Soma 带来
-    const body = deliverBody(store, session, { ctx: num(c.req.query("ctx")), wrapAt: num(c.req.query("wrapAt")) });
+    const body = deliverBody(store, session, { ctx: num(q.ctx), wrapAt: num(q.wrapAt) });
     const things = deliverFiles(store, session, (id) => {
       const other = storeOf?.(id);
       return (other && currentName(other)) || id;
     });
     for (const block of [just, body, house, things, heard, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
-    return c.json({ text });
+    return text;
+  };
+  app.get("/v1/now", async (c) => {
+    const q = c.req.query();
+    return c.json({ text: await nowText(q.session || undefined, q) });
+  });
+
+  // 睡着的那段（m5.md §三 10-17 改）：Psyche 出内容、记处境，跑模型的是 Soma（同一个身体）
+  app.post("/v1/asleep/start", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { by?: unknown; note?: unknown; session?: unknown; model?: unknown };
+    if (typeof body.by !== "string" || !body.by) throw new IntakeError("asleep/start 要 by");
+    const wake = { by: body.by, ...(typeof body.note === "string" && body.note ? { note: body.note } : {}), ...(typeof body.session === "string" && body.session ? { session: body.session } : {}) };
+    const session = randomUUID();
+    const prompt = composePrompt(store, promptsDir);
+    store.setSituation({ harness: "sleep", session, ...(typeof body.model === "string" ? { model: body.model } : {}), selfPromptVersion: prompt.version }, "sleep");
+    intake(store, { kind: "woke", source: "sleep", payload: { by: wake.by, ...(wake.note ? { note: wake.note } : {}), ...(wake.session ? { for: wake.session } : {}), session } });
+    const lines = wake.by === "catchup" && wake.session ? readSegment(store, wake.session).lines.length : undefined;
+    const first = [await nowText(session), asleepTask(wake, lines)].filter(Boolean).join("\n\n");
+    return c.json({ session, system: `${prompt.text}\n\n${ASLEEP_PLACE}`, first });
+  });
+  app.post("/v1/asleep/end", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
+    if (typeof body.session !== "string" || !body.session) throw new IntakeError("asleep/end 要 session");
+    intake(store, { kind: "slept", source: "sleep", payload: { session: body.session }, idem: `${body.session}:slept` });
+    return c.json({ ok: true });
   });
 
   // 只算不写：考卷与调试，带各候选的分项

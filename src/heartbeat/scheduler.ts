@@ -5,7 +5,7 @@
  * - **醒来**（来信、闹钟、定点、心跳）：往它那条连续的会话（Soma）推一轮。Soma 不在 = 当它睡着，不叫、不记账，等它在了再叫。
  *   它正忙着（一轮没完）也照推：Soma 排在后面。那一轮取 `<now>` 时把到点的事写成 `due`、带一次（deliverDue）；
  *   在那之前它自己的哪一轮先取了 `<now>`，就算递过了（`delivered`），不再推。
- * - **睡着时整理**（补写 > 整理 > 梗概）：Psyche 另起一个无头的它（asleep.ts），不进连续会话，同一时间只一个。
+ * - **睡着时整理**（补写 > 整理 > 梗概）：推给 Soma 另开一段（同一个身体，不进连续会话），同一时间只一个。
  * - 补写、整理、梗概、来信不花额度；它约的（闹钟、定点、心跳）走额度，到点时它醒着（30 分钟内有动静）的不花（10-15 Joy 定）。暂停 = 一律不叫。
  * - 每个候选有 key：叫过、跳过、递过的 key 不再叫（整理 / 补写不会因为没交就每分钟再醒）。
  * - 来信（m6.md §二.3）：她的信没报过就叫醒；勿扰挡住 / 它关了来信叫醒，记一次账（换 key），出了勿扰再叫。
@@ -26,7 +26,7 @@ export const TIDY_GAP_MS = 3 * 86_400_000;
 
 export type By = "catchup" | "tidy" | "gist" | "mail" | "alarm" | "daily" | "heartbeat";
 export const BUDGETED: ReadonlySet<By> = new Set(["alarm", "daily", "heartbeat"]);
-/** 睡着时做的：另起无头会话（asleep.ts），不进连续会话 */
+/** 睡着时做的：Soma 另开一段（/api/line/asleep），不进连续会话 */
 export const ASLEEP: ReadonlySet<By> = new Set(["catchup", "tidy", "gist"]);
 export const asleepWork = (c: Candidate) => ASLEEP.has(c.by);
 export const BY_NAME: Record<string, string> = { catchup: "补写", tidy: "整理", gist: "梗概", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
@@ -53,7 +53,7 @@ export interface Candidate {
 export interface State {
   /** 睡着时的整理正在跑：不再起第二个 */
   asleep: boolean;
-  /** 它那条会话（Soma）在：不在就不推醒来 */
+  /** 它的身体（Soma）在：不在就什么都不叫，醒来和睡着的整理都等它回来（10-17：睡着也在 Soma 跑） */
   bodyUp: boolean;
   paused: boolean;
   budgetLeft: number;
@@ -66,9 +66,10 @@ export type Decision = { wake: Candidate } | { skip: Candidate; reason: "paused"
 /** 这次叫醒花不花额度 */
 export const costs = (c: Candidate) => BUDGETED.has(c.by) && !c.awakeAtDue;
 
-/** 纯函数：此刻叫不叫、叫哪个。叫不了的（整理正在跑 / Soma 不在）先让给后面的 */
+/** 纯函数：此刻叫不叫、叫哪个。Soma 不在什么都不叫；整理正在跑时先让给醒来 */
 export function decide(s: State): Decision | null {
-  const c = s.candidates.find((c) => (asleepWork(c) ? !s.asleep : s.bodyUp));
+  if (!s.bodyUp) return null;
+  const c = s.candidates.find((c) => !asleepWork(c) || !s.asleep);
   if (!c) return null;
   if (c.hold) return { skip: c, reason: c.hold };
   if (s.paused) return { skip: c, reason: "paused" };
@@ -245,7 +246,7 @@ function log(store: EventStore, decided: WakeLog["decided"], c: Candidate, reaso
   });
 }
 
-/** 判一次并记账；叫醒由调用方去做（main.ts：醒来推给 Soma，整理起 asleep.ts） */
+/** 判一次并记账；叫醒由调用方去做（main.ts：醒来和睡着的整理都推给 Soma） */
 export function tick(store: EventStore, opts: GatherOpts = {}): Decision | null {
   const d = decide(gather(store, opts));
   if (d && "wake" in d) log(store, "woke", d.wake);
