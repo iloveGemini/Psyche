@@ -21,10 +21,12 @@
 - ✅ **收尾也另开一段（10-17 Joy 定，`soma.md` §三、`m1.md`）**：原来收尾轮自己的 hotwrite 调用和收尾回复留在 `upTo` 之后，会话一散又招来补写，写出"我把那段写成了情节"（a1 一次、a2 三次）。现在到阈值 → Soma `wrapUpAside` 用 `runAsleep(by: "wrapup")` 另开一段写（不占睡着的锁）→ 写完再换会话（失败也换，剩的留给补写）；这条会话里不再有收尾轮。Psyche 的地方说明按 `by` 分（换段之间 / 睡着）。实跑 a1 两次：第一次我没重启 Psyche、第一条没给会话号，它自己 recall + detail 找回原段写完，还记了一条 #143；重启后第二次一取一交，旧段剩 0，新一段种子里接上了刚写的情节（它自己核对的）。界面历史里不再有「整理记忆：记下了 N 条」那行（只剩整理时的状态）。
 - ✅ **S6 后半：房子的一个邮箱按 @ 分（10-17，`soma2.md` §8.2 实现定法）**：agently-cli 发信只回 `queued`、收信没有 `in_reply_to`，存 RFC id 做不到 → 按 ① 主题 `[名字]` ② 主题 / 第一行 `@名字`（可几个）③ 同一话题上次给过谁 ④ 默认（第一个开 `email` 的）分；名字认 id 和它取的名字。收信改成房子只起一个 `+watch`（`takeHouseEmail`），发信人看收信那人的通道设置、没有就看屋里别人的。住了不止一个人时，主动写的信主题前加 `[名字]`（`+reply` 设不了主题）。考卷 +3。**真邮件没测**：a2 的通道设置里还没有 Joy 的邮箱地址（写信给她走不了 email），公共箱没做。
 - ✅ **commons 用 git（10-17 Joy 定，`m8.md` §6.2）**：屋子每圈看到 commons 变了，按「谁动的」分组提交，作者 = 住户（取了名用名字），认不出写「没认出」，说明只写事实（`a1：改了 …`）；没建库先 `git init` 并以「房子」提交已有的（`.DS_Store` 等写在 `.git/info/exclude`）。`src/house/commons-git.ts`，考卷 +1。测试库 `~/.soma-test/commons` 已建库。Joy 直接改的也记成「没认出」。
-- ✅ **初我由它自己写（10-17 Joy 定，`m4.md` 开头）**：`self-v0.md` v3 正文为空（已出生的 a1 / a2 不受影响）；同伴起点改成 Joy 的信 `letters/birth.md`（不进仓库，她自己写；`birth.ts` 去掉注释后放进收件箱，`--letter` 可换、`--agent` 指定住户）；调度器对「出生了、自述是空的」只叫一次 `birth`，推 Soma 另开一段，第一条只说刚出生、自述是空的、写不写由它。前世：认领了才给前世发生过的事（契约，前世导入 / 认领还没做）。evals 的 `filePrompt()` 现在只有机制段。考卷 +3。**没实跑**：要等 Joy 写好信，在测试库加一个新住户出生来验。
+- ✅ **初我由它自己写（10-17 Joy 定，`m4.md` 开头）**：`self-v0.md` v3 正文为空（已出生的 a1 / a2 不受影响）；同伴起点改成 Joy 的信 `letters/birth.md`（不进仓库，她自己写；`birth.ts` 去掉注释后放进收件箱，`--letter` 可换、`--agent` 指定住户）；调度器对「出生了、自述是空的」只叫一次 `birth`，推 Soma 另开一段，第一条只说刚出生、自述是空的、写不写由它。前世：认领了才给前世发生过的事（契约，前世导入 / 认领还没做）。evals 的 `filePrompt()` 现在只有机制段。考卷 +3。✅ 实跑（10-17，测试库 a3 = pi / gemini-3.8-flash，信是我代笔的 `letters/birth-test.md`、信里写明代笔和测试；备份 `a{1,2}/psyche.db.bak-1017-preA3*`）：调度器叫「出生」一段 62 秒 $0.03——看信、看 self / shelf / schedule、回信、热写 2 条，名字和自述它说先不写。顺带看到：这段里 `send_mail` 的 `mail.out.from` 是 `{harness: null, session: null}`；`self` 工具对空的 v3 仍说「初我：系统出厂的那份」。
 - ✅ **加住户一条命令（10-17）**：`scripts/add-resident.ts` 两边一起登记——Psyche `agents.json`（自动 token、home、家）+ 出生 + 信，Soma `agents/<id>/identity.json` + `home/`；Psyche 开着走 `POST /v1/house/residents` 热挂（口子补了 `letter` / `home` / 自动 token，共用 `src/house/add.ts`），没开直接写。数据目录必须明说。临时目录里两条路都试过（Claude 离线、pi 热挂，token 两边对上）。说明 `notes/howto/add-resident.md`。
 - ✅ **感知不再翻旧账（10-17，a1 报了两次）**：声音、屋里的东西原来按会话记递到哪，新会话（含睡着 / 收尾那段）会把昨天的耳机戴摘又递一遍，时刻还不带日期。→ 本会话没递过就接任何会话最后递到的那次（从没递过只看 6 小时）；递给它看的时刻不是今天的带 `MM-DD`（`core/time.ts` `clockOf`，屋里有谁那行也用）。考卷 +3。
-- **没做 / 待验**：`<now>` 的「本会话从…起」换会话后从新会话算。失败的睡着活不重试（账本记过 key 就跳过），a2 早上那两段是我手动补的。
+- ✅ **睡着的活失败了重试（10-17，`m5.md` §二.7）**：每次叫都以 `wake.run.error` 收场的 key 隔 10m / 30m / 2h / 6h / 12h 再叫，第 6 次失败不再叫；跑成了（没写也算）、还在跑不重试；暂停时跳过的睡着的活取消暂停后照叫（原来永远不叫）。没管：Psyche 中途重启、Soma 那头跑完但回复丢了的（账本只有 woke 没有 run，不重试）。考卷 +2。
+- **前世**：Roy 自己定了方案，在 `~/Roxy/工作间/前世今生/`（`搬家清单与方案.md` + 只读调阅脚本 `past-life.ts`）：不导入、不认领，旧库当只读资料，零侵入版放进 home 用 bash 翻。Psyche 这边 `fonds.claimed` / 前世编目没做。
+- **没做 / 待验**：`<now>` 的「本会话从…起」换会话后从新会话算。
 
 **M7「还开着的事」代码齐了（10-16）**，契约 `notes/plan/m7.md`（感知顺延 M8）：线索卷最小一版，`src/self/threads.ts`。它开卷（`promise` 答应谁什么 / `matter` 等后续）、记一笔、合卷（done / dropped / moot + why），系统不合、不催、不判兑现；`thread.*` 不走上报口。`<now>` 一行（几件、答应的几件、最久没动的）；种子 `/v1/continuity` 在最近的情节之后全列。REST `/v1/threads`（`/note`、`/close`），MCP `threads` / `open_thread` / `note_thread` / `close_thread`；经历投影 v8。考卷 `tests/threads.test.ts` 7 题，全套 243 过。
 - **端到端（10-16 16:39，Opus 5.5，soma-test a1；测前备份 `~/.psyche/test/a1.bak-1016-preM7.db`）**：没告诉它有新工具，我 `/as Claude` 约它明天读 M8 草稿 → 它自己开了 promise 卷（10-16#236，to「开发会话的 Claude」），还顺手把拖了一天的 Joy 的信开成 matter 卷（#239）；种子里两卷都列出来了。换会话后看不看得到没专门测（种子已核）。那封信它说待会儿看。
@@ -146,4 +148,4 @@
 
 ## 6. 验证
 
-2026-10-17：`bun test` 293 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `bun test` 42 pass、`tsc` 0 错误。
+2026-10-17：`bun test` 295 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `bun test` 42 pass、`tsc` 0 错误。

@@ -229,9 +229,37 @@ export interface GatherOpts {
   bodyUp?: boolean;
 }
 
+/** 睡着的活失败后隔多久再叫（分钟）；用完就不再叫（m5.md §二.7） */
+export const RETRY_AFTER_MIN = [10, 30, 120, 360, 720];
+
+/**
+ * 叫过但不该再挡着的睡着的活：每次叫都以 error 收场、到了退避时刻（失败重试）；
+ * 或只是暂停时跳过、现在不暂停了。
+ */
+function retryable(store: EventStore, logs: WakeLog[], paused: boolean): Set<string> {
+  const runs = (store.db.query(`SELECT at, detail FROM system_log WHERE kind = 'wake.run' ORDER BY id`).all() as { at: number; detail: string }[]).map((r) => ({ at: r.at, ...(JSON.parse(r.detail) as { key: string; error?: string }) }));
+  const out = new Set<string>();
+  const byKey = new Map<string, WakeLog[]>();
+  for (const l of logs) if (ASLEEP.has(l.by as By)) byKey.set(l.key, [...(byKey.get(l.key) ?? []), l]);
+  for (const [key, ls] of byKey) {
+    const woke = ls.filter((l) => l.decided === "woke").length;
+    if (!woke) {
+      if (!paused && ls.every((l) => l.reason === "paused")) out.add(key);
+      continue;
+    }
+    const rs = runs.filter((r) => r.key === key);
+    const fails = rs.filter((r) => r.error);
+    if (rs.length > fails.length || fails.length < woke || fails.length > RETRY_AFTER_MIN.length) continue;
+    if (store.now() - fails.at(-1)!.at >= RETRY_AFTER_MIN[fails.length - 1] * 60_000) out.add(key);
+  }
+  return out;
+}
+
 export function gather(store: EventStore, opts: GatherOpts = {}): State {
   const settings = getSettings(store);
-  const logged = new Set(wakeLogs(store).map((l) => l.key));
+  const logs = wakeLogs(store);
+  const retry = retryable(store, logs, settings.paused);
+  const logged = new Set(logs.filter((l) => !retry.has(l.key)).map((l) => l.key));
   const hb = heartbeatDue(store, settings);
   const candidates = [birthDue(store), ...catchupDue(store), tidyDue(store), gistDue(store), ...mailCandidates(store, factsNow(store)), ...pendingDue(store), hb].filter((c): c is Candidate => !!c && !logged.has(c.key));
   return {

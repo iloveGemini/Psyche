@@ -252,6 +252,59 @@ describe("整理", () => {
     expect(tick(h.store)).toMatchObject({ wake: { by: "tidy" } }); // 有了新情节，是新的一批
   });
 
+  test("失败了按退避重试：10 分钟、30 分钟……第 6 次失败不再叫；跑成了（没写也算）、还在跑不重试", () => {
+    const h = setup();
+    quietSince(h, "2026-10-15T08:00:00");
+    // 过了天会冒出梗概：这里只看整理
+    const t = () => {
+      let d = tick(h.store);
+      while (d && "wake" in d && d.wake.by === "gist") d = tick(h.store);
+      return d;
+    };
+    for (let i = 0; i < 5; i++) h.episode();
+    h.set("2026-10-15T11:01:00");
+    const d = t() as { wake: { key: string } };
+    expect(d).toMatchObject({ wake: { by: "tidy" } });
+    h.pass(5 * MIN);
+    expect(t()).toBeNull(); // 还在跑
+    const fail = () => h.store.syslog("wake.run", { key: d.wake.key, error: "推给 Soma 没成：超时" });
+    fail();
+    h.pass(9 * MIN);
+    expect(t()).toBeNull();
+    h.pass(1 * MIN);
+    expect(t()).toMatchObject({ wake: { by: "tidy", key: d.wake.key } }); // 隔 10 分钟再叫
+    for (const wait of [30, 120, 360, 720]) {
+      fail();
+      h.pass((wait - 1) * MIN);
+      expect(t()).toBeNull();
+      h.pass(1 * MIN);
+      expect(t()).toMatchObject({ wake: { by: "tidy" } });
+    }
+    fail(); // 第 6 次
+    h.pass(DAY);
+    expect(t()).toBeNull();
+
+    // 跑成了但什么都没写：不重试
+    h.episode();
+    const d2 = t() as { wake: { key: string } };
+    expect(d2).toMatchObject({ wake: { by: "tidy" } });
+    logRun(h.store, d2.wake.key, { session: "Z", ms: 1000 });
+    h.pass(DAY);
+    expect(t()).toBeNull();
+  });
+
+  test("暂停时跳过的整理：取消暂停后照叫", async () => {
+    const h = setup();
+    quietSince(h, "2026-10-15T08:00:00");
+    for (let i = 0; i < 5; i++) h.episode();
+    await h.ok("/v1/settings", { paused: true });
+    h.set("2026-10-15T11:01:00");
+    expect(tick(h.store)).toMatchObject({ skip: { by: "tidy" }, reason: "paused" });
+    expect(tick(h.store)).toBeNull(); // 暂停期间只记一次
+    await h.ok("/v1/settings", { paused: false });
+    expect(tick(h.store)).toMatchObject({ wake: { by: "tidy" } });
+  });
+
   test("距上次整理 ≥ 3 天：有一条新情节就叫", () => {
     const h = setup();
     quietSince(h, "2026-10-10T08:00:00");
