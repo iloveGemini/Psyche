@@ -8,7 +8,7 @@
  *   印证够 2 次（PAST_OWN）就不再标，算转为自己的；被推翻就照常作废或改写。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
-import { claimedFonds, PastError } from "../archive/past.ts";
+import { claimedFonds, PastError, pastArchiveNo } from "../archive/past.ts";
 
 export const PAST_SHELVES = ["fact", "told"] as const;
 /** 今生印证几次算转为自己的（同新规律的门槛，reading-room.md §五） */
@@ -36,7 +36,9 @@ export function writePastCatalog(store: EventStore, body: { fonds?: unknown; ent
     if (!nonEmpty(e.text)) throw new PastError(`${at}缺 text`);
     if (!Array.isArray(e.cites) || !e.cites.length) throw new PastError(`${at}要挂 cites：依据的前世原话档号`);
     const cited = e.cites.map((c) => {
-      const ev = typeof c === "string" ? store.byArchiveNo(c.trim().replace(/^\[|\]$/g, "")) : null;
+      // 档号，或翻的时候看到的旧 id
+      const no = typeof c === "string" ? c.trim().replace(/^\[|\]$/g, "") : "";
+      const ev = no ? (store.byArchiveNo(no) ?? (pastArchiveNo(store, fonds, no) ? store.byArchiveNo(pastArchiveNo(store, fonds, no)!) : null)) : null;
       if (!ev) throw new PastError(`${at}引的 ${String(c)} 查不到`);
       if (ev.fonds !== fonds || !["message.in", "message.out"].includes(ev.kind)) throw new PastError(`${at}引的 ${c} 不是 ${fonds} 的前世原话`);
       return ev;

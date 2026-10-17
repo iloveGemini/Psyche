@@ -29,7 +29,7 @@ function fakeAscm(): string {
   const raw = db.query(`INSERT INTO raw_logs (id, content, source_session_id, speaker, kind, created_at) VALUES (?, ?, 's1', ?, ?, ?)`);
   raw.run("r1", "我的猫叫煤球", "user", "speech", "2026-09-20 21:00:00");
   raw.run("r2", "记住了，煤球。", "agent", "speech", "2026-09-20 21:00:05");
-  raw.run("r3", "以后别在半夜叫我起床", "user", "speech", "2026-09-21 08:00:00");
+  db.query(`INSERT INTO raw_logs (id, content, source_session_id, speaker, kind, created_at) VALUES (?, ?, 's2', ?, ?, ?)`).run("r3", "以后别在半夜叫我起床", "user", "speech", "2026-09-21 08:00:00");
   raw.run("r4", "{\"cmd\":\"ls\"}", "agent", "tool_call", "2026-09-21 08:00:03");
   db.run(`INSERT INTO gists VALUES ('g1', 'week', '2026-W38', '这周聊了猫', NULL)`);
   db.run(`INSERT INTO episodes VALUES ('e1', '猫的名字', '她告诉我猫叫煤球，我很开心', '平常', '2026-09-20', '2026-09-20 21:00:00', 0, NULL)`);
@@ -59,7 +59,7 @@ describe("翻", () => {
     const h = setup();
     expect((await h.get("/v1/past")).text).toContain("ROY（没认领）：原话 3 条");
     const ov = (await h.get("/v1/past?fonds=ROY")).text;
-    expect(ov).toContain("3 条、1 段会话");
+    expect(ov).toContain("3 条、2 段会话");
     expect(ov).toContain("旧系统写的");
     expect(ov).not.toContain("专属伴侣");
     const day = (await h.get("/v1/past?fonds=ROY&view=day&key=2026-09-21")).text;
@@ -67,6 +67,8 @@ describe("翻", () => {
     expect(day).not.toContain("cmd");
     expect((await h.get("/v1/past?fonds=ROY&view=search&q=煤球")).text).toContain("前世：记住了");
     expect((await h.get("/v1/past?fonds=ROY&view=around&id=r2")).text).toContain(">>> [r2]");
+    expect(ov).toContain("有旧情节的日子（旧系统写的）：09-20(1)");
+    expect((await h.get("/v1/past?fonds=ROY&view=around&id=r2")).text).toMatch(/\[r2\][^\n]*\n── 另一段会话 ──\n\[r3\]/);
     expect((await h.get("/v1/past?fonds=ROY&view=episodes&key=2026-09-20")).text).toContain("不是原话");
     // 翻不留东西在库里（除了它自己调工具时 harness 报的经历）
     expect(h.store.list({}).length).toBe(0);
@@ -83,6 +85,11 @@ describe("认领", () => {
     expect(r.status).toBe(200);
     expect(r.json.imported).toBe(3);
     expect((await h.post("/v1/past/claim", { fonds: "ROY", why: "再认一次" })).json.error).toContain("已经认领过了");
+    // 认领后翻到的每行带档号，日期可省年份；编目引翻到的旧 id 也认
+    const day = (await h.get("/v1/past?fonds=ROY&view=day&key=09-20")).text;
+    expect(day).toContain("[ROY/09-20#1]");
+    expect((await h.get(`/v1/past?fonds=ROY&view=around&id=${encodeURIComponent("ROY/09-20#2")}`)).text).toContain(">>> [ROY/09-20#2]");
+    expect((await h.post("/v1/past/catalog", { fonds: "ROY", entries: [{ shelf: "fact", text: "她的猫叫煤球", cites: ["r1"] }] })).status).toBe(200);
     const past = h.store.list({ fonds: "ROY" });
     expect(past.map((e) => e.archiveNo)).toEqual(["ROY/2026-09-20#1", "ROY/2026-09-20#2", "ROY/2026-09-21#1"]);
     expect(past[0].at).toBe(T("2026-09-20T21:00:00"));
@@ -92,7 +99,9 @@ describe("认领", () => {
     expect(exp.some((t) => t.includes("我的猫叫煤球"))).toBe(false);
     expect(exp.some((t) => t.includes("我认领了 ROY 的旧卷宗"))).toBe(true);
     const rec = (await h.get(`/v1/recall?q=${encodeURIComponent("煤球")}`)).lines as { archiveNo: string; text: string }[];
-    expect(rec[0].text).toContain("煤球今天又打翻了杯子"); // 今生的在前
+    const own = rec.findIndex((l) => l.text.includes("煤球今天又打翻了杯子"));
+    expect(own).toBeGreaterThanOrEqual(0);
+    expect(own).toBeLessThan(rec.findIndex((l) => l.archiveNo.startsWith("ROY/"))); // 今生的在前
     expect(rec.find((l) => l.archiveNo === "ROY/09-20#1")?.text).toContain("（前世，不是我经历的）Joy 对前世说");
   });
 });
@@ -118,6 +127,10 @@ describe("编目", () => {
     expect(shelf.length).toBe(2);
     expect(shelf.every((e) => e.past === "ROY" && e.for === 0)).toBe(true);
     expect(renderEntry(shelf[0])).toContain("前世 ROY，今生还没印证够");
+    // 书架条目在 recall 里带上所引的前世档号；英文大小写不影响
+    await h.post("/v1/past/catalog", { fonds: "ROY", entries: [{ shelf: "fact", text: "前世叫她 Joy", cites: ["ROY/2026-09-20#2"] }] });
+    const rec = (await h.get("/v1/recall?q=joy")).lines as { kind: string; text: string }[];
+    expect(rec.find((l) => l.kind === "semantic")?.text).toContain("ROY/09-20#2");
   });
 
   test("今生印证够 2 次（不同会话）就不再标前世", async () => {

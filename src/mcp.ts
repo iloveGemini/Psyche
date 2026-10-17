@@ -266,12 +266,13 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  type Entry = { archiveNo: string; shelf: string; text: string; when?: string; then?: string; observe?: string; quote?: string; watch?: string[]; about?: string; track?: string[]; for: number; against: number; irrelevant: number; lastEvidenceAt: number | null };
+  type Entry = { archiveNo: string; shelf: string; text: string; when?: string; then?: string; observe?: string; quote?: string; watch?: string[]; about?: string; track?: string[]; for: number; against: number; irrelevant: number; lastEvidenceAt: number | null; past?: string };
   const SHELF_NAME: Record<string, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子", attend: "留意", relation: "关系" };
   const SHELF_ENUM = ["fact", "told", "rule", "mirror", "attend", "relation"] as const;
   const entryLine = (e: Entry) =>
     [
-      `[${e.archiveNo}]（${SHELF_NAME[e.shelf] ?? e.shelf}${e.about ? ` · ${e.about}` : ""}）${e.text}`,
+      // 前世编目来的、今生印证还不到 2 次（同 reading/shelf.ts stillPast）
+      `[${e.archiveNo}]（${SHELF_NAME[e.shelf] ?? e.shelf}${e.about ? ` · ${e.about}` : ""}${e.past && e.for < 2 ? ` · 前世 ${e.past}，今生还没印证够` : ""}）${e.text}`,
       e.quote && `  原话：「${e.quote}」`,
       e.when && `  条件：${e.when}`,
       e.then && `  结果：${e.then}`,

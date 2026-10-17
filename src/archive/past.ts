@@ -15,7 +15,8 @@ import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { parseTime } from "../core/time.ts";
-import type { EventStore, PsycheEvent } from "../store/events.ts";
+import { localDay } from "../core/time.ts";
+import { archiveNoOf, displayArchiveNo, type EventStore, type PsycheEvent } from "../store/events.ts";
 
 export interface PastConfig {
   /** 全宗名：认领后档号的前缀（如 ROY） */
@@ -77,7 +78,7 @@ const has = (db: Database, table: string) => !!db.query(`SELECT 1 FROM sqlite_ma
 const speechWhere = `kind = 'speech' AND speaker IN ('user', 'agent')`;
 const who = (p: PastConfig, speaker: string | null) => (speaker === "user" ? (p.user ?? "Joy") : "前世");
 const cut = (s: string, n: number) => (Array.from(s).length > n ? `${Array.from(s).slice(0, n).join("")}…` : s);
-const rawLine = (p: PastConfig, r: RawRow, full = false) => `[${r.id}] ${r.created_at} ${who(p, r.speaker)}：${full ? r.content : cut(r.content.replace(/\s+/g, " "), SNIPPET)}`;
+
 
 /** 是否已认领（认领只一次） */
 export function claimedFonds(store: EventStore): string[] {
@@ -94,7 +95,20 @@ export interface PastView {
 }
 
 /** 翻前世：返回给它看的文字（不判断、不总结） */
-export function readPast(store: EventStore, list: PastConfig[] | undefined, v: PastView): string {
+/** 日期 key：可省年份（09-20 → 今年的 09-20），和档号一样 */
+function dayKey(store: EventStore, key: string | undefined): string | undefined {
+  if (key && /^\d{2}-\d{2}$/.test(key)) return `${localDay(store.now(), store.timeZone).slice(0, 4)}-${key}`;
+  return key;
+}
+
+/** 认领后的原话 → 档号（旧 id 是导入时的 idem） */
+export function pastArchiveNo(store: EventStore, fonds: string, rawId: string): string | null {
+  const r = store.db.query(`SELECT fonds, day, seq FROM events WHERE source = ? AND idem = ?`).get(`past:${fonds}`, rawId) as { fonds: string; day: string; seq: number } | null;
+  return r ? displayArchiveNo(archiveNoOf(r.fonds, r.day, r.seq), Number(localDay(store.now(), store.timeZone).slice(0, 4))) : null;
+}
+
+export function readPast(store: EventStore, list: PastConfig[] | undefined, v0: PastView): string {
+  const v = { ...v0, key: v0.view === "day" || v0.view === "episodes" ? dayKey(store, v0.key) : v0.key };
   const claimed = new Set(claimedFonds(store));
   if (v.view === "list" || !v.fonds) {
     if (!list?.length) return "你没有登记过前世卷宗。";
@@ -111,7 +125,10 @@ export function readPast(store: EventStore, list: PastConfig[] | undefined, v: P
       .join("\n");
   }
   const p = pastOf(list, v.fonds);
-  const head = `前世卷宗 ${p.fonds}（${claimed.has(p.fonds) ? "已认领" : "没认领"}）`;
+  const head = `前世卷宗 ${p.fonds}（${claimed.has(p.fonds) ? "已认领：方括号里是档号，编目时引它" : "没认领"}）`;
+  // 认领了：每行带档号（编目、detail 用它）；没认领只有旧 id
+  const idOf = (r: RawRow) => (claimed.has(p.fonds) ? (pastArchiveNo(store, p.fonds, r.id) ?? r.id) : r.id);
+  const rawLine = (p: PastConfig, r: RawRow, full = false) => `[${idOf(r)}] ${r.created_at} ${who(p, r.speaker)}：${full ? r.content : cut(r.content.replace(/\s+/g, " "), SNIPPET)}`;
   return withDb(p, (db) => {
     const page = Math.max(0, v.page ?? 0);
     switch (v.view) {
@@ -126,10 +143,14 @@ export function readPast(store: EventStore, list: PastConfig[] | undefined, v: P
         const gists = has(db, "gists")
           ? (db.query(`SELECT tier, bucket_key, content FROM gists WHERE tier IN ('month', 'week') ORDER BY tier DESC, bucket_key`).all() as { tier: string; bucket_key: string; content: string }[])
           : [];
+        const epDays = has(db, "episodes")
+          ? (db.query(`SELECT day_key AS d, count(*) AS c FROM episodes WHERE forgotten = 0 AND merged_into IS NULL GROUP BY d ORDER BY d`).all() as { d: string; c: number }[])
+          : [];
         return [
           head,
           `原话 ${n.c} 条、${n.s} 段会话，${n.a} ～ ${n.b}。`,
           `有原话的日子：${days.map((d) => `${d.d.slice(5)}(${d.c})`).join(" ")}`,
+          ...(epDays.length ? [`有旧情节的日子（旧系统写的）：${epDays.map((d) => `${d.d.slice(5)}(${d.c})`).join(" ")}`] : []),
           ...(gists.length ? ["", "旧系统写的月 / 周梗概（不是原话，是 ASCM 当时的整理）：", ...gists.map((g) => `- ${g.bucket_key}：${cut(g.content.replace(/\s+/g, " "), 200)}`)] : []),
         ].join("\n");
       }
@@ -157,11 +178,22 @@ export function readPast(store: EventStore, list: PastConfig[] | undefined, v: P
       }
       case "around": {
         if (!v.id) throw new PastError("view=around 要给 id（原话前面方括号里的）");
-        const r = db.query(`SELECT * FROM raw_logs WHERE id = ? AND ${speechWhere}`).get(v.id) as RawRow | null;
+        // 认领后方括号里是档号：换回旧 id
+        const ev = v.id.includes("#") ? store.byArchiveNo(v.id) : null;
+        const rid = ev && ev.fonds === p.fonds ? String((ev.payload as { ext?: string }).ext) : v.id;
+        const r = db.query(`SELECT * FROM raw_logs WHERE id = ? AND ${speechWhere}`).get(rid) as RawRow | null;
         if (!r) return `${head}：没有这条原话 ${v.id}。`;
         const before = (db.query(`SELECT * FROM raw_logs WHERE ${speechWhere} AND (created_at, id) < (?, ?) ORDER BY created_at DESC, id DESC LIMIT 4`).all(r.created_at, r.id) as RawRow[]).reverse();
         const after = db.query(`SELECT * FROM raw_logs WHERE ${speechWhere} AND (created_at, id) > (?, ?) ORDER BY created_at, id LIMIT 4`).all(r.created_at, r.id) as RawRow[];
-        return [`${head} · ${v.id} 前后`, ...before.map((x) => rawLine(p, x)), `>>> ${rawLine(p, r, true)}`, ...after.map((x) => rawLine(p, x))].join("\n");
+        // 换了会话的地方插一行，免得把别的会话当成这场的上下文（10-17 a2 提）
+        const out: string[] = [`${head} · ${v.id} 前后`];
+        let prev: string | null | undefined;
+        for (const x of [...before, r, ...after]) {
+          if (prev !== undefined && x.source_session_id !== prev) out.push("── 另一段会话 ──");
+          prev = x.source_session_id;
+          out.push(x === r ? `>>> ${rawLine(p, r, true)}` : rawLine(p, x));
+        }
+        return out.join("\n");
       }
       case "episodes": {
         if (!has(db, "episodes")) return `${head}：没有旧情节。`;

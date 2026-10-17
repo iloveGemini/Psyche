@@ -131,16 +131,18 @@ export function shelfRecall(db: Database, q: string, qvec: Float32Array | null, 
   const ks = keywords(q);
   const terms = ks.length ? ks : q.trim().split(/\s+/).filter(Boolean);
   const scored = entries.flatMap((e) => {
-    const hay = [e.text, e.when, e.then, e.observe, e.quote, ...(e.watch ?? [])].filter(Boolean).join("\n");
-    const lex = terms.length ? terms.filter((t) => hay.includes(t)).length / terms.length : 0;
+    // keywords 把英文转了小写，这边也转（10-17 a2 报：搜 Echore 翻不到写着 Echore 的条目）
+    const hay = [e.text, e.when, e.then, e.observe, e.quote, ...(e.watch ?? [])].filter(Boolean).join("\n").toLowerCase();
+    const lex = terms.length ? terms.filter((t) => hay.includes(t.toLowerCase())).length / terms.length : 0;
     const v = qvec && model ? vectorOf(db, e.current, model) : null;
     const cos = v && qvec ? cosine(qvec, v) : 0;
     const score = lex + Math.max(0, (cos - 0.55) / 0.25);
     return lex > 0 || cos >= 0.6 ? [{ e, score }] : [];
   });
   const evidence = db.query(
-    `SELECT ev.day || '#' || ev.seq AS no FROM p_shelf_ev s JOIN events ev ON ev.id = s.event_id
-     WHERE s.root = ? AND s.stance IN ('for', 'against') ORDER BY ev.at DESC LIMIT 6`,
+    // 前世编目所引的原话登记为 past，档号带全宗
+    `SELECT CASE ev.fonds WHEN '' THEN '' ELSE ev.fonds || '/' END || ev.day || '#' || ev.seq AS no FROM p_shelf_ev s JOIN events ev ON ev.id = s.event_id
+     WHERE s.root = ? AND s.stance IN ('for', 'against', 'past') ORDER BY ev.at DESC LIMIT 6`,
   );
   return scored
     .sort((a, b) => b.score - a.score)

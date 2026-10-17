@@ -195,12 +195,14 @@ function recallCandidates(c: Ctx, cue: string, qvec: Float32Array | null, model:
   // 字面：命中的实词有多稀罕（IDF 之和 / 最大可能的 IDF，封顶 1）。不按命中占比算：
   // 她话里没人提过的词（"换了""新的"）本来就撞不上什么，不该拉低撞上的那个（"耳机"）
   const gs = keywords(cue);
-  const df = new Map(gs.map((g) => [g, all.filter((r) => r.text.includes(g)).length]));
+  // keywords 把英文转了小写，被搜的也转
+  const low = new Map(all.map((r) => [r.event_id, r.text.toLowerCase()]));
+  const df = new Map(gs.map((g) => [g, all.filter((r) => low.get(r.event_id)!.includes(g)).length]));
   const idf = (g: string) => Math.log((all.length + 1) / ((df.get(g) ?? 0) + 1));
   const total = Math.log(all.length + 1) || 1;
   const vec = (id: string) => (qvec && model ? vectorOf(c.db, id, model) : null);
   return all.map((r) => {
-    const lex = Math.min(1, gs.filter((g) => r.text.includes(g)).reduce((s, g) => s + idf(g), 0) / total);
+    const lex = Math.min(1, gs.filter((g) => low.get(r.event_id)!.includes(g)).reduce((s, g) => s + idf(g), 0) / total);
     const v = vec(r.event_id);
     const cos = v && qvec ? cosine(qvec, v) : 0;
     return { row: r, lex, cos };
@@ -259,7 +261,7 @@ function evidencePlaces(c: Ctx, root: string): Set<string> {
 function shelfScore(e: ShelfEntry, cue: string, qvec: Float32Array | null, v: Float32Array | null, now: number) {
   const watch = e.watch?.some((w) => cue.includes(w)) ? W.watch : 0;
   const ks = keywords(cue);
-  const hay = [e.text, e.when, e.then, e.quote].filter(Boolean).join(" ");
+  const hay = [e.text, e.when, e.then, e.quote].filter(Boolean).join(" ").toLowerCase();
   const lex = ks.length ? ks.filter((k) => hay.includes(k)).length / ks.length : 0;
   const cos = qvec && v ? cosine(qvec, v) : 0;
   const ev = Math.min(e.for, 4) * W.evidence + (e.lastEvidenceAt && now - e.lastEvidenceAt < 14 * DAY ? W.evidenceRecent : 0);
