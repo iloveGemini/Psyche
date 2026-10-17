@@ -39,6 +39,8 @@ export interface ShelfEntry {
   lastEvidenceAt: number | null;
   /** 现行版写于何时 */
   at: number;
+  /** 前世编目来的（全宗名）：今生印证够了才算自己的（catalog/past-catalog.ts） */
+  past?: string;
 }
 
 const ev_ = (db: Database, id: string) => {
@@ -101,10 +103,13 @@ export const shelfProjector: Projector = {
     };
     const bySessions = (fresh: { id: string }[]) => new Set(fresh.map((e) => sessionOf(db, ev_(db, e.id)) ?? e.id)).size;
     if (ev.kind === "semantic.proposed") {
-      const fields = Object.fromEntries(ENTRY_FIELDS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]]));
+      const fields: Record<string, unknown> = Object.fromEntries(ENTRY_FIELDS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]]));
+      if (typeof p.past === "string") fields.past = p.past;
       db.run(`INSERT INTO p_shelf (root, current, archive_no, shelf, fields, at) VALUES (?, ?, ?, ?, ?, ?)`, [ev.id, ev.id, ev.archiveNo, p.shelf, JSON.stringify(fields), ev.at]);
       db.run(`INSERT INTO p_shelf_ver (id, root) VALUES (?, ?)`, [ev.id, ev.id]);
-      count(ev.id, "for", evidenceOf(db, ev.id), bySessions);
+      // 前世编目：所引的前世原话只登记、不算印证（前世不算经历，archive.md §四）
+      if (typeof p.past === "string") count(ev.id, "past", evidenceOf(db, ev.id), () => 0);
+      else count(ev.id, "for", evidenceOf(db, ev.id), bySessions);
       return;
     }
     const root = typeof p.target === "string" ? rootOf(db, p.target) : null;
@@ -186,8 +191,10 @@ export function countedEvidence(db: Database, root: string): Set<string> {
 
 /** 给它看的一行：书架名 + 正文 + 规律的条件/结果 + 计数 */
 export const SHELF_NAME: Record<Shelf, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子", attend: "留意", relation: "关系" };
+/** 前世编目来的、今生印证还不够（PAST_OWN = 2，catalog/past-catalog.ts）：还标「前世」 */
+export const stillPast = (e: ShelfEntry) => !!e.past && e.for < 2;
 export function renderEntry(e: ShelfEntry): string {
-  const parts = [`（${SHELF_NAME[e.shelf]}${e.about ? ` · ${e.about}` : ""}）${e.text}`];
+  const parts = [`（${SHELF_NAME[e.shelf]}${e.about ? ` · ${e.about}` : ""}${stillPast(e) ? ` · 前世 ${e.past}，今生还没印证够` : ""}）${e.text}`];
   if (e.quote) parts.push(`原话：「${e.quote}」`);
   if (e.when) parts.push(`条件：${e.when}`);
   if (e.then) parts.push(`结果：${e.then}`);

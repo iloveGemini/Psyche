@@ -55,6 +55,15 @@
 - 认领 = 一条自我事件（`fonds.claimed`）；认领之后才跑前世编目。不认领，它就只是一份可以翻的资料。
 - **认领了，前世也是它写初我的材料**（10-17 Joy 提，`m4.md`）：只给前世发生过的事，不给前世的自述 / 归纳 / imprint（同上，不继承前世的诠释）。
 
+### 实现（10-17，`src/archive/past.ts`、`src/catalog/past-catalog.ts`）
+
+- **登记**：`agents.json` 每人可有 `past: [{ fonds, path, user? }]`（fonds 大写，现在只认 ASCM 的 `state.db`）。
+- **翻**（`past_life` → `GET /v1/past`）：只读打开旧库；概览 / 某天原话 / 搜原话 / 某条前后 / 旧梗概 / 旧情节。原话只给 `kind = speech`；梗概、情节给看但标明「旧系统写的，不是原话」；`portrait_segments` / `user_memory` / `imprints` 不碰。翻不往库里写东西（它调工具本身是经历，harness 照常报）。
+- **认领**（`claim_past` → `POST /v1/past/claim`）：要写 why，只一次；`fonds.claimed { fonds, why, count }` 挂 evidence，同一事务把原话按原时间（ASCM 存本地时间）导进全宗，`message.in`（from = user，缺省 Joy）/ `message.out`，不挂处境，idem = 旧 id。工具调用不导。经历投影、统计、醒着等口径本来就只看 `fonds = ''`，不受影响。
+- **recall**：没给时间范围时，在最后追加已认领全宗的原话（字面，≤ 5 行），标「（前世，不是我经历的）」。没做向量。
+- **编目**（`past_catalog` → `POST /v1/past/catalog`）：认领了才行；只开 fact / told；cites 只认这份全宗的原话；told 的 quote 要逐字在所引的她的话里。条目 `payload.past = 全宗`，所引原话登记为 `past`、不算印证；书架上标「前世」，今生 for ≥ 2（`PAST_OWN`）不再标。之后的印证、改写、作废都走冷写。
+- **没做**：出生那段递前世发生过的事（`m4.md`）；冷写材料里提醒还有「前世」条目待印证。
+
 ## 入库口与接口（10-13 晚，已实现初版）
 
 - payload 形状与校验：`src/archive/kinds.ts`。未登记的 kind 一律拒收；class 由 kind 决定；大块工具返回 / 参数自动转进资料库，事件里只留哈希（`intake.ts`）。

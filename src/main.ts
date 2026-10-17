@@ -124,7 +124,7 @@ function openResident({ id, dir, config }: Resident) {
     const tag = residents.length > 1 ? (currentName(store) ?? id) : undefined;
     for (const ch of getChannels(store).channels[to] ?? []) if (ch === "email") void deliverEmail(store, ev, undefined, tag);
   };
-  const app = createApp({ store, projections, token: config.token, embedder, outbox, storeOf, selfId: id, residentIds: () => viewers.map((v) => v.id) });
+  const app = createApp({ store, projections, token: config.token, embedder, outbox, storeOf, selfId: id, residentIds: () => viewers.map((v) => v.id), past: config.past });
 
   if (process.env.PSYCHE_SCHEDULER === "1") startScheduler(id, store, config, tag);
   return { app, store };

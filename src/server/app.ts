@@ -42,6 +42,8 @@ import { NoticeError, writeNotice } from "../perception/env.ts";
 import { deliverBody } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
+import { claimPast, PastError, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
+import { writePastCatalog } from "../catalog/past-catalog.ts";
 
 export interface AppDeps {
   store: EventStore;
@@ -61,11 +63,13 @@ export interface AppDeps {
   selfId?: string;
   /** 屋里所有住户的 id（含自己）：写信给住户用（m6.md §八） */
   residentIds?: () => string[];
+  /** 他登记的前世卷宗（agents.json 的 past，archive/past.ts） */
+  past?: PastConfig[];
 }
 
 const num = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
 
-export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox, music = netease, storeOf, selfId, residentIds }: AppDeps) {
+export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, outbox, music = netease, storeOf, selfId, residentIds, past }: AppDeps) {
   const sound: SoundDeps = {
     music,
     storeOf,
@@ -78,7 +82,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError || err instanceof SoundError || err instanceof NoticeError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError || err instanceof SoundError || err instanceof NoticeError || err instanceof PastError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -219,7 +223,9 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
       from === undefined && to === undefined
         ? shelfRecall(store.db, q.q, qvec, qvec ? embedder!.model : null).map((e) => ({ archiveNo: e.archiveNo, at: e.at, kind: "semantic", text: renderShelfHit(e, show) }))
         : [];
-    return c.json({ lines: [...shelf, ...lines].map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
+    // 认领了的前世：原话字面查，排在最后、标「前世」（archive/past.ts）
+    const pastLines = from === undefined && to === undefined ? pastRecall(store, q.q) : [];
+    return c.json({ lines: [...shelf, ...lines, ...pastLines].map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
   });
 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
@@ -339,6 +345,18 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.post("/v1/threads/close", async (c) => c.json(closeThread(store, await obj(c))));
 
   // 感知：看一眼屋里、挂个签（m8.md §二 §五）
+  // 前世今生（archive.md §四）：翻（不认领也能）、认领（导进单独的全宗）、编目
+  app.get("/v1/past", (c) => {
+    const q = c.req.query();
+    const view = (q.view || (q.fonds ? "overview" : "list")) as PastView["view"];
+    return c.json({ text: readPast(store, past, { view, fonds: q.fonds, key: q.key, q: q.q, id: q.id, page: num(q.page) }) });
+  });
+  app.post("/v1/past/claim", async (c) => {
+    const r = claimPast(store, past, (await obj(c)) as Record<string, unknown>);
+    return c.json({ archiveNo: r.claimed.archiveNo, imported: r.imported, skipped: r.skipped });
+  });
+  app.post("/v1/past/catalog", async (c) => c.json({ entries: writePastCatalog(store, (await obj(c)) as Record<string, unknown>).map((e) => e.archiveNo) }));
+
   app.get("/v1/look", (c) => c.json({ text: lookPresence(store, c.req.query("session") || undefined) }));
   app.post("/v1/mood", async (c) => {
     const b = await c.req.json();

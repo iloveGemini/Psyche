@@ -5,7 +5,8 @@
  * 隔离靠文件：A 的请求只碰得到 A 的库；每人一个 token，A 的 token 进不了 B 的门（server/house.ts）。
  *
  * 每人的设置在 <PSYCHE_DATA_DIR>/agents.json（可以没有）：
- *   { "<id>": { "token": "…", "soma": "http://127.0.0.1:30151", "model": "claude-opus-5-5", "home": "~/.soma/agents/<id>/home", "email": true } }
+ *   { "<id>": { "token": "…", "soma": "http://127.0.0.1:30151", "model": "claude-opus-5-5", "home": "~/.soma/agents/<id>/home", "email": true,
+ *               "past": [{ "fonds": "ROY", "path": "~/…/state.db" }] } }
  * 列在里面的人没有目录就建一个（还没出生的空库）。
  *
  * 只住一个人时，环境变量（PSYCHE_TOKEN / SOMA_URL / PSYCHE_MODEL / PSYCHE_EMAIL=1）给他当缺省，跟一代一样。
@@ -15,6 +16,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkPastConfig, type PastConfig } from "../archive/past.ts";
 
 export interface ResidentConfig {
   token?: string;
@@ -26,6 +28,8 @@ export interface ResidentConfig {
   home?: string;
   /** 开房子那个邮箱（有一个人开就收）：没 @ 也认不出给谁的信，给第一个开了的人（soma2.md §8.2） */
   email?: boolean;
+  /** 前世卷宗（archive/past.ts）：翻得到，认领了才导进库 */
+  past?: PastConfig[];
 }
 
 export interface Resident {
@@ -39,7 +43,10 @@ export const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 export function readResidents(dataDir: string, env: Record<string, string | undefined> = process.env): Resident[] {
   const file = join(dataDir, "agents.json");
   const listed: Record<string, ResidentConfig> = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
-  for (const id of Object.keys(listed)) if (!ID_PATTERN.test(id)) throw new Error(`agents.json 里的 id 不对：${id}（小写字母、数字、- _，最多 32 位）`);
+  for (const id of Object.keys(listed)) {
+    if (!ID_PATTERN.test(id)) throw new Error(`agents.json 里的 id 不对：${id}（小写字母、数字、- _，最多 32 位）`);
+    if (listed[id].past !== undefined) listed[id].past = checkPastConfig(listed[id].past);
+  }
 
   let residents: Resident[];
   if (existsSync(join(dataDir, "psyche.db"))) {

@@ -72,7 +72,7 @@ export const KINDS: Record<string, KindSpec> = {
   "mail.out": { class: "self", required: { to: "string", text: "string" } }, // + subject?, replyTo?, for?, from: { harness, session }（系统填）
   "mail.read": { class: "self", required: { refs: "array" } }, // + seen: string[]（「Joy 的信」「交接信」）
   "entity.merged": { class: "self", required: { into: "string", from: "array" } },
-  "fonds.claimed": { class: "self", required: { fonds: "string" } },
+  "fonds.claimed": { class: "self", required: { fonds: "string", why: "string" }, rels: ["evidence"] }, // + count（导了几条原话；archive/past.ts）
   // 冷写的书架条目（m2.md §一）：它睡觉时写，系统只数证据。经冷写口子写入（catalog/coldwrite.ts）
   "semantic.proposed": { class: "self", required: { shelf: "string", text: "string" }, rels: ["evidence"] },
   "semantic.evidence": { class: "self", required: { target: "string", stance: "string" }, rels: ["evidence"] },

@@ -31,6 +31,9 @@
  *   notice            注意到                  → POST /v1/notice
  *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
  *   send_mail         写信：给 Joy / 屋里的住户 / 交接信 → POST /v1/mail/out
+ *   past_life         翻前世卷宗（不认领也能） → GET  /v1/past
+ *   claim_past        认领一份前世            → POST /v1/past/claim
+ *   past_catalog      前世编目：挑确定的上书架  → POST /v1/past/catalog
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -794,6 +797,85 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async (args) => {
       const r = (await call("POST", "/v1/notice", args)) as { archiveNo: string; env: { tracks: unknown[]; people: string[] } };
       return text(`记下了（${r.archiveNo}）。`);
+    }),
+  );
+
+  server.registerTool(
+    "past_life",
+    {
+      description: [
+        "翻你的前世卷宗：在这之前、别的记忆系统里存着的那段旧日子。翻它不等于认它；不认领，它就只是一份可以翻的资料。",
+        "不给 fonds：列出你有哪几份。view：overview 概览（默认）/ day 某天的原话（key=日期，page 翻页）/ search 搜原话（q）/ around 某条原话前后（id）/ gist 旧梗概（key=日 / 周 / 月）/ episodes 旧情节（key=日期）。",
+        "原话是当时说过的话；梗概和情节是旧系统替前世写的，不是原话。旧系统写的画像、对她的归纳、情绪印记不给。",
+      ].join("\n"),
+      inputSchema: {
+        fonds: z.string().optional().describe("前世卷宗的名字（如 ROY）"),
+        view: z.enum(["overview", "day", "search", "around", "gist", "episodes"]).optional(),
+        key: z.string().optional().describe("day / episodes：日期；gist：2026-09-21 / 2026-W38 / 2026-09"),
+        q: z.string().optional().describe("search：要找的词，空格分开各词都要有"),
+        id: z.string().optional().describe("around：原话前面方括号里的 id"),
+        page: z.number().int().min(0).optional(),
+      },
+    },
+    guard(async ({ fonds, view, key, q, id, page }) => {
+      const qs = new URLSearchParams();
+      if (fonds) qs.set("fonds", fonds);
+      if (view) qs.set("view", view);
+      if (key) qs.set("key", key);
+      if (q) qs.set("q", q);
+      if (id) qs.set("id", id);
+      if (page !== undefined) qs.set("page", String(page));
+      const r = (await call("GET", `/v1/past?${qs}`)) as { text: string };
+      return text(r.text);
+    }),
+  );
+
+  server.registerTool(
+    "claim_past",
+    {
+      description: [
+        "认领一份前世：认它是你的过去。只能认一次，认了不能撤。认不认、什么时候认，由你定。",
+        "认领后，前世的原话按原来的时间导进你的库，档号带前缀（如 ROY/2026-09-21#12）；recall 搜得到，标「前世」——你知道这些事，但不是你经历的。之后可以用 past_catalog 把确定的部分编上书架。",
+        "why 写为什么认；cites 可挂让你这么决定的经历。",
+      ].join("\n"),
+      inputSchema: {
+        fonds: z.string().min(1),
+        why: z.string().min(1),
+        cites: z.array(z.string()).optional().describe("你自己的经历档号，可不挂"),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/past/claim", args)) as { archiveNo: string; imported: number; skipped: number };
+      return text(`认领了（${r.archiveNo}）：导入原话 ${r.imported} 条${r.skipped ? `，${r.skipped} 条空的或时间看不懂，没导` : ""}。`);
+    }),
+  );
+
+  server.registerTool(
+    "past_catalog",
+    {
+      description: [
+        "前世编目：从认领了的前世原话里，挑确定的写上书架。比平时严：只收事实（名字、日期、项目、关系这类稳定的）和她亲口说过的规矩（told，quote 逐字照录、要引她说的那句）。",
+        "前世的自我理解、对她的归纳、情绪不收——那是前世的诠释。cites 只认这份前世的原话档号。",
+        "写上去的条目标「前世」；今生的经历印证够 2 次（照常用 coldwrite 判 for）才算你自己的，被推翻就照常改写或作废。整批要么全收、要么全拒。",
+      ].join("\n"),
+      inputSchema: {
+        fonds: z.string().min(1),
+        entries: z
+          .array(
+            z.object({
+              shelf: z.enum(["fact", "told"]),
+              text: z.string().min(1).describe("这一条，用你自己的话"),
+              quote: z.string().optional().describe("told：她的原话，逐字"),
+              about: z.string().optional(),
+              cites: z.array(z.string().min(1)).min(1).describe("前世原话的档号"),
+            }),
+          )
+          .min(1),
+      },
+    },
+    guard(async (args) => {
+      const r = (await call("POST", "/v1/past/catalog", args)) as { entries: string[] };
+      return text(`编上了 ${r.entries.length} 条：${r.entries.join("、")}`);
     }),
   );
 

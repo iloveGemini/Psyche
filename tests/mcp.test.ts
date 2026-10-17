@@ -49,7 +49,7 @@ describe("MCP 工具 → REST", () => {
   test("列出全部工具，描述是中文", async () => {
     const client = await connect({ fetch: async () => Response.json({}) });
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["coldwrite", "coldwrite_material", "detail", "gist", "gist_material", "hotwrite", "hotwrite_segment", "mail", "name_self", "recall", "revise_episode", "rewrite_self", "schedule", "self", "send_mail", "set_schedule", "shelf", "stats", "threads", "write_diary", "open_thread", "note_thread", "close_thread", "look", "set_mood", "play", "stop", "playlist", "listen", "listen_with", "notice"].sort());
+    expect(tools.map((t) => t.name).sort()).toEqual(["coldwrite", "coldwrite_material", "detail", "gist", "gist_material", "hotwrite", "hotwrite_segment", "mail", "name_self", "recall", "revise_episode", "rewrite_self", "schedule", "self", "send_mail", "set_schedule", "shelf", "stats", "threads", "write_diary", "open_thread", "note_thread", "close_thread", "look", "set_mood", "play", "stop", "playlist", "listen", "listen_with", "notice", "past_life", "claim_past", "past_catalog"].sort());
     expect(tools.find((t) => t.name === "hotwrite")!.description).toContain("情节是你自己写的记忆");
   });
 
