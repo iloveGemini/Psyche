@@ -553,7 +553,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async () => {
       const s = (await call("GET", "/v1/schedule")) as {
         schedule: {
-          heartbeat: { everyMin: number } | null;
+          heartbeat: { everyMin: number; active?: { from: string; to: string } } | null;
           daily: { at: string; note?: string }[];
           alarms: { id: string; at: number; note: string }[];
           wakeOn: { mail: boolean };
@@ -561,6 +561,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         } | null;
         why?: string;
         next: { by: string; due: number; note?: string } | null;
+        nextHeartbeat: number | null;
         budget: { used: number; of: number };
         settings: { paused: boolean; wakeBudget: number; heartbeat: boolean };
       };
@@ -568,13 +569,14 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       if (!s.schedule) out.push("还没排过作息。");
       else {
         const sc = s.schedule;
-        out.push(`心跳：${sc.heartbeat ? `每 ${sc.heartbeat.everyMin} 分钟${s.settings.heartbeat ? "" : "（暂未开放，写了不生效）"}` : "没写"}`);
+        out.push(`心跳：${sc.heartbeat ? `每 ${sc.heartbeat.everyMin} 分钟${sc.heartbeat.active ? `，只在 ${sc.heartbeat.active.from}–${sc.heartbeat.active.to}` : "，全天"}${s.settings.heartbeat ? "" : "（暂未开放，写了不生效）"}` : "没写"}`);
         out.push(`每天定点：${sc.daily.length ? sc.daily.map((d) => `${d.at}${d.note ? ` ${d.note}` : ""}`).join("；") : "没有"}`);
         out.push(`闹钟：${sc.alarms.length ? sc.alarms.map((a) => `[${a.id}] ${shortTime(a.at, tz)} ${a.note}`).join("；") : "没有"}`);
         out.push(`来信能叫醒你：${sc.wakeOn.mail ? "能" : "不能（关了）"}`);
         out.push(`勿扰：${sc.dnd.length ? sc.dnd.map((r) => `${JSON.stringify(r.when)}${r.except?.length ? ` 例外 ${JSON.stringify(r.except)}` : ""}`).join("；") : "没有"}`);
         if (s.why) out.push(`上次这么排的理由：${s.why}`);
       }
+      if (s.nextHeartbeat) out.push(`下次心跳：${shortTime(s.nextHeartbeat, tz)}（照现在算；之后有人找你或你醒来，会从那时往后推）`);
       out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
       out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在你没醒着时叫醒各花一次，主动写给 Joy 的信、写给屋里住户的信（回信也算）每封花一次；整理、补写、来信叫醒、回 Joy 的信不花；到点时你醒着（30 分钟内有动静）也不花。勿扰只挡信，不挡闹钟、定点、心跳）`);
       if (s.settings.paused) out.push("Joy 暂停了叫醒（整理、补写也不叫）；你自己的哪一轮里到点的事照样递给你。");
@@ -588,7 +590,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       description: [
         "排你的作息：交一整份（全量替换，没写的就没了），写为什么这么排。",
         "alarms：一次性闹钟，at 用本地时间（如 2026-10-15T15:00），note 是到时告诉你的话；要保留已有的闹钟，带上它的 id 原样交回。",
-        "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15）。",
+        "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15），从你上次醒来和有人上次找你两者较晚的那个算起；active { from, to }（HH:MM，可跨零点）= 只在这段时间里响，到点落在外面就顺延到下一个 from，不写就是全天。",
         "到点就在你这条会话里叫醒你（推一轮进来，<now> 的「刚发生」里写着是什么）；你正忙着就排在这一轮后面。你自己的哪一轮先赶上了，就在那一轮的 <now> 里报，不另叫。",
         "到点时你醒着（30 分钟内有对话或工具调用）不花额度；没醒着的，闹钟、定点、心跳各花一次唤醒额度。",
         "wakeOn.mail：来信能不能在你没醒着时叫醒你（缺省能，不花额度）。",
@@ -597,7 +599,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       ].join("\n"),
       inputSchema: {
         schedule: z.object({
-          heartbeat: z.object({ everyMin: z.number().int() }).nullable().optional(),
+          heartbeat: z.object({ everyMin: z.number().int(), active: z.object({ from: z.string(), to: z.string() }).optional() }).nullable().optional(),
           daily: z.array(z.object({ at: z.string(), note: z.string().optional() })).optional(),
           alarms: z.array(z.object({ id: z.string().optional(), at: z.string(), note: z.string() })).optional(),
           wakeOn: z.object({ mail: z.boolean() }).optional(),

@@ -393,6 +393,37 @@ describe("心跳", () => {
     h.pass(31 * MIN);
     expect(tick(h.store)).toMatchObject({ wake: { by: "heartbeat" } });
   });
+
+  test("活跃时段：落在外面顺延到下一个 from；schedule 报下次心跳；时段写错拒", async () => {
+    const h = setup();
+    quietSince(h, "2026-10-15T08:00:00");
+    // 过了天会有梗概：这里只看心跳
+    const hb = () => {
+      let d = tick(h.store);
+      while (d && "wake" in d && d.wake.by !== "heartbeat") d = tick(h.store);
+      return d;
+    };
+    await h.ok("/v1/settings", { heartbeat: true });
+    expect((await h.post("/v1/schedule", { schedule: { heartbeat: { everyMin: 240, active: { from: "9:00", to: "23:00" } } }, why: "w" })).status).toBe(400);
+    expect((await h.post("/v1/schedule", { schedule: { heartbeat: { everyMin: 240, active: { from: "09:00", to: "09:00" } } }, why: "w" })).status).toBe(400);
+    await h.ok("/v1/schedule", { schedule: { heartbeat: { everyMin: 240, active: { from: "09:00", to: "23:00" } } }, why: "夜里不响" });
+    cover(h);
+    h.set("2026-10-15T22:00:00");
+    h.her("晚安"); // → 02:00 落在时段外，顺延到 10-16 09:00
+    cover(h);
+    expect((await h.get("/v1/schedule")).nextHeartbeat).toBe(T("2026-10-16T09:00:00"));
+    h.set("2026-10-16T02:01:00");
+    expect(hb()).toBeNull();
+    h.set("2026-10-16T08:59:00");
+    expect(hb()).toBeNull();
+    h.set("2026-10-16T09:00:00");
+    expect(hb()).toMatchObject({ wake: { by: "heartbeat", due: T("2026-10-16T09:00:00") } });
+    // 跨零点的时段：22:00–02:00，她 21:00 找过 → 每 60 分钟，22:00 响
+    await h.ok("/v1/schedule", { schedule: { heartbeat: { everyMin: 60, active: { from: "22:00", to: "02:00" } } }, why: "夜猫子" });
+    h.set("2026-10-16T21:00:00");
+    h.her("在");
+    expect((await h.get("/v1/schedule")).nextHeartbeat).toBe(T("2026-10-16T22:00:00"));
+  });
 });
 
 describe("定点", () => {

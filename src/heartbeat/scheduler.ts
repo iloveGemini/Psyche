@@ -163,14 +163,32 @@ function lastWokeOrSpoken(store: EventStore): number {
   return r.at ?? 0;
 }
 
-/** 心跳从"上次醒"和"有人上次找它"较晚者算起（Roxy 教训） */
-function heartbeatDue(store: EventStore, settings: Settings): Candidate | null {
-  const every = readSchedule(store)?.schedule.heartbeat?.everyMin;
-  if (!settings.heartbeat || !every) return null;
+const hhmmOf = (store: EventStore, at: number) => {
+  const w = wallClock(at, store.timeZone);
+  return `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`;
+};
+const inWindow = (t: string, from: string, to: string) => (from < to ? t >= from && t < to : t >= from || t < to);
+
+/** 落在活跃时段外：顺延到下一个 from */
+function intoActive(store: EventStore, at: number, active?: { from: string; to: string }): number {
+  if (!active || inWindow(hhmmOf(store, at), active.from, active.to)) return at;
+  const today = slotAt(store, at, active.from);
+  return today > at ? today : slotAt(store, at + 86_400_000, active.from);
+}
+
+/** 下一次心跳：从"上次醒"和"有人上次找它"较晚者算起（Roxy 教训），落在活跃时段外顺延。没开 / 没写 = null */
+export function heartbeatNext(store: EventStore, settings = getSettings(store)): { anchor: number; due: number } | null {
+  const cur = readSchedule(store);
+  const hb = cur?.schedule.heartbeat;
+  if (!settings.heartbeat || !hb?.everyMin) return null;
   const born = ownSince(store, "schedule.changed")[0]?.at ?? 0;
   const anchor = Math.max(lastWokeOrSpoken(store), born);
-  const due = anchor + every * 60_000;
-  return due <= store.now() ? { by: "heartbeat", key: `heartbeat:${anchor}`, due } : null;
+  return { anchor, due: intoActive(store, anchor + hb.everyMin * 60_000, hb.active) };
+}
+
+function heartbeatDue(store: EventStore, settings: Settings): Candidate | null {
+  const n = heartbeatNext(store, settings);
+  return n && n.due <= store.now() ? { by: "heartbeat", key: `heartbeat:${n.anchor}`, due: n.due } : null;
 }
 
 /**
@@ -361,11 +379,8 @@ export function nextWake(store: EventStore): Candidate | null {
     const t = today > now ? today : slotAt(store, now + 86_400_000, d.at);
     c.push({ by: "daily", key: dailyKey(d.at, localDay(t, store.timeZone)), note: d.note, due: t });
   }
-  const settings = getSettings(store);
-  const every = cur.schedule.heartbeat?.everyMin;
-  if (settings.heartbeat && every) {
-    c.push({ by: "heartbeat", key: "heartbeat", due: Math.max(lastWokeOrSpoken(store), cur.at) + every * 60_000 });
-  }
+  const hb = heartbeatNext(store);
+  if (hb) c.push({ by: "heartbeat", key: "heartbeat", due: hb.due });
   return c.sort((a, b) => a.due! - b.due!)[0] ?? null;
 }
 

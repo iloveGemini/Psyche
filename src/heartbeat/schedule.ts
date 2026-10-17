@@ -29,7 +29,8 @@ export interface DndRule {
   except?: { from: string; urgent?: boolean }[];
 }
 export interface Schedule {
-  heartbeat: { everyMin: number } | null;
+  /** active：只在这个时段里响（HH:MM，可跨零点）；到点落在外面就顺延到下一个 from */
+  heartbeat: { everyMin: number; active?: { from: string; to: string } } | null;
   daily: Daily[];
   alarms: Alarm[];
   wakeOn: { mail: boolean };
@@ -115,7 +116,14 @@ function parseSchedule(store: EventStore, raw: unknown): Schedule {
   if (s.heartbeat !== undefined && s.heartbeat !== null) {
     const every = (s.heartbeat as { everyMin?: unknown }).everyMin;
     if (!Number.isInteger(every) || (every as number) < MIN_HEARTBEAT_MIN) throw new ScheduleError(`heartbeat.everyMin 应为 ≥ ${MIN_HEARTBEAT_MIN} 的整数（分钟）`);
-    heartbeat = { everyMin: every as number };
+    const active = (s.heartbeat as { active?: unknown }).active;
+    for (const k of Object.keys(s.heartbeat as object)) if (k !== "everyMin" && k !== "active") throw new ScheduleError(`heartbeat 里没有 ${k} 这一项：只有 everyMin、active`);
+    if (active !== undefined && active !== null) {
+      const { from, to } = active as { from?: unknown; to?: unknown };
+      if (typeof from !== "string" || !HHMM.test(from) || typeof to !== "string" || !HHMM.test(to) || from === to)
+        throw new ScheduleError("heartbeat.active 应为 { from, to }（HH:MM，可跨零点，两头不能一样；全天就不写）");
+    }
+    heartbeat = { everyMin: every as number, ...(active ? { active: active as { from: string; to: string } } : {}) };
   }
 
   const daily: Daily[] = [];

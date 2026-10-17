@@ -27,7 +27,7 @@ import { computeStats } from "../reading/stats.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
 import { getSettings, ScheduleError, setSchedule, setSettings, writeDiary, readSchedule } from "../heartbeat/schedule.ts";
-import { deliverDue, nextWake, renderJustHappened, scheduleLine, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
+import { deliverDue, nextWake, heartbeatNext, renderJustHappened, scheduleLine, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
 import { composePrompt, currentName, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfError, selfVersion } from "../self/self.ts";
 import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../channel/inbox.ts";
 import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
@@ -303,7 +303,8 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.get("/v1/schedule", (c) => {
     const cur = readSchedule(store);
     const settings = getSettings(store);
-    return c.json({ ...(cur ?? { schedule: null }), next: nextWake(store), budget: { used: budgetUsedToday(store), of: settings.wakeBudget }, settings });
+    const hb = heartbeatNext(store, settings);
+    return c.json({ ...(cur ?? { schedule: null }), next: nextWake(store), nextHeartbeat: hb?.due ?? null, budget: { used: budgetUsedToday(store), of: settings.wakeBudget }, settings });
   });
   app.post("/v1/schedule", async (c) => {
     const body = await c.req.json();
