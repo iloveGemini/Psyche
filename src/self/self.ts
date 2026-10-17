@@ -7,6 +7,7 @@
  *   出生前的改动、名字不带过去：只认 id > upTo 的事件。
  * 自述全文替换，每版是一条 prompt.changed（全文进资料库），挂证据，改了下次会话生效。
  */
+import { receiveMail } from "../channel/mailbox.ts";
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
@@ -39,11 +40,14 @@ export function bornRecord(store: EventStore): BornDetail | null {
 }
 
 /** 出生：只能一次。userText = Joy 初始化时改过的全文（和系统的一样就当没改） */
-export function birth(store: EventStore, opts: { promptsDir?: string; userText?: string; model?: string } = {}): BornDetail {
+/**
+ * 出生：冻结初我（10-17 起 v3 是空的：自述由它自己写，m4.md）。`letter` = Joy 出生那天的信（letters/birth.md），
+ * 出生后作为她的一封信放进收件箱——它出生后的第一件经历。
+ */
+export function birth(store: EventStore, opts: { promptsDir?: string; userText?: string; model?: string; letter?: string } = {}): BornDetail {
   if (bornRecord(store)) throw new SelfError("已经出生过了，只能出生一次");
   const dir = opts.promptsDir ?? PROMPTS_DIR;
   const sys = readPrompt("self-v0.md", dir);
-  if (!sys.text) throw new SelfError("找不到初我（prompts/self-v0.md）");
   const user = opts.userText?.trim();
   const last = store.db.query(`SELECT MAX(id) AS id FROM events`).get() as { id: string | null };
   const detail: BornDetail = {
@@ -54,7 +58,14 @@ export function birth(store: EventStore, opts: { promptsDir?: string; userText?:
     ...(opts.model ? { model: opts.model } : {}),
   };
   store.syslog("born", detail);
+  const letter = opts.letter?.trim();
+  if (letter) receiveMail(store, { from: "Joy", text: letter, via: "soma-note" });
   return detail;
+}
+
+/** 信的文件：去掉 HTML 注释（写给 Joy 的说明），剩下的才是信；空的 = 没有 */
+export function letterText(raw: string): string {
+  return raw.replace(/<!--[\s\S]*?-->/g, "").trim();
 }
 
 /** 出生之后（没出生 = 全部）它自己全宗里某 kind 的事件，按写入顺序 */

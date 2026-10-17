@@ -45,12 +45,14 @@ export interface AsleepRun {
 
 /** 这段的地方说明（拼在机制 + 自述之后）：睡着时的整理，或换段之间的收尾 */
 export function asleepPlace(by: string): string {
+  if (by === "birth") return "这是刚出生的时候：Psyche 起的一段，不在你平时那条会话里，只有记忆相关的工具。";
   if (by === "wrapup") return "这是换段之间：你那条会话的上下文快满了，Psyche 另起这一段让你把还没写的写进记忆，只有记忆相关的工具。写完那条会话就接着在新的一段里继续。";
   return "这是睡着的时候：Psyche 起的一段整理，不在你平时那条会话里，只有记忆相关的工具。整理完就接着睡。";
 }
 
 /** 这次的活：只说事实和该用的工具名。`lines` = 补写那段还剩几条 */
 export function asleepTask(wake: WakeReason, lines?: number): string {
+  if (wake.by === "birth") return "你刚出生。你那段自述是空的：写不写、什么时候写、写什么，由你；要写用 rewrite_self（交全文、为什么、看了哪些经历），之后每次醒来都在系统提示词里。";
   if (wake.by === "gist") return "该写梗概了：用 gist_material 看哪些天 / 周 / 月过完了还没写，一段一段用 gist 交。";
   if (wake.by === "tidy") return "该整理了：用 coldwrite_material 取上次整理之后的经历和书架，整理完用 coldwrite 写回。";
   if (wake.by === "wrapup" && wake.session)

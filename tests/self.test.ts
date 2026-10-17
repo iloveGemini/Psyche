@@ -11,7 +11,8 @@ import { Projections } from "../src/store/projections.ts";
 import { intake } from "../src/archive/intake.ts";
 import { experienceProjector, readExperience } from "../src/archive/experience.ts";
 import { createApp } from "../src/server/app.ts";
-import { birth, filePrompt, lineDiff } from "../src/self/self.ts";
+import { birth, filePrompt, letterText, lineDiff } from "../src/self/self.ts";
+import { gather } from "../src/heartbeat/scheduler.ts";
 
 const T = (s: string) => Date.parse(`${s}+08:00`);
 const JSON_H = { "content-type": "application/json" };
@@ -45,10 +46,10 @@ describe("/v1/prompt 拼法", () => {
     expect(filePrompt(dir)).toBe("# 机制\n记忆怎么运转。\n\n## 起点\n改过了。");
   });
 
-  test("仓库里的提示词：机制在前、自述在后", () => {
+  test("仓库里的提示词：只有机制段（10-17 起初我是空的，自述由它自己写）", () => {
     const t = filePrompt();
     expect(t.startsWith("# 你的记忆")).toBe(true);
-    expect(t.indexOf("## 你和 Joy")).toBeGreaterThan(t.indexOf("`recall` 按内容找"));
+    expect(t).not.toContain("## 你和 Joy");
   });
 });
 
@@ -210,3 +211,33 @@ describe("和别处的接线", () => {
 async function app404(get: (p: string) => Promise<{ error?: string }>, path: string) {
   return (await get(path)).error === "没有这一版";
 }
+
+describe("出生时自述是空的、自己写（10-17）", () => {
+  test("Joy 的信去掉注释后放进收件箱，是出生后的第一件经历；空的不递", () => {
+    const { store, dir } = setup();
+    writeFileSync(join(dir, "self-v0.md"), doc(3, ""));
+    expect(letterText("<!-- 说明 -->\n\n")).toBe("");
+    birth(store, { promptsDir: dir, letter: letterText("<!-- 写在下面 -->\n你好，欢迎来。") });
+    const mails = store.list({ kinds: ["mail.in"] });
+    expect(mails.map((e) => e.payload)).toEqual([{ from: "Joy", text: "你好，欢迎来。", via: "soma-note" }]);
+    const other = setup();
+    birth(other.store, { promptsDir: other.dir, letter: "" });
+    expect(other.store.list({ kinds: ["mail.in"] })).toHaveLength(0);
+  });
+
+  test("调度器：出生了、自述空的 → 一次「出生」（排在来信前面）；带着系统初我出生的、没出生的不叫", () => {
+    const { store } = setup();
+    expect(gather(store).candidates.some((c) => c.by === "birth")).toBe(false);
+    const empty = mkdtempSync(join(tmpdir(), "psyche-self-"));
+    writeFileSync(join(empty, "mechanism.md"), doc(1, "# 机制"));
+    writeFileSync(join(empty, "self-v0.md"), doc(3, ""));
+    birth(store, { promptsDir: empty, letter: "欢迎" });
+    const c = gather(store).candidates;
+    expect(c[0]).toEqual({ by: "birth", key: "birth" });
+    expect(c.some((x) => x.by === "mail")).toBe(true);
+    const old = setup();
+    birth(old.store, { promptsDir: old.dir });
+    expect(gather(old.store).candidates.some((x) => x.by === "birth")).toBe(false);
+  });
+});
+

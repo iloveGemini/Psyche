@@ -14,7 +14,7 @@
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { fromWallClock, localDay, wallClock } from "../core/time.ts";
 import { readSegment, segmentEvents } from "../catalog/hotwrite.ts";
-import { ownSince } from "../self/self.ts";
+import { bornRecord, currentSelf, ownSince } from "../self/self.ts";
 import { alarmKey, dailyKey, firedKeys, getSettings, readSchedule, type Settings } from "./schedule.ts";
 import { factsNow, lastActive, mailCandidates, NOT_PLACE_SQL } from "../channel/inbox.ts";
 import { pendingGists } from "../catalog/gist.ts";
@@ -24,12 +24,12 @@ export const IDLE_MS = 3 * 3600_000;
 export const TIDY_EPISODES = 5;
 export const TIDY_GAP_MS = 3 * 86_400_000;
 
-export type By = "catchup" | "tidy" | "gist" | "mail" | "alarm" | "daily" | "heartbeat";
+export type By = "birth" | "catchup" | "tidy" | "gist" | "mail" | "alarm" | "daily" | "heartbeat";
 export const BUDGETED: ReadonlySet<By> = new Set(["alarm", "daily", "heartbeat"]);
 /** 睡着时做的：Soma 另开一段（/api/line/asleep），不进连续会话 */
-export const ASLEEP: ReadonlySet<By> = new Set(["catchup", "tidy", "gist"]);
+export const ASLEEP: ReadonlySet<By> = new Set(["birth", "catchup", "tidy", "gist"]);
 export const asleepWork = (c: Candidate) => ASLEEP.has(c.by);
-export const BY_NAME: Record<string, string> = { catchup: "补写", tidy: "整理", gist: "梗概", wrapup: "收尾", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
+export const BY_NAME: Record<string, string> = { birth: "出生", catchup: "补写", tidy: "整理", gist: "梗概", wrapup: "收尾", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
 
 export interface Candidate {
   by: By;
@@ -173,6 +173,16 @@ function heartbeatDue(store: EventStore, settings: Settings): Candidate | null {
   return due <= store.now() ? { by: "heartbeat", key: `heartbeat:${anchor}`, due } : null;
 }
 
+/**
+ * 刚出生、自述还是空的（m4.md 10-17）：另开一段让它看看，写不写由它。只一次（账本记过 key 就不再叫）。
+ * 排在最前：这一段的 <now> 会把出生那天的信递到，递过的信不再叫醒那条线。
+ */
+function birthDue(store: EventStore): Candidate | null {
+  // 自述是空的才算（10-17 之前出生的带着系统给的初我，不叫）
+  if (!bornRecord(store) || currentSelf(store).text.trim()) return null;
+  return { by: "birth", key: "birth" };
+}
+
 /** 该整理了：空闲 ≥ 3h，且上次整理后新情节 ≥ 5 条，或距上次整理 ≥ 3 天且有新情节 */
 function tidyDue(store: EventStore): Candidate | null {
   const last = lastActivity(store);
@@ -223,7 +233,7 @@ export function gather(store: EventStore, opts: GatherOpts = {}): State {
   const settings = getSettings(store);
   const logged = new Set(wakeLogs(store).map((l) => l.key));
   const hb = heartbeatDue(store, settings);
-  const candidates = [...catchupDue(store), tidyDue(store), gistDue(store), ...mailCandidates(store, factsNow(store)), ...pendingDue(store), hb].filter((c): c is Candidate => !!c && !logged.has(c.key));
+  const candidates = [birthDue(store), ...catchupDue(store), tidyDue(store), gistDue(store), ...mailCandidates(store, factsNow(store)), ...pendingDue(store), hb].filter((c): c is Candidate => !!c && !logged.has(c.key));
   return {
     asleep: !!opts.asleep,
     bodyUp: opts.bodyUp ?? true,
