@@ -74,3 +74,11 @@ export function parseTime(v: string, timeZone: string, end = false): number | nu
   const ms = /(Z|[+-]\d{2}:?\d{2})$/i.test(t) ? Date.parse(t) : NaN;
   return Number.isNaN(ms) ? null : ms;
 }
+
+/** 递给它看的时刻：今天的只写 `HH:MM`，不是今天的带上日期 `MM-DD HH:MM`（跨天递的旧事不会看着像未来） */
+export function clockOf(at: number, now: number, timeZone: string): string {
+  const w = wallClock(at, timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const hm = `${pad(w.hour)}:${pad(w.minute)}`;
+  return localDay(at, timeZone) === localDay(now, timeZone) ? hm : `${pad(w.month)}-${pad(w.day)} ${hm}`;
+}

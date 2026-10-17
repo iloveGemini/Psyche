@@ -7,7 +7,7 @@
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { ownSince } from "../self/self.ts";
-import { wallClock } from "../core/time.ts";
+import { clockOf } from "../core/time.ts";
 import { parseLrc, type MusicSource, type Track } from "./netease.ts";
 import { describeSection, featuresOf, type Features } from "./features.ts";
 import { resolveSession } from "../catalog/hotwrite.ts";
@@ -185,10 +185,7 @@ export function listenersOf(store: EventStore): string[] {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const mmss = (s: number) => `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`;
-const hhmm = (at: number, tz: string) => {
-  const w = wallClock(at, tz);
-  return `${pad(w.hour)}:${pad(w.minute)}`;
-};
+const hhmm = (at: number, tz: string, now: number) => clockOf(at, now, tz);
 const name = (t: Track) => `《${t.title}》${t.artist}`;
 
 export interface SoundDeps {
@@ -206,11 +203,13 @@ export interface SoundDeps {
 export async function deliverSound(store: EventStore, deps: SoundDeps, session: string | undefined, opts: { looked?: boolean } = {}): Promise<string | null> {
   const now = store.now();
   const tz = store.timeZone;
-  const mine = store
-    .list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 })
-    .filter((e) => (e.payload as { sensor?: string; session?: string }).sensor === "sound" && (e.payload as { session?: string }).session === session);
-  const since = mine.at(-1)?.at;
-  const sinceId = mine.at(-1)?.id;
+  // 递到哪了：本会话递过就从那次算；新会话（含睡着、收尾那段）接任何会话最后递到的那次——递过的不再翻；
+  // 从没递过：只看最近 6 小时（同屋里的东西）
+  const noticed = store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { sensor?: string }).sensor === "sound");
+  const last = noticed.filter((e) => (e.payload as { session?: string }).session === session).at(-1) ?? noticed.at(-1);
+  const since = last?.at;
+  const sinceId = last?.id;
+  const floor = last ? 0 : now - 6 * 3_600_000;
 
   const host = listeningTo(store);
   const src = host ? deps.storeOf?.(host) : store;
@@ -220,8 +219,8 @@ export async function deliverSound(store: EventStore, deps: SoundDeps, session: 
   const ear = store
     .list({ kinds: ["ear.joined", "ear.left"], fonds: "", limit: 100_000 })
     // 按入库次序比：同一毫秒里先递、后摘的也分得清
-    .filter((e) => sinceId === undefined || e.id > sinceId);
-  for (const e of ear) lines.push(`${(e.payload as { who: string }).who} ${e.kind === "ear.joined" ? "戴上了你的一只耳机" : "摘下了耳机"}（${hhmm(e.at, tz)}）`);
+    .filter((e) => (sinceId === undefined || e.id > sinceId) && e.at >= floor);
+  for (const e of ear) lines.push(`${(e.payload as { who: string }).who} ${e.kind === "ear.joined" ? "戴上了你的一只耳机" : "摘下了耳机"}（${hhmm(e.at, tz, now)}）`);
   if (host) lines.push(src ? `你戴着 ${host} 的一只耳机` : `你戴着 ${host} 的一只耳机，但这会儿听不到他那边`);
 
   if (src) {
@@ -242,7 +241,7 @@ export async function deliverSound(store: EventStore, deps: SoundDeps, session: 
       }
       const stopped = plays.find((e) => e.kind === "stopped" && e.at > since);
       if (done.length) lines.push(`放完了：${done.map(name).join("、")}`);
-      if (stopped && !cur) lines.push(`停了（${hhmm(stopped.at, tz)}）`);
+      if (stopped && !cur) lines.push(`停了（${hhmm(stopped.at, tz, now)}）`);
     }
     if (cur) {
       const pl = (cur.ev.payload as { playlist?: string }).playlist;

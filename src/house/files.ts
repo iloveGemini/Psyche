@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { EventStore, PsycheEvent } from "../store/events.ts";
-import { wallClock } from "../core/time.ts";
+import { clockOf } from "../core/time.ts";
 
 export interface Place {
   /** 显示名：home / commons */
@@ -119,16 +119,14 @@ export const saveSnaps = (file: string, state: { snaps: Record<string, Snap> }) 
 // ── 递 ──
 
 const CHANGE: Record<Change, string> = { added: "新出现", modified: "被改过", removed: "没了" };
-const pad = (n: number) => String(n).padStart(2, "0");
 
 /** <now> 的「屋里的东西」：本会话上次递到之后的变化，同一个文件压成一行（最后的样子 + 次数）；最多 10 行 */
 export function deliverFiles(store: EventStore, session: string | undefined, names: (id: string) => string = (id) => id): string | null {
-  const noticed = store
-    .list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 })
-    .filter((e) => (e.payload as { sensor?: string; session?: string }).sensor === "files" && (e.payload as { session?: string }).session === session);
-  const since = noticed.at(-1)?.id ?? "";
-  // 本会话第一次：只报最近 6 小时的，不翻旧账
-  const floor = noticed.length ? 0 : store.now() - 6 * 3_600_000;
+  const noticed = store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { sensor?: string }).sensor === "files");
+  // 本会话递过就从那次算；新会话接任何会话最后递到的那次（递过的不再翻）；从没递过：只报最近 6 小时的
+  const last = noticed.filter((e) => (e.payload as { session?: string }).session === session).at(-1) ?? noticed.at(-1);
+  const since = last?.id ?? "";
+  const floor = last ? 0 : store.now() - 6 * 3_600_000;
   const fresh = store
     .list({ kinds: ["percept"], fonds: "", limit: 100_000 })
     .filter((e) => (e.payload as { sensor: string }).sensor === "files" && e.id > since && e.at >= floor);
@@ -141,10 +139,9 @@ export function deliverFiles(store: EventStore, session: string | undefined, nam
   const lines = [...by].slice(-10).map(([path, evs]) => {
     const last = evs.at(-1)!;
     const p = last.payload as { value: Change; by?: string };
-    const w = wallClock(last.at, store.timeZone);
     const whos = [...new Set(evs.map((e) => (e.payload as { by?: string }).by ?? "?"))];
     const who = whos.length === 1 && whos[0] !== "?" ? `${names(whos[0])}动的` : whos.every((x) => x === "?") ? "不知道是谁" : "不止一个人动过";
-    return `- ${path}：${CHANGE[p.value]}${evs.length > 1 ? `（这段时间变了 ${evs.length} 次）` : ""}，${who}（${pad(w.hour)}:${pad(w.minute)}）`;
+    return `- ${path}：${CHANGE[p.value]}${evs.length > 1 ? `（这段时间变了 ${evs.length} 次）` : ""}，${who}（${clockOf(last.at, store.now(), store.timeZone)}）`;
   });
   const more = by.size > 10 ? [`（还有 ${by.size - 10} 个文件也变了）`] : [];
   const text = ["屋里的东西：", ...lines, ...more].join("\n");

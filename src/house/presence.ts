@@ -9,7 +9,7 @@
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { AWAKE_MS, BUSY_MS, NOT_PLACE_SQL } from "../channel/inbox.ts";
 import { currentName, ownSince } from "../self/self.ts";
-import { wallClock } from "../core/time.ts";
+import { clockOf } from "../core/time.ts";
 import { resolveSession } from "../catalog/hotwrite.ts";
 
 export type State = "busy" | "idle" | "asleep" | "offline";
@@ -144,11 +144,6 @@ export function houseTick(residents: Viewer[], joy: { lastSeen?: number; mood?: 
 
 // ── 渲染 ──
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const hhmm = (at: number, tz: string) => {
-  const w = wallClock(at, tz);
-  return `${pad(w.hour)}:${pad(w.minute)}`;
-};
 
 export function describe(subject: string, name: string, v: Presence): string {
   const who = subject === JOY || name === subject ? name : `${name}（${subject}）`;
@@ -158,11 +153,11 @@ export function describe(subject: string, name: string, v: Presence): string {
 }
 
 /** 一个对象一段时间里的变化压成一行：只变一次就说变成了什么；变了几次说首尾和次数 */
-function changeLine(evs: PsycheEvent[], tz: string): string {
+function changeLine(evs: PsycheEvent[], tz: string, at: number): string {
   const first = evs[0].payload as { subject: string; name: string; value: Presence };
   const last = evs.at(-1)!.payload as { subject: string; name: string; value: Presence };
   const now = describe(last.subject, last.name, last.value);
-  return evs.length === 1 ? `${now}（${hhmm(evs[0].at, tz)}）` : `${now}（${hhmm(evs[0].at, tz)} 起变了 ${evs.length} 次）`;
+  return evs.length === 1 ? `${now}（${clockOf(evs[0].at, at, tz)}）` : `${now}（${clockOf(evs[0].at, at, tz)} 起变了 ${evs.length} 次）`;
 }
 
 /** 递过的屋里那几行（声音的另算，sound.ts） */
@@ -190,7 +185,7 @@ export function deliverPresence(store: EventStore, session: string | undefined):
       const k = (e.payload as { subject: string }).subject;
       by.set(k, [...(by.get(k) ?? []), e]);
     }
-    text = ["这段时间屋里：", ...[...by.values()].map((evs) => `- ${changeLine(evs, tz)}`)].join("\n");
+    text = ["这段时间屋里：", ...[...by.values()].map((evs) => `- ${changeLine(evs, tz, store.now())}`)].join("\n");
     refs = fresh.map((e) => e.id);
   } else {
     const current = lastSeenPresence(store);

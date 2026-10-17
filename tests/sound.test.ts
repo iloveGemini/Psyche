@@ -190,3 +190,26 @@ test("分耳机记的是页面说的那个人，不替人认领", async () => {
   await house.handle(new Request("http://x/v1/house/listen", { method: "POST", body: JSON.stringify({ host: "a1", who: "Claude" }) }));
   expect(await deliverSound(h.a1, h.deps, "s1")).toContain("Claude 戴上了你的一只耳机");
 });
+
+test("新会话不再递别的会话递过的；跨天的时刻带日期（10-17 a1 报）", async () => {
+  const h = setup();
+  const ear = (kind: "ear.joined" | "ear.left") => h.a1.append({ kind, class: "experience", source: "house", situation: null, payload: { who: "Joy" } });
+  ear("ear.joined");
+  expect(await deliverSound(h.a1, h.deps, "s1")).toContain("Joy 戴上了你的一只耳机（19:00）");
+  h.pass(600);
+  ear("ear.left");
+  // 第二天开新会话：戴上那下 s1 已经递过，只递没递过的摘下，带日期
+  h.clock.t = T("2026-10-17T09:00:00");
+  const s2 = await deliverSound(h.a1, h.deps, "s2");
+  expect(s2).toContain("Joy 摘下了耳机（10-16 19:10）");
+  expect(s2).not.toContain("戴上");
+  // 再开一段（睡着 / 收尾那段）：都递过了，不报
+  expect(await deliverSound(h.a1, h.deps, "s3")).toBeNull();
+});
+
+test("从没递过：只翻最近 6 小时", async () => {
+  const h = setup();
+  h.a1.append({ kind: "ear.joined", class: "experience", source: "house", situation: null, payload: { who: "Joy" } });
+  h.clock.t = T("2026-10-17T09:00:00");
+  expect(await deliverSound(h.a1, h.deps, "s1")).toBeNull();
+});
