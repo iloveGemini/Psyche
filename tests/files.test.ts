@@ -2,7 +2,7 @@
  * 屋里的东西的确定性考卷（m8.md §6.2）：扫描比对、谁动的只在说得准时说、自己动的不报给自己、home 只主人看得到、递成一行行。
  */
 import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventStore } from "../src/store/events.ts";
@@ -34,7 +34,7 @@ function setup() {
   ];
   const places = [
     { label: "home", dir: home1, owner: "a1" },
-    { label: "commons", dir: commons },
+    { label: "commons", dir: commons, git: true },
   ];
   const state = { snaps: {} };
   const tick = () => filesTick(residents, places, state, clock.t);
@@ -112,3 +112,28 @@ test("递：压成一行行，说谁动的或不知道；递到的才进经历",
   expect(lines).toContain(text);
   expect(lines.some((l) => l.includes("感知"))).toBe(false);
 });
+
+test("commons 用 git：建库时把已有的提交一次；之后按谁动的分组提交，作者是住户（取了名用名字），认不出写「没认出」", () => {
+  const h = setup();
+  writeFileSync(join(h.commons, "README.md"), "约定");
+  h.tick();
+  const log = () =>
+    Bun.spawnSync(["git", "-C", h.commons, "log", "--format=%an|%s", "--name-status"]).stdout.toString().trim().split("\n").filter(Boolean);
+  expect(log()[0]).toBe("房子|房子：建库时已有的");
+  h.a2.append({ kind: "named", class: "self", source: "agent", payload: { name: "Argon" } });
+  const abs = join(h.commons, "projects", "x", "STATE.md");
+  h.toolOn(h.a2, { file_path: abs });
+  writeFileSync(abs, "x");
+  writeFileSync(join(h.commons, "README.md"), "约定 2");
+  h.tick();
+  const l = log();
+  expect(l).toContain("Argon|Argon：放了 projects/x/STATE.md");
+  expect(l).toContain("没认出|没认出：改了 README.md");
+  // 删了也记；home 不进 git
+  h.clock.t += 10 * 60_000;
+  rmSync(abs);
+  h.tick();
+  expect(log()[0]).toBe("没认出|没认出：删了 projects/x/STATE.md");
+  expect(existsSync(join(h.home1, ".git"))).toBe(false);
+});
+

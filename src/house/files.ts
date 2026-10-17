@@ -8,11 +8,14 @@
  * - 谁看得到：home 只有主人看得到（别人的 home 看不到，soma2.md §四）；commons 屋里人人看得到。
  * - 只报路径和怎么变了，不抄内容——想看自己去读。
  * - 递：<now>「屋里的东西」，本会话上次递到之后的；递一次写 percept.noticed（sensor = files）。
+ * - commons 用 git：同一圈的变化按谁动的分组提交，作者是那个住户（commons-git.ts）。
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { clockOf } from "../core/time.ts";
+import { currentName } from "../self/self.ts";
+import { commitChanges, ensureRepo } from "./commons-git.ts";
 
 export interface Place {
   /** 显示名：home / commons */
@@ -20,6 +23,8 @@ export interface Place {
   dir: string;
   /** home 的主人；commons 没有主人 */
   owner?: string;
+  /** 用 git 记谁改了什么（commons，m8.md §6.2） */
+  git?: boolean;
 }
 
 type Snap = Record<string, { size: number; mtime: number }>;
@@ -85,10 +90,17 @@ export function filesTick(
     const after = scan(place.dir);
     const before = state.snaps[place.dir];
     state.snaps[place.dir] = after;
+    const gitError = (error: string) => residents[0]?.store.syslog("commons.git", { dir: place.dir, error: error.slice(0, 500) });
+    if (place.git) {
+      const e = ensureRepo(place.dir);
+      if (e) gitError(e);
+    }
     if (!before) continue;
+    const seen: { path: string; change: Change; by?: string }[] = [];
     for (const { path, change } of diff(before, after)) {
       const abs = join(place.dir, path);
       const by = whoTouched(residents, abs, now, place.owner ? { id: place.owner, rel: path } : undefined);
+      seen.push({ path, change, ...(by ? { by } : {}) });
       const viewers = place.owner ? residents.filter((r) => r.id === place.owner) : residents;
       for (const v of viewers) {
         if (by === v.id) continue; // 自己动的不报给自己
@@ -102,6 +114,13 @@ export function filesTick(
         });
         written++;
       }
+    }
+    if (place.git && seen.length) {
+      const nameOf = (id: string) => {
+        const r = residents.find((x) => x.id === id);
+        return (r && currentName(r.store)) || id;
+      };
+      for (const e of commitChanges(place.dir, seen, nameOf)) gitError(e);
     }
   }
   return written;

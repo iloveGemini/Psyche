@@ -57,7 +57,7 @@ for (const r of residents) {
 const expand = (p: string) => p.replace(/^~(?=\/)/, homedir());
 const places = [
   ...residents.filter((r) => r.config.home).map((r) => ({ label: "home", dir: expand(r.config.home!), owner: r.id })),
-  ...(process.env.PSYCHE_COMMONS ? [{ label: "commons", dir: expand(process.env.PSYCHE_COMMONS) }] : []),
+  ...(process.env.PSYCHE_COMMONS ? [{ label: "commons", dir: expand(process.env.PSYCHE_COMMONS), git: true }] : []),
 ];
 const houseTokens = residents.map((r) => r.config.token).filter((t): t is string => !!t);
 const agentTokens: Record<string, string> = Object.fromEntries(
