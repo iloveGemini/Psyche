@@ -406,5 +406,8 @@ describe("睡着那段的口子（10-17：Psyche 出内容，Soma 跑）", () =>
     await h.ok("/v1/asleep/end", { session: r.session });
     expect(h.store.list({ kinds: ["slept"] }).length).toBe(1);
     expect((await h.post("/v1/asleep/start", {})).status).toBe(400);
+    const w = await h.ok("/v1/asleep/start", { by: "wrapup", session: "S1" });
+    expect(w.first).toContain("会话 S1 的上下文快满了");
+    expect(w.system).toContain("这是换段之间");
   });
 });

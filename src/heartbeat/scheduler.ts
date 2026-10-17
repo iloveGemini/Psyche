@@ -29,7 +29,7 @@ export const BUDGETED: ReadonlySet<By> = new Set(["alarm", "daily", "heartbeat"]
 /** 睡着时做的：Soma 另开一段（/api/line/asleep），不进连续会话 */
 export const ASLEEP: ReadonlySet<By> = new Set(["catchup", "tidy", "gist"]);
 export const asleepWork = (c: Candidate) => ASLEEP.has(c.by);
-export const BY_NAME: Record<string, string> = { catchup: "补写", tidy: "整理", gist: "梗概", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
+export const BY_NAME: Record<string, string> = { catchup: "补写", tidy: "整理", gist: "梗概", wrapup: "收尾", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动" };
 
 export interface Candidate {
   by: By;

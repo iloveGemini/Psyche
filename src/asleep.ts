@@ -43,13 +43,18 @@ export interface AsleepRun {
   error?: string;
 }
 
-/** 睡着那段的地方说明（拼在机制 + 自述之后） */
-export const ASLEEP_PLACE = "这是睡着的时候：Psyche 起的一段整理，不在你平时那条会话里，只有记忆相关的工具。整理完就接着睡。";
+/** 这段的地方说明（拼在机制 + 自述之后）：睡着时的整理，或换段之间的收尾 */
+export function asleepPlace(by: string): string {
+  if (by === "wrapup") return "这是换段之间：你那条会话的上下文快满了，Psyche 另起这一段让你把还没写的写进记忆，只有记忆相关的工具。写完那条会话就接着在新的一段里继续。";
+  return "这是睡着的时候：Psyche 起的一段整理，不在你平时那条会话里，只有记忆相关的工具。整理完就接着睡。";
+}
 
 /** 这次的活：只说事实和该用的工具名。`lines` = 补写那段还剩几条 */
 export function asleepTask(wake: WakeReason, lines?: number): string {
   if (wake.by === "gist") return "该写梗概了：用 gist_material 看哪些天 / 周 / 月过完了还没写，一段一段用 gist 交。";
   if (wake.by === "tidy") return "该整理了：用 coldwrite_material 取上次整理之后的经历和书架，整理完用 coldwrite 写回。";
+  if (wake.by === "wrapup" && wake.session)
+    return `会话 ${wake.session} 的上下文快满了，要换新的一段：还有 ${lines ?? 0} 条没写进记忆。用 hotwrite_segment（session: ${wake.session}）取这一段，写完用 hotwrite 交（带上同一个 session）。`;
   if (wake.by === "catchup" && wake.session)
     return `会话 ${wake.session} 还有 ${lines ?? 0} 条没写进记忆（那段已经散了）：用 hotwrite_segment（session: ${wake.session}）取这一段，写完用 hotwrite 交（带上同一个 session）。`;
   return "";

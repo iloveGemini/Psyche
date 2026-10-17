@@ -17,7 +17,7 @@ import { readExperience } from "../archive/experience.ts";
 import { hybridRecall, queryVector, renderShelfHit, shelfRecall } from "../archive/recall.ts";
 import type { Embedder } from "../archive/vectors.ts";
 import { renderNow } from "../archive/now.ts";
-import { ASLEEP_PLACE, asleepTask } from "../asleep.ts";
+import { asleepPlace, asleepTask } from "../asleep.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
@@ -262,9 +262,9 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const prompt = composePrompt(store, promptsDir);
     store.setSituation({ harness: "sleep", session, ...(typeof body.model === "string" ? { model: body.model } : {}), selfPromptVersion: prompt.version }, "sleep");
     intake(store, { kind: "woke", source: "sleep", payload: { by: wake.by, ...(wake.note ? { note: wake.note } : {}), ...(wake.session ? { for: wake.session } : {}), session } });
-    const lines = wake.by === "catchup" && wake.session ? readSegment(store, wake.session).lines.length : undefined;
+    const lines = (wake.by === "catchup" || wake.by === "wrapup") && wake.session ? readSegment(store, wake.session).lines.length : undefined;
     const first = [await nowText(session), asleepTask(wake, lines)].filter(Boolean).join("\n\n");
-    return c.json({ session, system: `${prompt.text}\n\n${ASLEEP_PLACE}`, first });
+    return c.json({ session, system: `${prompt.text}\n\n${asleepPlace(wake.by)}`, first });
   });
   app.post("/v1/asleep/end", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
