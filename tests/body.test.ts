@@ -70,3 +70,21 @@ test("群里被静音：Soma 带来的群名报成一行，没有就不报（som
   expect(await now("")).not.toContain("被静音");
   expect(await now("&muted=oops")).not.toContain("被静音");
 });
+
+test("订阅额度：跨档才说，跟窗口走、换一段不重报，窗口重置后从头算", () => {
+  const { store } = setup();
+  store.setSituation({ harness: "soma", session: "s1" }, "soma");
+  const w = (pct: number, resetsAt = "2026-10-16T14:00:00Z") => ({ quota: { fiveHour: { pct, resetsAt } } });
+  expect(deliverBody(store, "s1", w(30))).toBeNull();
+  expect(deliverBody(store, "s1", w(62))).toBe("身上：\n- 订阅额度（屋里用同一个登录的共用）：5 小时窗口用了 62%，10-16 22:00 重置");
+  expect(deliverBody(store, "s1", w(70))).toBeNull();
+  // 换了一段：同一个窗口说过的不再说
+  store.setSituation({ harness: "soma", session: "s2" }, "soma");
+  expect(deliverBody(store, "s2", w(70))).toBeNull();
+  expect(deliverBody(store, "s2", w(91))).toContain("用了 91%");
+  // 窗口重置了：从头算
+  expect(deliverBody(store, "s2", w(10, "2026-10-16T19:00:00Z"))).toBeNull();
+  expect(deliverBody(store, "s2", w(55, "2026-10-16T19:00:00Z"))).toContain("用了 55%");
+  // 本周的另算
+  expect(deliverBody(store, "s2", { quota: { sevenDay: { pct: 80, resetsAt: "2026-10-20T00:00:00Z" } } })).toContain("本周用了 80%，10-20 08:00 重置");
+});

@@ -230,7 +230,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
   // <now>（m1 / m5 / m6 / m8 拼起来的）：Soma 每轮取一次；睡着那段的第一条也用它
-  const nowText = async (session: string | undefined, q: { muted?: string; ctx?: string; wrapAt?: string } = {}) => {
+  const nowText = async (session: string | undefined, q: { muted?: string; ctx?: string; wrapAt?: string; q5h?: string; q5hReset?: string; q7d?: string; q7dReset?: string } = {}) => {
     // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）；来信 / 交接信只报有信（m6.md §二）
     const here = placeOf(store, session);
     const facts = factsNow(store, here);
@@ -246,7 +246,11 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const house = deliverPresence(store, session);
     const heard = await deliverSound(store, sound, session).catch(() => null);
     // 内感受（m8.md §六.1）：上下文多满由 Soma 带来
-    const body = deliverBody(store, session, { ctx: num(q.ctx), wrapAt: num(q.wrapAt) });
+    const quota = {
+      ...(num(q.q5h) !== undefined ? { fiveHour: { pct: num(q.q5h)!, resetsAt: q.q5hReset || null } } : {}),
+      ...(num(q.q7d) !== undefined ? { sevenDay: { pct: num(q.q7d)!, resetsAt: q.q7dReset || null } } : {}),
+    };
+    const body = deliverBody(store, session, { ctx: num(q.ctx), wrapAt: num(q.wrapAt), ...(quota.fiveHour || quota.sevenDay ? { quota } : {}) });
     const things = deliverFiles(store, session, (id) => {
       const other = storeOf?.(id);
       return (other && currentName(other)) || id;

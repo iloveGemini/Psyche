@@ -4,7 +4,9 @@
  * - 上下文多满：Soma 每轮带来（ctx 已用、wrapAt 到多少会收尾换一段）。过半 / 快满了 / 马上收尾 三档，跨档才说。
  * - 换了模型：这段会话的模型和上一段不一样，首轮说一次。
  * - 工具老出错：本会话最近 30 分钟里出错 ≥ 3 次才说，出错次数跨档（3 / 6 / 10）再说。
- * 额度、还没写进记忆的条数，<now> 别处已有，不重复。
+ * - 订阅额度（10-17）：Soma 带来 claude.ai 登录的 5 小时 / 7 天窗口用了多少（只有走订阅的身体有）。50 / 75 / 90% 跨档才说；
+ *   跟会话无关、跟窗口走：同一个窗口（重置时刻相同）说过的档不再说，换了窗口从头算。屋里同一个登录的人共用。
+ * 唤醒额度、还没写进记忆的条数，<now> 别处已有，不重复。
  * 递一次写 percept.noticed（sensor = body），它的经历就是那几行；档位记在 payload 里，下一轮按它判跨没跨档。
  */
 import type { EventStore } from "../store/events.ts";
@@ -14,12 +16,42 @@ export interface BodyInput {
   ctx?: number;
   /** 到多少 token 会收尾换一段 */
   wrapAt?: number;
+  /** 订阅额度（百分比 0-100，重置时刻 ISO） */
+  quota?: { fiveHour?: QuotaWindow; sevenDay?: QuotaWindow };
+}
+
+interface QuotaWindow {
+  pct: number;
+  resetsAt: string | null;
 }
 
 interface Levels {
   ctx: number;
   tools: number;
   model?: string;
+  /** 额度：每个窗口说到了第几档、是哪个窗口（重置时刻） */
+  quota?: Partial<Record<"fiveHour" | "sevenDay", { band: number; resetsAt: string | null }>>;
+}
+
+const QUOTA_BANDS = [50, 75, 90];
+const QUOTA_NAME = { fiveHour: "5 小时窗口", sevenDay: "本周" } as const;
+
+/** 额度上次说到哪：跟窗口走，不跟会话（换一段不重报） */
+function lastQuota(store: EventStore): Levels["quota"] {
+  for (const e of store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).reverse()) {
+    const p = e.payload as { sensor?: string; levels?: Levels };
+    if (p.sensor === "body" && p.levels?.quota) return p.levels.quota;
+  }
+  return undefined;
+}
+
+function resetLabel(iso: string | null, tz: string): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const f = new Intl.DateTimeFormat("zh-CN", { timeZone: tz, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(t);
+  const g = (k: string) => f.find((x) => x.type === k)?.value ?? "";
+  return `，${g("month")}-${g("day")} ${g("hour")}:${g("minute")} 重置`;
 }
 
 const CTX_BANDS = [0.5, 0.75, 0.9];
@@ -83,10 +115,26 @@ export function deliverBody(store: EventStore, session: string | undefined, inpu
   const toolBand = band(tools, TOOL_BANDS);
   if (toolBand > was.tools) lines.push(`最近半小时工具出错了 ${tools} 次`);
 
-  const levels: Levels = { ctx: ctxBand, tools: toolBand, ...(m.here ? { model: m.here } : {}) };
+  // 订阅额度
+  const qWas = lastQuota(store) ?? {};
+  const quota: NonNullable<Levels["quota"]> = { ...qWas };
+  let quotaUp = false;
+  for (const k of ["fiveHour", "sevenDay"] as const) {
+    const w = input.quota?.[k];
+    if (!w) continue;
+    const b = band(w.pct, QUOTA_BANDS);
+    const prevW = qWas[k];
+    const before = prevW && prevW.resetsAt === w.resetsAt ? prevW.band : 0;
+    quota[k] = { band: b, resetsAt: w.resetsAt };
+    if (b !== (prevW?.band ?? 0) || w.resetsAt !== prevW?.resetsAt) quotaUp = true;
+    if (b > before)
+      lines.push(`订阅额度（屋里用同一个登录的共用）：${QUOTA_NAME[k]}用了 ${Math.round(w.pct)}%${resetLabel(w.resetsAt, store.timeZone)}`);
+  }
+
+  const levels: Levels = { ctx: ctxBand, tools: toolBand, ...(m.here ? { model: m.here } : {}), ...(Object.keys(quota).length ? { quota } : {}) };
   // 档位回落也要记下（下次再涨过去才会再说），但不递话
   if (!lines.length) {
-    if (prev && (levels.ctx < was.ctx || levels.tools < was.tools))
+    if ((prev && (levels.ctx < was.ctx || levels.tools < was.tools)) || quotaUp)
       store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "body", refs: [], text: "", levels, ...(session ? { session } : {}) } });
     return null;
   }
