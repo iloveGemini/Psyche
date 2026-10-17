@@ -9,7 +9,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { houseTick, joyPresence, presenceOf, JOY, MOOD_MAX, type Viewer } from "./presence.ts";
-import { birth, currentName, SelfError, type BornDetail } from "../self/self.ts";
+import { birth, currentName, letterText, SelfError, type BornDetail } from "../self/self.ts";
+import { readLetter, registerResident } from "./add.ts";
 import { nowPlaying } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { filesTick, loadSnaps, saveSnaps, type Place } from "./files.ts";
@@ -97,21 +98,15 @@ export function openHouse(
         return Response.json({ error: "要填 model（一个模型 = 一个 Agent）" }, { status: 400 });
       }
       const userText = typeof b?.userText === "string" ? b.userText : undefined;
-      const soma = typeof b?.soma === "string" && b.soma.trim() ? b.soma.trim() : undefined;
-      const token = typeof b?.token === "string" && b.token.trim() ? b.token.trim() : undefined;
-
-      // 更新 agents.json 配置
-      const agentsFile = join(dataDir, "agents.json");
-      const listed: Record<string, ResidentConfig> = existsSync(agentsFile) ? JSON.parse(readFileSync(agentsFile, "utf8")) : {};
-      const config: ResidentConfig = {
-        ...listed[id],
-        model,
-        ...(soma ? { soma } : {}),
-        ...(token ? { token } : {}),
-      };
-      listed[id] = config;
-      mkdirSync(dataDir, { recursive: true });
-      writeFileSync(agentsFile, JSON.stringify(listed, null, 2));
+      const str = (k: string) => (typeof b?.[k] === "string" && (b[k] as string).trim() ? (b[k] as string).trim() : undefined);
+      // 出生那天的信：给了用给的（空字符串 = 不递），没给读 letters/birth.md
+      const letter = typeof b?.letter === "string" ? letterText(b.letter) : readLetter();
+      let config: ResidentConfig;
+      try {
+        config = registerResident(dataDir, { id, model, soma: str("soma"), home: str("home"), token: str("token"), ...(typeof b?.email === "boolean" ? { email: b.email } : {}) });
+      } catch (e) {
+        return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+      }
 
       let viewer = residents.find((r) => r.id === id);
       if (!viewer) {
@@ -132,7 +127,7 @@ export function openHouse(
       }
 
       try {
-        const res = birth(viewer.store, { model, userText, promptsDir: opts.promptsDir });
+        const res = birth(viewer.store, { model, userText, letter, promptsDir: opts.promptsDir });
         return Response.json({
           id,
           born: {
@@ -140,6 +135,7 @@ export function openHouse(
             systemVersion: res.system.version,
             hasUserDiff: !!res.user,
             mechanismVersion: res.mechanism.version,
+            letter: !!letter,
           },
         });
       } catch (e) {
