@@ -24,7 +24,7 @@ export interface ResidentConfig {
   model?: string;
   /** 他的 home 目录（Soma 的 agents/<id>/home）：屋里的东西从这里看（m8.md §6.2） */
   home?: string;
-  /** 收房子那个邮箱的信（S6 之前只能有一个人收） */
+  /** 开房子那个邮箱（有一个人开就收）：没 @ 也认不出给谁的信，给第一个开了的人（soma2.md §8.2） */
   email?: boolean;
 }
 

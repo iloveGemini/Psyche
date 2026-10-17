@@ -1,5 +1,6 @@
 /**
- * 邮箱通道（notes/plan/m6.md §〇.1）：它自己的邮箱，经 agently-cli（QQ 邮箱的 Agent 邮箱 CLI）。
+ * 邮箱通道（notes/plan/m6.md §〇.1）：房子的一个邮箱，经 agently-cli（QQ 邮箱的 Agent 邮箱 CLI）；
+ * 几个住户共用，来信按 [名字] / @名字 / 同一话题分（soma2.md §8.2，routeEmail）。
  *
  * - 令牌按 workspace 分开存：一律带 AGENTLY_WORKSPACE（缺省 psyche），不碰 Roxy 用的 default。
  * - 收：常驻 `message +watch`（长轮询，一封一行 JSON），死了 5 秒后重起；每次起之前先 `+list --is-unread` 补漏
@@ -92,12 +93,78 @@ export function takeEmail(store: EventStore, m: MailMessage): "taken" | "ignored
   return "taken";
 }
 
+// ── 房子的一个邮箱，按 @ 分（soma2.md §8.2，10-17）──
+
+export interface MailResident {
+  id: string;
+  store: EventStore;
+  /** 它自己取的名字（没取 = 只认 id） */
+  name?: string | null;
+}
+
+/** 去掉 Re: / 回复: / Fwd: / 转发: 和我们加的 [名字]，剩下的算同一个话题 */
+export function topicOf(subject: string | undefined): string {
+  let t = (subject ?? "").trim();
+  for (let prev = ""; prev !== t; ) {
+    prev = t;
+    t = t.replace(/^(re|fwd?|回复|答复|转发)\s*[:：]\s*/i, "").replace(/^\[[^\]]{1,40}\]\s*/, "").trim();
+  }
+  return t;
+}
+
+/**
+ * 这封给谁：① 主题里我们加的 [名字]；② 主题或第一行 @名字（可几个）；③ 同一个话题上次给过谁；④ 默认住户。
+ * 名字认 id 和它自己取的名字。
+ */
+export function routeEmail(residents: MailResident[], m: MailMessage, fallback: string): string[] {
+  const subject = m.subject ?? "";
+  const names = (r: MailResident) => [r.id, ...(r.name ? [r.name] : [])];
+  const tagged = residents.filter((r) => names(r).some((n) => subject.includes(`[${n}]`)));
+  if (tagged.length) return [tagged[0].id];
+  const head = `${subject}\n${plainBody(m).split("\n")[0] ?? ""}`;
+  const at = residents.filter((r) => names(r).some((n) => new RegExp(`[@＠]${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w])`, "i").test(head)));
+  if (at.length) return at.map((r) => r.id);
+  const topic = topicOf(subject);
+  if (topic) {
+    let best: { id: string; at: number } | undefined;
+    for (const r of residents) {
+      const last = r.store
+        .list({ kinds: ["mail.in", "mail.out"], fonds: "", limit: 100_000 })
+        .filter((e) => topicOf((e.payload as { subject?: string }).subject) === topic && ((e.payload as { via?: string }).via ?? "email") === "email")
+        .at(-1);
+      if (last && (!best || last.at > best.at)) best = { id: r.id, at: last.at };
+    }
+    if (best) return [best.id];
+  }
+  return [fallback];
+}
+
+/** 收一封进房子：分给谁，再按那人的通道设置认发信人（不认识就看屋里别人登记的） */
+export function takeHouseEmail(residents: MailResident[], m: MailMessage, fallback: string): { to: string; result: "taken" | "ignored" | "empty" }[] {
+  const addr = (m.from?.email ?? "").trim().toLowerCase();
+  const nameIn = (store: EventStore) => Object.entries(getChannels(store).addresses).find(([, a]) => a.email?.trim().toLowerCase() === addr)?.[0];
+  const known = residents.map((r) => nameIn(r.store)).find(Boolean);
+  return routeEmail(residents, m, fallback).map((to) => {
+    const r = residents.find((x) => x.id === to)!;
+    const who = nameIn(r.store) ?? known;
+    if (!who) {
+      r.store.syslog("mail.ignored", { via: "email", from: addr });
+      return { to, result: "ignored" as const };
+    }
+    const text = plainBody(m);
+    if (!text) return { to, result: "empty" as const };
+    receiveMail(r.store, { from: who, text, via: "email", ...(m.subject?.trim() ? { subject: m.subject.trim() } : {}), ext: m.message_id });
+    return { to, result: "taken" as const };
+  });
+}
+
 /** 发信的 CLI 参数：回她的邮件用 +reply；主动写用 +send */
-export function emailArgs(mail: { to: string; text: string; subject?: string; replyToExt?: string }): string[] {
+/** `tag`：房子的邮箱有几个人在用时，主动写的信主题前加 [名字]（她一眼知道是谁，回信也认得回来） */
+export function emailArgs(mail: { to: string; text: string; subject?: string; replyToExt?: string; tag?: string }): string[] {
   const tail = ["--body", mail.text, "--body-format", "plain", "--confirmed"];
   if (mail.replyToExt) return ["message", "+reply", "--id", mail.replyToExt, ...tail];
   const subject = mail.subject?.trim() || Array.from(mail.text.trim().split("\n")[0]).slice(0, 40).join("");
-  return ["message", "+send", "--to", mail.to, "--subject", subject, ...tail];
+  return ["message", "+send", "--to", mail.to, "--subject", mail.tag ? `[${mail.tag}] ${subject}` : subject, ...tail];
 }
 
 // ── CLI ──
@@ -139,14 +206,14 @@ export const runCli: CliRunner = (args) =>
   });
 
 /** 投递一封写给人的信（mail.out），记 mail.sent */
-export async function deliverEmail(store: EventStore, ev: PsycheEvent, run: CliRunner = runCli): Promise<void> {
+export async function deliverEmail(store: EventStore, ev: PsycheEvent, run: CliRunner = runCli, tag?: string): Promise<void> {
   const p = ev.payload as { to: string; text: string; subject?: string; replyTo?: string };
   const to = getChannels(store).addresses[p.to]?.email;
   const reply = p.replyTo ? store.get(p.replyTo) : null;
   const replyToExt = reply && (reply.payload as { via?: string }).via === "email" ? (reply.payload as { ext?: string }).ext : undefined;
   try {
     if (!to && !replyToExt) throw new Error(`没有 ${p.to} 的邮箱地址（通道设置）`);
-    await run(emailArgs({ to: to ?? "", text: p.text, subject: p.subject, replyToExt }));
+    await run(emailArgs({ to: to ?? "", text: p.text, subject: p.subject, replyToExt, ...(tag ? { tag } : {}) }));
     store.syslog("mail.sent", { ref: ev.id, via: "email", ok: true });
   } catch (e) {
     store.syslog("mail.sent", { ref: ev.id, via: "email", ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -154,7 +221,11 @@ export async function deliverEmail(store: EventStore, ev: PsycheEvent, run: CliR
 }
 
 /** 常驻收信：先补漏，再 +watch；进程没了 5 秒后重来（重来也先补漏） */
-export function startEmailWatch(store: EventStore, opts: { onError?: (e: Error) => void; run?: CliRunner } = {}): { stop(): void } {
+/** `take` 收一封（房子的：takeHouseEmail）；`seen` 这封记过没有（补漏时跳过） */
+export function startEmailWatch(
+  inbox: { take(m: MailMessage): void; seen(messageId: string): boolean },
+  opts: { onError?: (e: Error) => void; run?: CliRunner } = {},
+): { stop(): void } {
   const run = opts.run ?? runCli;
   const report = (e: unknown) => opts.onError?.(e instanceof Error ? e : new Error(String(e)));
   let stopped = false;
@@ -162,7 +233,7 @@ export function startEmailWatch(store: EventStore, opts: { onError?: (e: Error) 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const take = (m: MailMessage) => {
     try {
-      takeEmail(store, m);
+      inbox.take(m);
     } catch (e) {
       report(e);
     }
@@ -174,7 +245,7 @@ export function startEmailWatch(store: EventStore, opts: { onError?: (e: Error) 
       if (!Array.isArray(list)) return;
       for (const s of list as MailMessage[]) {
         if (typeof s?.message_id !== "string") continue;
-        if (store.db.query(`SELECT 1 FROM events WHERE source = 'email' AND idem = ?`).get(`email:${s.message_id}`)) continue;
+        if (inbox.seen(s.message_id)) continue;
         const full = JSON.parse(await run(["message", "+read", "--id", s.message_id]))?.data;
         take(full?.message_id ? full : s);
       }

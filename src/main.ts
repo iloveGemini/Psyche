@@ -27,7 +27,8 @@ import { embedderFromEnv, syncVectors } from "./archive/vectors.ts";
 import { logRun, tick } from "./heartbeat/scheduler.ts";
 import { asleepWork, BY_NAME } from "./heartbeat/scheduler.ts";
 import { getChannels } from "./channel/mailbox.ts";
-import { deliverEmail, startEmailWatch, WORKSPACE } from "./channel/email.ts";
+import { deliverEmail, startEmailWatch, takeHouseEmail, WORKSPACE } from "./channel/email.ts";
+import { currentName } from "./self/self.ts";
 import type { PsycheEvent } from "./store/events.ts";
 import { readResidents, type Resident, type ResidentConfig } from "./house/residents.ts";
 import { createHouse } from "./server/house.ts";
@@ -42,7 +43,6 @@ const residents = readResidents(dataDir);
 if (residents.length === 0) console.error(`${dataDir} 里还没住人：建一个 <id>/ 子目录，或写 agents.json`);
 const tokens = residents.map((r) => r.config.token).filter(Boolean);
 if (new Set(tokens).size < tokens.length) console.error("有人共用一个 token：A 的 token 能进 B 的门。每人在 agents.json 里设自己的");
-if (residents.filter((r) => r.config.email).length > 1) console.error("不止一个人收房子的邮箱：按 @ 分信还没做（S6），先只给一个人开");
 
 const apps = new Map<string, (req: Request) => Response | Promise<Response>>();
 const viewers: { id: string; store: EventStore }[] = [];
@@ -75,6 +75,21 @@ const house = openHouse(dataDir, viewers, Date.now, undefined, places, {
     return v;
   },
 });
+// 房子的一个邮箱（soma2.md §8.2）：只起一个 +watch，来信按 [名字] / @名字 / 同一话题分，都不是给第一个开了 email 的人
+const mailer = residents.find((r) => r.config.email)?.id;
+if (mailer) {
+  const people = () => viewers.map((v) => ({ id: v.id, store: v.store, name: currentName(v.store) }));
+  startEmailWatch(
+    {
+      take: (m) => {
+        for (const r of takeHouseEmail(people(), m, mailer)) if (r.result === "taken") console.log(`收到一封邮件 → ${r.to}`);
+      },
+      seen: (id) => viewers.some((v) => !!v.store.db.query(`SELECT 1 FROM events WHERE source = 'email' AND idem = ?`).get(`email:${id}`)),
+    },
+    { onError: (e) => console.error(`收邮件出错：${e.message}`) },
+  );
+  console.log(`收邮件（agently-cli，workspace ${WORKSPACE}；没 @ 的给 ${mailer}）`);
+}
 house.tick();
 setInterval(() => {
   try {
@@ -88,7 +103,7 @@ console.log(
   `Psyche 在 http://127.0.0.1:${port}，数据在 ${dataDir}，住着 ${residents.map((r) => r.id).join("、") || "（没人）"}${embedder ? `，向量：${embedder.model}` : "，没配向量"}`,
 );
 
-/** 一个人的库、app、调度器、邮箱 */
+/** 一个人的库、app、调度器（邮箱是房子的，见上） */
 function openResident({ id, dir, config }: Resident) {
   const tag = residents.length > 1 ? `[${id}] ` : "";
   const store = new EventStore(join(dir, "psyche.db"), { timeZone: process.env.PSYCHE_TZ });
@@ -105,14 +120,12 @@ function openResident({ id, dir, config }: Resident) {
   // 写给人的信：按通道设置投递（soma-note 不用做什么——留言页自己读 /v1/mail）
   const outbox = (ev: PsycheEvent) => {
     const to = (ev.payload as { to: string }).to;
-    for (const ch of getChannels(store).channels[to] ?? []) if (ch === "email") void deliverEmail(store, ev);
+    // 住了不止一个人：主动写的信主题前加 [名字]（她认得出是谁，回信也分得回来）
+    const tag = residents.length > 1 ? (currentName(store) ?? id) : undefined;
+    for (const ch of getChannels(store).channels[to] ?? []) if (ch === "email") void deliverEmail(store, ev, undefined, tag);
   };
   const app = createApp({ store, projections, token: config.token, embedder, outbox, storeOf, selfId: id, residentIds: () => viewers.map((v) => v.id) });
 
-  if (config.email) {
-    startEmailWatch(store, { onError: (e) => console.error(`${tag}收邮件出错：${e.message}`) });
-    console.log(`${tag}收邮件（agently-cli，workspace ${WORKSPACE}）`);
-  }
   if (process.env.PSYCHE_SCHEDULER === "1") startScheduler(id, store, config, tag);
   return { app, store };
 }

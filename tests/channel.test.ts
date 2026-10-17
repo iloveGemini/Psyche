@@ -10,7 +10,7 @@ import { experienceProjector, readExperience } from "../src/archive/experience.t
 import { createApp } from "../src/server/app.ts";
 import { tick } from "../src/heartbeat/scheduler.ts";
 import { factsNow, held, mailCandidates, type DndRule } from "../src/channel/inbox.ts";
-import { emailArgs, takeEmail, parseWatchLine, plainBody } from "../src/channel/email.ts";
+import { emailArgs, takeEmail, takeHouseEmail, topicOf, parseWatchLine, plainBody } from "../src/channel/email.ts";
 import type { PsycheEvent } from "../src/store/events.ts";
 
 const T = (s: string) => Date.parse(`${s}+08:00`);
@@ -532,3 +532,49 @@ describe("住户之间写信（m6.md §八）", () => {
     expect(nobody.j.error).toContain("能写给 Joy、a2");
   });
 });
+
+describe("房子的一个邮箱按 @ 分（soma2.md §8.2）", () => {
+  const house = async () => {
+    const a1 = setup();
+    const a2 = setup();
+    // 她的地址只登记在 a1 那里：a2 收到也认得出是她
+    await a1.ok("/v1/channels", { channels: { Joy: ["soma-note", "email"] }, addresses: { Joy: { email: "joy@example.com" } } });
+    a2.store.append({ kind: "named", class: "self", source: "agent", payload: { name: "Argon" } });
+    const people = [
+      { id: "a1", store: a1.store, name: null },
+      { id: "a2", store: a2.store, name: "Argon" },
+    ];
+    const inbox = (s: EventStore) => s.list({ kinds: ["mail.in"] }).map((e) => {
+      const p = e.payload as { subject?: string; text: string };
+      return p.subject ?? p.text;
+    });
+    const mail = (id: string, subject: string, body = "嗯") => ({ message_id: id, subject, from: { email: "joy@example.com" }, body });
+    return { a1, a2, people, inbox, mail };
+  };
+
+  test("@ 谁给谁（认 id 也认它取的名字，可几个）；主题里的 [名字] 认回去；都没有给默认的", async () => {
+    const h = await house();
+    expect(takeHouseEmail(h.people, h.mail("m1", "@a2 周末"), "a1")).toEqual([{ to: "a2", result: "taken" }]);
+    expect(takeHouseEmail(h.people, h.mail("m2", "两个人都看看", "@Argon @a1 这个"), "a1").map((r) => r.to)).toEqual(["a1", "a2"]);
+    expect(takeHouseEmail(h.people, h.mail("m3", "Re: [a2] 想起一件事"), "a1").map((r) => r.to)).toEqual(["a2"]);
+    expect(takeHouseEmail(h.people, h.mail("m4", "随便说说"), "a1").map((r) => r.to)).toEqual(["a1"]);
+    // @a10 不是 @a1
+    expect(takeHouseEmail(h.people, h.mail("m5", "@a10 是谁"), "a2").map((r) => r.to)).toEqual(["a2"]);
+    expect(h.inbox(h.a2.store)).toEqual(["@a2 周末", "两个人都看看", "Re: [a2] 想起一件事", "@a10 是谁"]);
+    expect((h.a2.store.list({ kinds: ["mail.in"] })[0].payload as { from: string }).from).toBe("Joy");
+  });
+
+  test("同一个话题上次给过谁就给谁（接住回住户 +reply 的信）；陌生地址不收", async () => {
+    const h = await house();
+    takeHouseEmail(h.people, h.mail("m1", "@a2 周末去哪"), "a1");
+    expect(takeHouseEmail(h.people, h.mail("m2", "回复：Re: @a2 周末去哪"), "a1").map((r) => r.to)).toEqual(["a2"]);
+    expect(topicOf("Re: [Argon] 回复：周末")).toBe("周末");
+    expect(takeHouseEmail(h.people, { message_id: "m3", subject: "促销", from: { email: "news@shop.com" }, body: "买" }, "a1")).toEqual([{ to: "a1", result: "ignored" }]);
+  });
+
+  test("住了不止一个人：主动写的信主题前加 [名字]；回信不动", () => {
+    expect(emailArgs({ to: "joy@example.com", text: "想起一件事", tag: "a2" })).toContain("[a2] 想起一件事");
+    expect(emailArgs({ to: "joy@example.com", text: "好", replyToExt: "msg_1", tag: "a2" })).not.toContain("[a2] 好");
+  });
+});
+
