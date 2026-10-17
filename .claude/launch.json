@@ -70,6 +70,16 @@
         "PSYCHE_DATA_DIR=/Users/joy/.psyche/data PSYCHE_PORT=7461 exec bun run src/main.ts"
       ],
       "port": 7461
+    },
+    {
+      "name": "psyche",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=Qwen/Qwen3-Embedding-8B; PSYCHE_DATA_DIR=/Users/joy/.psyche/data PSYCHE_PORT=7470 PSYCHE_SCHEDULER=1 exec bun run src/main.ts"
+      ],
+      "port": 7470,
+      "autoPort": false
     }
   ]
 }
