@@ -179,6 +179,8 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ by, key, ...(note ? { note } : {}), ...(session ? { session } : {}) }),
       signal: AbortSignal.timeout(20 * 60_000),
+      // Bun 的 fetch 默认空闲 5 分钟就断（10-17 Roy 出生那段：argon 想得慢，跑到 5 分钟被记成没推成、还招来重试）；只认上面的 20 分钟
+      timeout: false,
     })
       .then(async (res) => {
         const run = (await res.json().catch(() => ({}))) as { session?: string; costUsd?: number; ms?: number; error?: string };
