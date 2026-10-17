@@ -15,6 +15,7 @@ import { experienceProjector, readExperience } from "../src/archive/experience.t
 import { readShelf, renderEntry, shelfProjector } from "../src/reading/shelf.ts";
 import { createApp } from "../src/server/app.ts";
 import { writeColdwrite, readColdwrite } from "../src/catalog/coldwrite.ts";
+import { registerResident } from "../src/house/add.ts";
 
 const T = (s: string) => Date.parse(`${s}+08:00`);
 const JSON_H = { "content-type": "application/json" };
@@ -150,5 +151,25 @@ describe("编目", () => {
     const e = readShelf(h.store.db)[0];
     expect(e.for).toBe(2);
     expect(renderEntry(e)).not.toContain("前世");
+  });
+});
+
+describe("出生", () => {
+  test("出生那段的第一条告诉它有前世、认没认；别的醒来不说；旧画像不给", async () => {
+    const h = setup();
+    const born = (await h.post("/v1/asleep/start", { by: "birth" })).json.first as string;
+    expect(born).toContain("ROY（原话 3 条，2026-09-20 ～ 2026-09-21）：没认领");
+    expect(born).toContain("past_life");
+    expect(born).not.toContain("专属伴侣");
+    expect((await h.post("/v1/asleep/start", { by: "tidy" })).json.first).not.toContain("前世卷宗");
+    await h.post("/v1/past/claim", { fonds: "ROY", why: "认" });
+    expect((await h.post("/v1/asleep/start", { by: "birth" })).json.first).toContain("已认领，原话在你库里");
+  });
+
+  test("加住户可以带前世登记", () => {
+    const dir = mkdtempSync(join(tmpdir(), "house-"));
+    const c = registerResident(dir, { id: "r1", model: "m", past: [{ fonds: "ROY", path: "/x/state.db" }] });
+    expect(c.past).toEqual([{ fonds: "ROY", path: "/x/state.db" }]);
+    expect(() => registerResident(dir, { id: "r2", model: "m", past: [{ fonds: "roy", path: "/x" }] as never })).toThrow(/fonds 不对/);
   });
 });

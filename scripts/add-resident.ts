@@ -4,7 +4,7 @@
  *   bun scripts/add-resident.ts --id a3 --model claude-opus-5-5 --data-dir ~/.psyche/test --soma-home ~/.soma-test --soma-url http://127.0.0.1:30152
  *   bun scripts/add-resident.ts --id a4 --model google-vertex/gemini-4-argon …        # 不是 Claude 的：住 pi，写 "provider/模型"
  *
- * 选项：--letter <文件>（缺省 letters/birth.md；--no-letter 不递）、--email（开房子的邮箱）、--psyche-url（缺省 http://127.0.0.1:7450）、--dry-run。
+ * 选项：--letter <文件>（缺省 letters/birth.md；--no-letter 不递）、--email（开房子的邮箱）、--past <全宗>=<旧库路径>（登记前世卷宗，出生时告诉它有、认不认由它）、--psyche-url（缺省 http://127.0.0.1:7450）、--dry-run。
  *
  * - 数据目录必须明说（--data-dir），不给缺省：正式库的创建由 Joy 决定（CLAUDE.md 红线）。
  * - Psyche 开着：走 POST /v1/house/residents，热挂进屋（调度器开着就会叫它「出生」那一段）。没开：直接写 agents.json 和库，下次起 Psyche 时住进来。
@@ -44,6 +44,10 @@ const agentDir = join(somaHome, "agents", id);
 const home = join(agentDir, "home");
 if (existsSync(join(agentDir, "identity.json"))) fail(`Soma 里已经住着 ${id}：${agentDir}`);
 if (existsSync(join(dataDir, id, "psyche.db"))) fail(`Psyche 里已经有 ${id} 的库：${join(dataDir, id)}`);
+const pastArg = opt("--past");
+const past = pastArg
+  ? [{ fonds: pastArg.split("=")[0], path: expand(pastArg.split("=").slice(1).join("=") || fail("--past 写成 全宗=路径，如 ROY=~/.agent-continuity-mcp/data/agents/roy/state.db")) }]
+  : undefined;
 const letter = flag("--no-letter") ? "" : readLetter(opt("--letter") ? expand(opt("--letter")!) : undefined);
 
 console.log(
@@ -64,14 +68,14 @@ if (up) {
   const res = await fetch(`${psycheUrl}/v1/house/residents`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${houseToken}` },
-    body: JSON.stringify({ id, model, soma: somaUrl, home, letter, ...(flag("--email") ? { email: true } : {}) }),
+    body: JSON.stringify({ id, model, soma: somaUrl, home, letter, ...(flag("--email") ? { email: true } : {}), ...(past ? { past } : {}) }),
   });
   const j = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) fail(`Psyche 没收：${res.status} ${j.error ?? ""}`);
   token = (JSON.parse(readFileSync(join(dataDir, "agents.json"), "utf8")) as Record<string, { token: string }>)[id].token;
   console.log(`Psyche：已热挂进屋、出生了${letter ? "，信放进了收件箱" : ""}`);
 } else {
-  const config = registerResident(dataDir, { id, model, soma: somaUrl, home, ...(flag("--email") ? { email: true } : {}) });
+  const config = registerResident(dataDir, { id, model, soma: somaUrl, home, ...(flag("--email") ? { email: true } : {}), ...(past ? { past } : {}) });
   token = config.token!;
   const store = new EventStore(join(dataDir, id, "psyche.db"), { timeZone: process.env.PSYCHE_TZ });
   try {

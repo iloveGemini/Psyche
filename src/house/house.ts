@@ -103,7 +103,7 @@ export function openHouse(
       const letter = typeof b?.letter === "string" ? letterText(b.letter) : readLetter();
       let config: ResidentConfig;
       try {
-        config = registerResident(dataDir, { id, model, soma: str("soma"), home: str("home"), token: str("token"), ...(typeof b?.email === "boolean" ? { email: b.email } : {}) });
+        config = registerResident(dataDir, { id, model, soma: str("soma"), home: str("home"), token: str("token"), ...(typeof b?.email === "boolean" ? { email: b.email } : {}), ...(Array.isArray(b?.past) ? { past: b.past } : {}) });
       } catch (e) {
         return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
       }

@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { letterText } from "../self/self.ts";
 import { ID_PATTERN, type ResidentConfig } from "./residents.ts";
+import { checkPastConfig, type PastConfig } from "../archive/past.ts";
 
 export interface NewResident {
   id: string;
@@ -16,6 +17,8 @@ export interface NewResident {
   /** 不给就生成一个（每人一个 token，A 的进不了 B 的门） */
   token?: string;
   email?: boolean;
+  /** 前世卷宗（archive/past.ts）；给了就整份替换 */
+  past?: PastConfig[];
 }
 
 /** 写进 agents.json（已有的字段保留，给了的覆盖），建 <数据目录>/<id>/。返回登记好的设置 */
@@ -33,6 +36,7 @@ export function registerResident(dataDir: string, r: NewResident): ResidentConfi
     ...(r.soma ? { soma: r.soma } : {}),
     ...(r.home ? { home: r.home } : {}),
     ...(r.email !== undefined ? { email: r.email } : {}),
+    ...(r.past !== undefined ? { past: checkPastConfig(r.past) } : {}),
   };
   listed[r.id] = config;
   mkdirSync(join(dataDir, r.id), { recursive: true });

@@ -23,7 +23,7 @@ bun scripts/add-resident.ts --id a3 --model claude-opus-5-5 --data-dir ~/.psyche
 PSYCHE_TOKEN=test-a1 bun scripts/add-resident.ts --id a3 --model claude-opus-5-5 --data-dir ~/.psyche/test --soma-home ~/.soma-test --soma-url http://127.0.0.1:30152
 ```
 
-其他选项：`--email`（开房子的邮箱；没 @ 的信给第一个开了的人）、`--psyche-url`（缺省 `http://127.0.0.1:7450`）。
+其他选项：`--email`（开房子的邮箱；没 @ 的信给第一个开了的人）、`--past ROY=~/.agent-continuity-mcp/data/agents/roy/state.db`（登记前世卷宗：出生那段告诉它有，翻不翻、认不认由它；已经住着的人直接在 `agents.json` 里加 `past`，重启 Psyche）、`--psyche-url`（缺省 `http://127.0.0.1:7450`）。
 
 ## 它做了什么
 

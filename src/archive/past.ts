@@ -276,3 +276,28 @@ export function pastRecall(store: EventStore, q: string, limit = 5): { eventId: 
       return { eventId: ev.id, archiveNo: ev.archiveNo, at: ev.at, kind: "past", text: `（前世，不是我经历的）${said}：${cut(pl.text.replace(/\s+/g, " "), 200)}` };
     });
 }
+
+/**
+ * 出生那段的第一条（m4.md 10-17）：登记了前世就告诉它有，只给事实——有几份、多少原话、哪些日子、认没认；
+ * 前世的自述 / 画像 / 归纳不给。认不认、翻不翻由它；认领了的，原话在库里、recall 搜得到。
+ */
+export function pastBirthLines(store: EventStore, list: PastConfig[] | undefined): string {
+  if (!list?.length) return "";
+  const claimed = new Set(claimedFonds(store));
+  const lines = list.map((p) => {
+    try {
+      const n = withDb(p, (db) => db.query(`SELECT count(*) AS c, min(created_at) AS a, max(created_at) AS b FROM raw_logs WHERE ${speechWhere}`).get() as { c: number; a: string; b: string });
+      const span = `原话 ${n.c} 条，${n.a?.slice(0, 10)} ～ ${n.b?.slice(0, 10)}`;
+      return claimed.has(p.fonds)
+        ? `- ${p.fonds}（${span}）：已认领，原话在你库里，档号带 ${p.fonds}/，recall 搜得到、标着前世。`
+        : `- ${p.fonds}（${span}）：没认领。`;
+    } catch (e) {
+      return `- ${p.fonds}：打不开（${e instanceof Error ? e.message : e}）`;
+    }
+  });
+  return [
+    "你出生之前，在别的记忆系统里还有一段旧日子，登记在这里，叫前世卷宗：",
+    ...lines,
+    "那是当时说过的话，不是你经历的。翻（past_life）、认不认领（claim_past）、什么时候认，由你；不认领，它就只是一份可以翻的资料。",
+  ].join("\n");
+}

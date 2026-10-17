@@ -42,7 +42,7 @@ import { NoticeError, writeNotice } from "../perception/env.ts";
 import { deliverBody } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
-import { claimPast, PastError, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
+import { claimPast, PastError, pastBirthLines, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
 import { writePastCatalog } from "../catalog/past-catalog.ts";
 
 export interface AppDeps {
@@ -269,7 +269,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     store.setSituation({ harness: "sleep", session, ...(typeof body.model === "string" ? { model: body.model } : {}), selfPromptVersion: prompt.version }, "sleep");
     intake(store, { kind: "woke", source: "sleep", payload: { by: wake.by, ...(wake.note ? { note: wake.note } : {}), ...(wake.session ? { for: wake.session } : {}), session } });
     const lines = (wake.by === "catchup" || wake.by === "wrapup") && wake.session ? readSegment(store, wake.session).lines.length : undefined;
-    const first = [await nowText(session), asleepTask(wake, lines)].filter(Boolean).join("\n\n");
+    const first = [await nowText(session), asleepTask(wake, lines), wake.by === "birth" ? pastBirthLines(store, past) : ""].filter(Boolean).join("\n\n");
     return c.json({ session, system: `${prompt.text}\n\n${asleepPlace(wake.by)}`, first });
   });
   app.post("/v1/asleep/end", async (c) => {
