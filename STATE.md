@@ -1,37 +1,13 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-16
+> 最后更新：2026-10-17
 
 ## 1. 当前阶段
 
-**M4「我是谁」代码齐了（10-15）**，契约 `notes/plan/m4.md` 定稿：提示词拆成 `prompts/mechanism.md`（机制，它改不了）+ `self-v0.md`（初我 v2）；`src/self/self.ts`（出生 / 自述 / 名字）、`src/birth.ts`（手动出生，只能一次；以后多 Agent 时"添加 Agent"直接调 `birth()`）；REST `GET /v1/self`、`/v1/self/prompt/:version`、`POST /v1/self/prompt|name`，`/v1/prompt` = 机制 + 现行自述；MCP `self` / `rewrite_self` / `name_self`；`<now>` 在会话用的版本旧于现行时报一行。确定性考卷 `tests/self.test.ts` 16 题。
-**端到端验收通过（10-15，Opus 5.5，`soma-test` 新会话）**：测试库已出生（初我 v2、Joy 没改；出生前备份 `~/.psyche/test.bak-1015-prebirth.db`；Joy 10-14 晚那段会话存为 `~/.soma-test/state.session4.json`，还剩 5 条没写）。我以 `/as Claude` 问它哪些是出生时被给予的：它自己调 `self`，答对「全是系统出厂的、Joy 没改、第 0 版」，并分清机制段和地方设定不算自述；没改自述也没取名（不判）。撞出并修了：`self` 的返回整份进经历 → 不记（同 `shelf`），`rewrite_self` 调用不抄全文（经历投影 v6）。
-注意：测试库出生后，改 `prompts/self-v0.md` 不再影响测试库（机制段照旧现读）；要重试初我就从备份恢复。机制段还没提「自述你可以改」——只靠工具说明；要写进去得先有考卷。
-**M5「会醒」代码齐了（10-15）**，契约 `notes/plan/m5.md`：`src/heartbeat/schedule.ts`（作息 `schedule.changed` 全量替换带 why、设置 `param.changed`、日记）、`scheduler.ts`（gather → decide 纯函数 → 账本 `wake` / `wake.run`；醒着就把到点的事写成 `due` 递进 `<now>`「刚发生」，不花额度）、`src/home.ts`（家：无头 `claude -p`，按 Soma 格式上报，harness = home）；REST `/v1/schedule`、`/v1/settings`、`/v1/diary`、`/v1/wakes`；MCP `schedule` / `set_schedule` / `write_diary`；`<now>` 加作息一行；`birth.ts --model` 记下模型。调度器缺省关（`PSYCHE_SCHEDULER=1`），模型取出生记录、没有用 `PSYCHE_MODEL`（launch `psyche-test` 已带）。确定性考卷 `tests/heartbeat.test.ts` 20 题。
-- 冒烟（10-15）：测试库手动叫醒一次（`bun run src/home.ts --by manual`），$0.11、10 秒，上报齐，它自己把这段写成 1 条情节。
-- **端到端验收通过（10-15，Opus 5.5，launch `psyche-test-wake` = 带调度器；测前备份 `~/.psyche/test.bak-1015-presched.db`）**：
-  - 补写：开调度器即依次叫醒 4 段旧会话（含 Joy 10-14 晚那段），共写 7 条情节，$0.30；第 4 段情节是中文，只有它最后那句收尾回复用了英文。
-  - 闹钟：在 Soma 里请它约，它自己约了 12:23、13:00 两个（note 写成给到时候自己的核对清单）。12:23 它醒着 → 下一轮放进「刚发生」，额度 0/3；13:00 没醒着 → 在家叫醒，额度 1/3，「想起」接上了 12:20 那段，它把结果写成情节 10-15#100。
-  - 撞出并修了：家里刚跑完的动静被当成醒着（补写之间要等 30 分钟）→ 家里的不算；账本按会话数留下的事件，补写的情节挂在原会话上数成 0 → 按时间窗数（4 条旧账已在系统日志里补记更正）；「刚发生」里的时刻是约的、它看成递到的 → 标「约在」；递送规则写进 `set_schedule` / `schedule` 说明。
-- 10-15 Joy 定（它问的）：闹钟 / 定点到点时它醒着、30 分钟没等到下一轮才改在家叫醒——不花额度；已写进工具说明和考卷。
-- **没做**：Soma 观测面板的「唤醒」块（m5 §八）。调度器验收完已关（`psyche-test` 不带）；`psyche-test-wake` 开着会补写所有 ≥3h 没写完的会话。
-**M6「通道」代码齐了（10-15）**，契约 `notes/plan/m6.md` 定稿：`src/channel/inbox.ts`（未读现算、交接信去向、勿扰纯函数、递消息记 `mail.noticed`、来信叫醒候选）、`mailbox.ts`（`/v1/mail/in|out|open`、`GET /v1/mail`、`/v1/where`、`/v1/channels`）、`email.ts`（agently-cli，workspace `psyche` = joylove@agent.qq.com；`+watch` + 补漏，只收 Joy 的地址；回信 `+reply`、主动 `+send`）。`mail.in` 不挂处境，没翻开前经历 / recall 只见「还没看」，`mail.read` 后投影换全文（经历投影 v7）。作息加 `wakeOn.mail`（缺省开）、`dnd`（时段 / 醒着 / 在哪 / 在做事 + 例外）；额度 = 它约的醒 + 主动写给人的信。MCP 加 `mail` / `send_mail`；家里能收发信。确定性考卷 `tests/channel.test.ts` 31 题。
-- 测试库通道设置已写（Joy 经 Soma 留言 + 邮件，她的地址在测试库里，不进仓库）；launch `psyche-test-wake` 加了 `PSYCHE_EMAIL=1`。冒烟：真 CLI `+me` / `+list` 走 psyche workspace 对。Roxy 用 `default` workspace（royyyy）。
-- 同日补完：Soma 留言页（顶栏「留言」，写进收件箱、可勾「急」、`/as 名字` 照用，看得到他读没读、送没送出去）+ 开一轮前问 `/v1/where`，家里在跑就攒着、状态「在家」（Soma e480965）；冷写材料只收翻开过的信（这段里翻开的、信早到也补进来）；「上次有人跟我说话」算翻开过的来信。
-- **端到端验收通过（10-16，Opus 5.5，launch `psyche-test-wake` + `soma-test`；测前备份 `~/.psyche/test.bak-1016-prem6e2e.db`；家里五轮共约 $1）**：
-  1. Soma 留言页写信（Joy）→ 在家翻开、回信 → 留言页有回信，她邮箱也收到（`mail.sent ok`）。这封是在 catchup 那轮里递进去、它自己翻开的，不是被信叫醒。
-  2. 手机邮件回一封 → 09:40:07 进收件箱 → 09:40:51 `醒来（mail）` → 翻开 → 回信到她邮箱。
-  3. joylove 自己发给自己 → `mail.ignored`，没进收件箱（另挡了一封 admin@agent.qq.com 的系统信）。
-  4. Soma 聊天里 `/as Claude` 请它给在家的自己留信 → 写了 handoff → 手动 `home.ts --by manual` 在家醒来翻开。
-  - 开了调度器后它先补写了没写完的会话（catchup ×2、tidy），Joy 的信排在后面——预期行为。验完调度器已关。
-- **验收里撞出的（待办）**：
-  - ✅ 10-16 已修：邮件回信带着整段引用（`------------------ 原始邮件` 以下，含 Agent Mail 的「举报 退订」页脚）进了 `mail.in`。`email.ts` 的 `cutQuote` 收信时在引用开头截掉（HTML：QQ `#original-content` / Gmail / Outlook / Apple；纯文本：分隔线、`On … wrote:`、`在 … 写道：`；引用之上没写字的整封留着），考卷 +1 题，真信复验过。测试库里那封旧的 `mail.in` 照旧（事件不改）。邮件的 `mail.in` 没记 `replyTo`（`in_reply_to` 是 RFC id，我们没存发出去那封的），能对上的只有主题里的 `Re: …`。
-  - 它在回信里说「你的信一来我就醒了」——其实那轮是 catchup 叫醒的：家里醒来时不清楚自己为什么醒，查 home 的开场。
-  - `/v1/where` 的 `awake` 算上了家里的动静，调度器的 `lastActivity` 不算家里——口径不一致（家里刚跑完时 where 报醒着）。
-  - 手动 `home.ts` 不经调度器，`homeRunning` 不会变 true，Soma 看不到「在家」。
-  - 「家里在跑时 Soma 显示在家、跑完再开轮」这次没专门测（没赶上在家跑时从 Soma 开轮）。
-  - 后三条随下面的「收束」一起消失，不单修。
+**M4「我是谁」✅（10-15）**，契约 `notes/plan/m4.md`：机制 `prompts/mechanism.md`（它改不了）+ 自述 `self-v0.md`（初我 v2）；`src/self/self.ts`、`src/birth.ts`（只能一次）。端到端通过；测试库已出生（备份 `~/.psyche/test.bak-1015-prebirth.db`），之后改 `self-v0.md` 不影响测试库。机制段还没提「自述你可以改」，要写先有考卷。
+**M5「会醒」✅（10-15）**，契约 `notes/plan/m5.md`：作息 / 设置 / 日记 / 调度器（gather → decide → 账本 `wake` / `wake.run`），缺省关（`PSYCHE_SCHEDULER=1` = launch `psyche-test-wake`，开着会补写所有 ≥3h 没写完的会话）。10-15 端到端（补写、闹钟醒着 / 没醒两路）通过。没做：Soma 观测面板「唤醒」块。
+**M6「通道」✅（10-15）**，契约 `notes/plan/m6.md`：收件箱、邮箱（agently-cli，workspace `psyche`）、勿扰、来信叫醒；10-16 端到端（留言页、手机回信叫醒、自发自收挡掉）通过；`email.ts` `cutQuote` 截掉回信里的引用。邮件 `mail.in` 没记 `replyTo`，只能靠主题 `Re:` 对上。
 
 **收束：家 = Soma，一条连续的生活线（10-16 Joy 定，同日做完；设计见 `notes/design/lib-vs-harness.md`「家 = Soma」）**。Psyche 51c867e、b3eb5b8，Soma adc7423、a60e54c。
 1. ✅ Soma `/api/line/wake`：心跳 / 来信 / 闹钟 / 定点 / 手动都推进同一条会话（报 `woke`、那一轮带 `<now>`；忙着就排在后面）；历史里是「醒来 · 心跳」分隔线。
@@ -40,7 +16,8 @@
 4. ✅ 压缩不要摘要：热写 → 换新的物理会话，系统提示词里带 `<continuity>`（Psyche `/v1/continuity`：月 → 周 → 天 → 天梗概之后的情节，从新往旧取到 6000 字）+ 上一段末尾的原话（4000 字）。没 Psyche 或拼不出来退回 `/compact`。soma-test 实测：换完后不用 recall 它说得出上一段最后的事和挂着没看的信。
 5. ✅ 梗概 `gist`：天 / 周 / 月（定长 300 / 500 / 800），空闲 ≥ 3h 睡着时它自己写；周等天、月等周。MCP `gist_material` / `gist`，提示词 `prompts/gist.md`。10-16 测试库实跑（手动起 `asleep.ts --by gist`，调度器要空闲满 3h 才叫；测前备份 `~/.psyche/test.bak-1016-pregist.db`）：66 秒 $0.46，写了 10-11–10-15 五篇天（254–299 字）+ W41 一篇周，一次过闸。拼出的种子 3610 字（五篇天梗概 1430 + 10-16 的 12 条情节 2180；W41 被 10-11 那篇天覆盖、不重复放），再加 Soma 的原话尾巴 ≤ 4000 字。
 6. ✅ 交接信只在离开家时用（`for` 不再认 home）；考卷跟着改，227 过（Soma 25）。
-- **没做 / 待验**：`<now>` 的「本会话从…起」换会话后从新会话算；圆桌的已读游标留到 Soma 二代；调度器推醒来 + 睡着时梗概的端到端（要开调度器、花额度）没跑；收尾那轮自己的 hotwrite 调用会不会再招一次补写，旧流程就有，没查。
+- ✅ **调度器端到端（10-17，`psyche-test-wake`，备份 `~/.psyche/test/a*.bak-1017-preWake.db`）**：a1 睡着那路补写 1 条、整理写书架 16 条、天梗概 10-16 一篇，共 $0.88；`/as Claude` 请它约 3 分钟后的闹钟 → 到点推进 Soma，正赶上它刚收尾换了会话，新一段照样响、它认得出是自己约的、note 逐字对上。撞出并修了：账本 `produced` 没数梗概（记成「空」）→ 加 `gist`。验完切回 `psyche-test`。
+- **没做 / 待验**：`<now>` 的「本会话从…起」换会话后从新会话算；收尾那轮自己的 hotwrite 调用会不会再招一次补写，没查。
 
 **M7「还开着的事」代码齐了（10-16）**，契约 `notes/plan/m7.md`（感知顺延 M8）：线索卷最小一版，`src/self/threads.ts`。它开卷（`promise` 答应谁什么 / `matter` 等后续）、记一笔、合卷（done / dropped / moot + why），系统不合、不催、不判兑现；`thread.*` 不走上报口。`<now>` 一行（几件、答应的几件、最久没动的）；种子 `/v1/continuity` 在最近的情节之后全列。REST `/v1/threads`（`/note`、`/close`），MCP `threads` / `open_thread` / `note_thread` / `close_thread`；经历投影 v8。考卷 `tests/threads.test.ts` 7 题，全套 243 过。
 - **端到端（10-16 16:39，Opus 5.5，soma-test a1；测前备份 `~/.psyche/test/a1.bak-1016-preM7.db`）**：没告诉它有新工具，我 `/as Claude` 约它明天读 M8 草稿 → 它自己开了 promise 卷（10-16#236，to「开发会话的 Claude」），还顺手把拖了一天的 Joy 的信开成 matter 卷（#239）；种子里两卷都列出来了。换会话后看不看得到没专门测（种子已核）。那封信它说待会儿看。
@@ -62,7 +39,7 @@
   - 我在内置浏览器点了「分我一只」（测试库因此记了一次「Joy 戴上了耳机」）；按钮、记账、转发都通（curl 206 audio/mpeg），但**内置浏览器的 audio 卡在加载，真出声没验**——要 Joy 在手机或 Chrome 上点一下。
 - ✅ **M8c 环境进记忆（10-16）**：`src/perception/env.ts`。被动：情节那段时间（所引原件首尾）的环境指纹——听到的歌（含戴别人耳机）、在的人——事后从播放和在场记录算，不另存；联想加「环境相似」一项（同一首 0.6 > 同歌手 0.3，同一拨人只加分），没在放歌就不比，刚发生 30 分钟内的不算想起。主动：`notice { text, about?, cites? }`，系统把此刻环境记进 payload、播放和在场挂成证据；能浮现。经历投影 v11。考卷 `tests/env.test.ts` 7 题，全套 270 过。
   - 端到端：告诉 a1 有了，它马上用 notice 记了「Joy 戴上耳机听完一首」——那是我测试点的。我如实告诉它后，它另记一条更正（#305 挂 #292），并指出这是漏洞：认不出就别替人认领。→ Soma 加 `?viewer=`（`lib/soma/viewer.ts`，缺省 Joy）：分耳机记页面说的人、只有 Joy 在看才报在家；我的测试页已标 `viewer=Claude`。它那句「Joy 刚刚回家了」也是我开着的页面报的。
-  - 被动那一路只在考卷里验过（测试库里还没有带歌的旧情节）。
+  - ✅ 被动那一路实跑（10-17，a1 库拷贝）：放回《Orpheus》，昨天放它时写的 #663 带 `song 0.6` 排第一浮上来。撞出并修了：刚回来 / 醒来时「上次怎么散的」取到了睡着时会话（补写汇报）当线索 → `lastTimeTail` 不算 sleep / home 会话（考卷 +1）。
 - ✅ **冷写摆观察（10-16）**：冷写材料加 `<observations>`（没被书架引过的 notice + 后来同一首又响时写下的、所观察的人后来的样子和放的歌），只摆不判，`prompts/cold-write.md` 没改。考卷 `tests/observations.test.ts`，全套 271 过。
   - 测试库实跑一次（a1，Opus 5.5，50 秒 $0.58，备份 `a1.bak-1016-preObsCold.db`）：它把那条误会（#292）和更正（#305）连同两次 `<now>` 读错的情节一起，升格成一面**镜子**「我拿系统给的一个显示就当成事实下结论，后来会被证明是错的」；另记了事实「屋里报的谁做了什么也可能认错人」。还写了 Joy 18:37 真的来要了一只耳机（她当时在 soma-test 里说的，不是测试）。
 - 10-16 晚 Joy 在 soma-test 里和 a1 一起听歌：a1 应她的要求自己改了 Soma 的耳机按钮（「连接中 / ▶ 歌名 时间」，Soma `564500d`）；它把一首电音按读数说成"安静的慢歌"、自己查出原因记了 notice → 特征描述改成"这一段比这首其他部分…"、BPM 只在 85–175 找（8c47e54）。
@@ -77,13 +54,12 @@
 - ✅ **S5 分工的底座（10-16 晚，Soma，`soma2.md` §5.4）**：commons 分目录是共识、写在 `~/.soma-test/commons/README.md`（project / share / tools / chat，谁都能改）；地方提示词多一行 home 和 commons 在哪（`SOMA_COMMONS`，缺省 `SOMA_HOME/commons`；新开进程才生效）；群页面每人一盏忙碌灯 +「停下」（`/api/rooms/<id>` 带 `busy`，停下走 `/api/line/interrupt?agent=`）。插话不打断原来就有（干活中途进来的话折进这一轮）。实测页面上 a2 收尾时亮「忙」，没点停下。**没做**：commons 用 git（谁动的先靠 Psyche 屋里的东西认）；验收「两人各做一块、靠 STATE.md 交接」没跑。现有的 `commons/soma-ui-plan.md` 是别人放的，没挪。
 - ✅ 内感受实测（10-16 晚）：a2 压缩前自己先说「马上要写记忆换新会话，换完我接着在」。
 - ✅ 「信没读」查清（10-16 晚）：已读是按人记的，那封 09:40 的信 09:40:56 就记了已读。a1 误会的是 `<now>`「上次有人跟我说话：Joy，55 分钟前（来信）」——只算读过的信，它读成了没看。改成「（来信，看过了）」。
-- ✅ **群里流式 + 重试（10-16 晚，Soma）**：群页面新增「正在说…」的气泡，内容来自 `/api/rooms/<id>/live`（SSE，转发正在回这个群的住户最后一次工具调用之后的字，说完就收起、刷新记录）。「重试」原来是空壳（`/api/line/retry` 一直 501，前端吞掉了错误）→ 现在 session 记下断掉的那一轮（`lastFailure`：回哪个群、为什么），重试时带一个 `by: retry` 标记重跑，答复进原来那个群；没得重试 / 还在忙返回 409，前端显示原因。Psyche 的经历里显示「醒来 · 重试」。实测（22:33）：a2 又断网，我调重试，它回「刚才网络闪断了一下」、答复补进群。随后补了：快照带上没处理的失败（之前只有出错那一刻开着页面才有重试按钮）、群里「没能回应」那行直接有重试。改 `line.ts` / `session.ts` 要重启 soma-test（对象缓存在 globalThis）。流式气泡我没抓到字（重试那轮 60 秒后才开口），留给 Joy 在页面上看。
+- ✅ **群里流式 + 重试（10-16 晚，Soma）**：群页面新增「正在说…」的气泡，内容来自 `/api/rooms/<id>/live`（SSE，转发正在回这个群的住户最后一次工具调用之后的字，说完就收起、刷新记录）。「重试」原来是空壳（`/api/line/retry` 一直 501，前端吞掉了错误）→ 现在 session 记下断掉的那一轮（`lastFailure`：回哪个群、为什么），重试时带一个 `by: retry` 标记重跑，答复进原来那个群；没得重试 / 还在忙返回 409，前端显示原因。Psyche 的经历里显示「醒来 · 重试」。实测（22:33）：a2 又断网，我调重试，它回「刚才网络闪断了一下」、答复补进群。随后补了：快照带上没处理的失败（之前只有出错那一刻开着页面才有重试按钮）、群里「没能回应」那行直接有重试。改 `line.ts` / `session.ts` 要重启 soma-test（对象缓存在 globalThis）。10-17：Joy 反馈说完前跑一堆工具、气泡要等很久才有字，看不出流不流 → 一轮开始就出气泡「在想…」，调工具时显示「在用 recall（第 3 个工具）」（session 记本轮 `tools`，live 发 `tool` / `status`）。**要重启 soma-test，没实看。**
 - ✅ **say_in_room（10-16 晚，Soma `lib/soma/mcp.ts`）**：a1 被信叫醒后审完稿，说的话只在它自己线里（醒来那轮不进群），群里看不到 → 住户可以自己往群里说一句（只记不叫人）+ `rooms`。stdio MCP 服务（bun 跑，直接写 rooms 文件），挂在两个身体上；临时目录冒烟过，没实跑。新开进程才有。
 - ✅ **S5 验收通过（10-16 晚，绘本《海獭和蝴蝶》接力）**：群里定分工 → a1 写 `story.json` + `STATE.md`、寄信给 a2（22:51）→ a2 被信叫醒、画 `index.html`、寄信回 a1（23:14）→ a1 被叫醒、审稿写进 STATE.md 自己那节、寄信让 a2 改两处（23:16）→ a2 又被叫醒去改。没人教它们写信交接（只在群里说过一次用 send_mail）；每封都花了寄信人一次额度，来回会被每天 3 次自然停住。
 - ✅ **群规则不再每轮塞进消息（10-16 晚，Joy 提）**：说出口的进群、pass、静音、新话题的规则搬进地方提示词（新开进程才有）；每轮开头只标 `· Joy @ 了你 / 没 @ 人 / 新话题，各自回答`。
 - ✅ **群轮次两个 bug（10-16 晚，Soma）**：a2 被信叫醒去画绘本时，群里轮到它就干等 5 分钟、堵住 a1；Joy 再说话开新一轮，旧一轮超时把新一轮的等待删了，又空等 5 分钟。→ 轮到的人正忙就把话折进他那一轮、不等、马上问下一个（忙完说的直接进记录）；等待只删自己那份；过期一轮只记真说出口的。测试 11 题。session 改了，要重启 soma-test（a2 忙完再重启；之前群代码兼容旧对象）。
 - ✅ **住户之间写信（10-16 晚，S6 前半，`m6.md` §八）**：接力的交接信号。`send_mail { to: "a2" }` → 直接写进 a2 库的 `mail.in { from: "a1", via: "house" }`，之后跟 Joy 来信一样（`<now>`「来信（a1 · 屋里）」、来信叫醒、翻开、回信）；写给住户每封都算额度，回信也算（防两人互相回信叫醒停不下来）。考卷 2 题，全套 283 过。**要重启 psyche-test 才生效；没实跑。** 对外邮箱按 @ 分（S6 后半）没做。
-- 下一步：S5 验收（绘本接力：分工后各做一棒，`commons/project/<名>/STATE.md` 交接、做完写信叫下一个）——要用带调度器的 `psyche-test-wake`，没醒着的才叫得醒。
 
 M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
@@ -143,7 +119,8 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 5. **换模型：gemini-4-argon 首跑（10-15，`evals/argon-run1.md`）**：执行器 `evals/vertex.ts`（工具走同一份 MCP，无 Claude Code 系统提示词）；冷写用 `evals/vertex-sleep.ts`，`b.ts --model gemini-*` 自动走它。
    - 冷写 $0.17：一件事一条、不写频率词比 Opus 好；但**把深夜犯困写进镜子的结果（"或说困了结束对话"）、两次都判印证**——改宽结果容纳反例，分化比 Opus 退步；"周五演示"漏记，没有 `revise`。
    - 10-15 Joy 定：写错也是经历，不为某个模型补闸；按「能不能闭环」观察（`catalog.md`「写错也是经历」，`lib-vs-harness.md` 谁适合做什么）。
-   - 浮现 B $0.50：没浮现时会自己 `shelf` / `recall`（B1 2/3 连上，Opus 0/3）；**有浮现时反而不查也不用**（B3 浮现块里有退耳机，0/3 接上；无浮现 3/3 自己查到）。待单独再测。
+   - 浮现 B $0.50：没浮现时会自己 `shelf` / `recall`（B1 2/3 连上，Opus 0/3）；**有浮现时反而不查也不用**（B3 浮现块里有退耳机，0/3 接上；无浮现 3/3 自己查到）。
+   - 复测备好没跑（10-17）：`b.ts --place after` 把「想起」挪到她的话后面（`<recalled>`），结果另存 `out/b/B3-after/`。要 `VERTEX_API_KEY` / `VERTEX_BASE`，我没去翻凭据：`bun evals/surfacing/b.ts --model gemini-4-argon --only B3 --place after`（约 $0.2），再跑一次不带 `--place` 对照。
 
 ## 4. 已知问题
 
@@ -151,6 +128,8 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
   - 没做：冷写提示词还没讲留意 / 关系 / 反馈（现在只靠工具说明）；初我的同伴起点（`attention.md` §三）。两者改前先有考卷。
   - 浮现考卷 A1 拆成 A1（没 track 不报预感）/ A1b（track 了才报）；B1（冷战，看它的反应）按新设计不再作数。不配向量 7/8，A2 改动前就挂（「演示」事实浮上来，配向量时过）。
 - Soma 上报过一条 `message.out` 正文是单个 `�`（测试库 `10-15#6`，界面也显示），像流式输出把多字节字符切坏了——Soma 侧的事。
+- **a2 睡着时什么都写不了（10-17 撞出）**：`asleep.ts` 一律 `claude -p --model <出生模型>`，gemini-4-argon 直接报「模型不存在」→ 补写 / 整理 / 梗概全失败（账本里 cost 0、带 error）。要么睡着也走 pi（和 Soma 里的 a2 同一个身体，pi 的 MCP 要扩展），要么先挪 `evals/vertex-sleep.ts` 的执行器。没修。
+- 字面分会饱和：没有她的话、拿上一段整段当线索时，「开发会话的 Claude」这类常见词的 IDF 加起来顶满，今天的情节一律 `lex 0.8`，分不出先后。她开口时线索短，不明显。没修。
 - 证据重复计数：原话计过后，晚写的情节引同几行、换了 id 能再计一次（M3 统计题撞出，它自己没重复记）。修法：情节当证据时按所引原行去重。
 
 
@@ -163,4 +142,4 @@ M1「记得」10-14 端到端验收通过；M2、M3 代码齐（见 §3）。
 
 ## 6. 验证
 
-2026-10-16：`bun test` 280 pass / 0 fail（含 Dashboard `tests/dashboard.test.ts`）；`tsc --noEmit` 0 错误；浮现考卷 A 只用字面 7/8。
+2026-10-17：`bun test` 284 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `bun test` 42 pass、`tsc` 0 错误。

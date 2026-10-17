@@ -16,6 +16,7 @@ import { sessionOf } from "../archive/experience.ts";
 import { harnessOf } from "../catalog/coldwrite.ts";
 import { keywords } from "../core/words.ts";
 import { envNow, envOf, envSimilarity, type Env } from "../perception/env.ts";
+import { NOT_PLACE_SQL } from "../channel/inbox.ts";
 export { keywords };
 
 /** 各项权重与阈值：都在这一处，用考卷调 */
@@ -137,14 +138,18 @@ function modeOf(c: Ctx): { mode: Mode; turnStart: string | null; herNow: { text:
 }
 
 /** 线索的话：她这一轮的话 + 本会话前几行；刚回来没有她的话 → 上次和她对话的最后几行 */
-/** 上次和她对话的最后几行：另一个会话里最近的那段（有情节给情节） */
+/**
+ * 上次和她对话的最后几行：另一个会话里最近的那段（有情节给情节）。睡着时的会话（补写 / 整理 / 梗概）
+ * 不是和谁的对话，不算；睡着时写的情节挂在原来那段会话上，照样算。
+ */
 function lastTimeTail(c: Ctx) {
+  const asleep = `SELECT json_extract(s.payload, '$.session') FROM events s WHERE s.class = 'situation' AND s.fonds = '' AND NOT (${NOT_PLACE_SQL}) AND json_extract(s.payload, '$.session') IS NOT NULL`;
   return (
     c.db
       .query(
         `SELECT p.event_id, p.archive_no, p.at, p.text, p.session FROM p_experience p WHERE p.kind IN ('message.in', 'message.out', 'episode') AND p.covered = 0
            AND p.at <= ? AND p.session = (SELECT q.session FROM p_experience q WHERE q.kind IN ('message.in', 'message.out', 'episode') AND q.at <= ?
-                                          AND q.session IS NOT ? ORDER BY q.at DESC, q.event_id DESC LIMIT 1)
+                                          AND q.session IS NOT ? AND q.session NOT IN (${asleep}) ORDER BY q.at DESC, q.event_id DESC LIMIT 1)
          ORDER BY p.at DESC, p.event_id DESC LIMIT 4`,
       )
       .all(c.now, c.now, c.session) as { event_id: string; archive_no: string; at: number; text: string; session: string | null }[]

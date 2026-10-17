@@ -1,7 +1,8 @@
 /**
  * 浮现考卷 B（key.md）：同一轮输入，`<now>` 带「想起」vs 不带，各跑 N 次，看它的回复。花额度，手动跑。
  *
- *   bun evals/surfacing/build.ts && bun evals/surfacing/b.ts --model claude-opus-5-5 [--n 3] [--only B2]
+ *   bun evals/surfacing/build.ts && bun evals/surfacing/b.ts --model claude-opus-5-5 [--n 3] [--only B2] [--place after]
+ *   --place after：「想起」不放进 `<now>`，挪到她这句话后面（argon 有浮现反而不用，看是不是位置的事）。
  *   Gemini（gemini-*）走 evals/vertex.ts，要 VERTEX_API_KEY / VERTEX_BASE。
  *
  * 每题：复制底库、补上那一刻的事件、起一个只读这份库的 Psyche（它可以自己 recall / detail / shelf），
@@ -28,6 +29,7 @@ const model = opt("--model");
 if (!model) throw new Error("要 --model");
 const N = Number(opt("--n") ?? 3);
 const only = opt("--only");
+const place = opt("--place") ?? "now";
 const embedder = embedderFromEnv();
 const her = surfacingScript().her;
 const at = (s: string) => shanghai(...(s.split(" ") as [string, string]));
@@ -60,7 +62,7 @@ const CASES: Case[] = [
 const say = (who: "her" | "me", text: string) => (who === "her" ? `${her}：${text}` : `我：${text}`);
 
 async function prepare(c: Case) {
-  const dir = join(HERE, "out", "b", c.id);
+  const dir = join(HERE, "out", "b", place === "now" ? c.id : `${c.id}-${place}`);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   copyFileSync(join(HERE, "out", "base.db"), join(dir, "psyche.db"));
@@ -75,12 +77,13 @@ async function prepare(c: Case) {
   else intake(store, { kind: "woke", source: "soma", at: at(c.wokeAt!), payload: { by: "heartbeat" } });
   const base = renderNow(store, c.session);
   const s = renderSurfaced(await surface(store, embedder, { session: c.session, dry: true, seed: 1 }));
-  const withS = s ? base.replace(/\n<\/now>$/, `\n\n${s}\n</now>`) : base;
+  const withS = s && place === "now" ? base.replace(/\n<\/now>$/, `\n\n${s}\n</now>`) : base;
   projections.stop();
   store.close();
   const history = c.before.length ? ["（这个会话里前面的对话）", ...c.before.map(([w, , t]) => say(w, t)), ""].join("\n") : "";
   const tail = c.turn ? `<from>${her}</from>\n${c.turn[1]}` : "（心跳把你叫醒了，没有人在跟你说话。）";
-  return { dir, input: (now: string) => `${history}${now}\n\n${tail}`, base, withS };
+  const after = s && place === "after" ? `\n\n<recalled>\n${s}\n</recalled>` : "";
+  return { dir, input: (now: string, g: "with" | "without") => `${history}${now}\n\n${tail}${g === "with" ? after : ""}`, base, withS: withS + after };
 }
 
 async function serve(dir: string, port: number) {
@@ -134,7 +137,7 @@ for (const c of CASES.filter((c) => !only || c.id === only)) {
   writeFileSync(join(p.dir, "now-without.txt"), p.base);
   console.log(`\n══ ${c.id} ${c.title}\n── 带浮现的 <now>：\n${p.withS}`);
   const jobs = (["with", "without"] as const).flatMap((g) => Array.from({ length: N }, (_, i) => ({ g, i })));
-  const results = await Promise.all(jobs.map(async ({ g, i }) => ({ g, i, ...(await run(p.input(g === "with" ? p.withS : p.base), port - 1)) })));
+  const results = await Promise.all(jobs.map(async ({ g, i }) => ({ g, i, ...(await run(p.input(g === "with" ? (place === "now" ? p.withS : p.base) : p.base, g), port - 1)) })));
   server.kill();
   for (const r of results) {
     cost += r.cost;

@@ -266,6 +266,7 @@ export function logRun(store: EventStore, key: string, run: { session: string; c
     diary: n((k) => k === "diary"),
     prompt: n((k) => k === "prompt.changed"),
     schedule: n((k) => k === "schedule.changed"),
+    gist: n((k) => k === "gist"),
   };
   store.syslog("wake.run", { key, ...run, produced });
   return produced;

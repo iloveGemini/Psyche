@@ -94,6 +94,19 @@ describe("浮现", () => {
     expect(r.items.some((i) => i.parts.lastTime === 1 && i.text.includes("第 13 个功能"))).toBe(true);
   });
 
+  test("睡着时的会话不算「上次」：补写完那句汇报不当线索，上次怎么散的还是和她那段", async () => {
+    const t = setup();
+    t.evenings();
+    t.store.append({ kind: "situation", class: "situation", source: "sleep", at: T("2026-09-15T03:00:00"), payload: { harness: "sleep", session: "z" } });
+    intake(t.store, { kind: "message.out", source: "sleep", payload: { text: "补写好了，记成了一条情节。", session: "z" }, at: T("2026-09-15T03:01:00") });
+    t.set(T("2026-09-15T21:00:01"));
+    t.sit("back", T("2026-09-15T21:00:00"));
+    t.her("咳咳 看看这是哪里", T("2026-09-15T21:00:00"));
+    const r = await surface(t.store, undefined, { session: "back", dry: true, seed: 1 });
+    expect(r.items.some((i) => i.parts.lastTime === 1 && i.text.includes("第 13 个功能"))).toBe(true);
+    expect(r.cue).not.toContain("补写好了");
+  });
+
   test("字面接不上、向量接得上：她说耳机，想起退款那次；本会话的原话不算", async () => {
     const t = setup();
     t.evenings();

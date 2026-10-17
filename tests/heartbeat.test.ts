@@ -380,7 +380,7 @@ describe("<now> 与账本", () => {
     expect(d.wake.by).toBe("tidy");
     h.sit("Z1", "sleep");
     await h.ok("/v1/diary", { text: "今天三点醒了一次。", title: "三点" });
-    expect(logRun(h.store, d.wake.key, { session: "Z1", costUsd: 0.1, ms: 30_000 })).toEqual({ episodes: 0, shelf: 0, diary: 1, prompt: 0, schedule: 0 });
+    expect(logRun(h.store, d.wake.key, { session: "Z1", costUsd: 0.1, ms: 30_000 })).toEqual({ episodes: 0, shelf: 0, diary: 1, prompt: 0, schedule: 0, gist: 0 });
     const w = await h.get("/v1/wakes");
     expect(w.days).toEqual([{ day: "2026-10-15", woke: 1, delivered: 0, skipped: 0, by: { tidy: 1 }, costUsd: 0.1, empty: 0 }]);
     expect(w.entries[0].run.produced.diary).toBe(1);
