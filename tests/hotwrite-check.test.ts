@@ -118,6 +118,11 @@ describe("疑似", () => {
     expect(rules(one("我调用了 Read（{\"file\":\"a\"}），看了文件。"), "suspect")).toEqual(["P9"]);
   });
 
+  test("P10：项目的东西写进了记忆", () => {
+    for (const t of ["我改了 timeline，提交 1e0e5b1。", "我改了 src/mcp.ts 那里。", "我跑了测试，1175 pass。", "我把 LLM_MAX_RPM 调到 20。"]) expect(rules(one(t), "suspect")).toContain("P10");
+    for (const t of ["她说单字回复是心情不好。", "我认了错，2026 年的事。", "我觉得 decade 不对。"]) expect(rules(one(t), "suspect")).not.toContain("P10");
+  });
+
   test("felt 也一起看", () => {
     expect(rules(one("我回了她。", { felt: "她总是这样" }), "suspect")).toContain("P5");
   });

@@ -205,6 +205,9 @@ export function check(segment: Segment, submission: unknown, opts: CheckOptions 
     // P9：照搬模板
     const t = text.match(TEMPLATE);
     if (t) flag("P9", "疑似照搬了经历模板的句式", t[0]);
+    // P10：项目的东西（提交号、路径、测试计数、配置名）写进了记忆
+    const proj = text.match(/\b[0-9a-f]{7,12}\b(?=[^0-9a-z]|$)|[\w./-]+\.(?:ts|tsx|js|mjs|md|json|py|sh|db|yaml|yml)\b|\d+\s*(?:pass|个测试|项测试)|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/);
+    if (proj && /\d|[./_]/.test(proj[0]) && !/^\d+$/.test(proj[0])) flag("P10", "疑似把项目的东西写进了记忆（留在项目里）", proj[0]);
   });
 
   const uncited = segment.lines.filter((_, i) => !cited.has(i)).map((l) => `${l.archiveNo} ${[...l.text].slice(0, 40).join("")}`);
