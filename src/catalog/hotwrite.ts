@@ -65,6 +65,8 @@ export function segmentLines(store: EventStore, events: PsycheEvent[]): SegmentL
   const year = refYear(store);
   const lines: (SegmentLine & { id: string })[] = [];
   for (const ev of events) {
+    // 收尾那轮说的话（Soma 带 wrapUp）：是经历，但它就落在刚写完的那段之后，算进去就永远写不完
+    if (ev.kind === "message.out" && (ev.payload as { wrapUp?: boolean }).wrapUp) continue;
     const text = renderExperience(ev);
     if (text !== null) lines.push({ id: ev.id, archiveNo: displayArchiveNo(ev.archiveNo, year), at: ev.at, kind: ev.kind, text });
   }

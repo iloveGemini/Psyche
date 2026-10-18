@@ -34,8 +34,8 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "pin.changed":
       return null;
     case "message.out":
-      // 收尾那轮（Soma 在会话里推的 <soma-hotwrite>）说的话是对着写记忆的，不算新经历（原件照存）
-      if (p.wrapUp) return null;
+      // 收尾那轮（Soma 在会话里推的 <soma-hotwrite>）说的话照样是经历；只是不算没写的（hotwrite.ts segmentLines）
+      if (p.wrapUp) return `我写完记忆时说：${p.text}`;
       return `我${p.to ? `对${p.to}` : ""}说：${p.text}`;
     case "tool.call":
       // 写记忆本身：情节正文已经是 episode 了，参数里的全文不再抄一遍

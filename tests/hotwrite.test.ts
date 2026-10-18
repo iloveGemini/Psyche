@@ -219,14 +219,14 @@ describe("提示词", () => {
 });
 
 describe("写记忆本身怎么进经历", () => {
-  test("写记忆的调用、成功的返回、收尾那轮的话都不进经历（否则又成了没写的）；被拒的留着", async () => {
+  test("写记忆的调用、成功的返回不进经历（否则又成了没写的）；被拒的留着；收尾那轮的话是经历", async () => {
     const { renderExperience } = await import("../src/archive/render.ts");
     const ev = (kind: string, payload: object) => ({ kind, payload }) as Parameters<typeof renderExperience>[0];
     expect(renderExperience(ev("tool.call", { name: "mcp__psyche__hotwrite", callId: "1", args: { upTo: "x", entries: [{}, {}] } }))).toBeNull();
     expect(renderExperience(ev("tool.call", { name: "mcp__psyche__hotwrite_segment", callId: "2", args: {} }))).toBeNull();
     expect(renderExperience(ev("tool.result", { name: "mcp__psyche__hotwrite", callId: "1", ok: true, text: "记下了 2 条" }))).toBeNull();
     expect(renderExperience(ev("tool.result", { name: "mcp__psyche__hotwrite", callId: "1", ok: false, text: "Psyche 拒绝了（400）：cites 不在段里" }))).toContain("拒绝了");
-    expect(renderExperience(ev("message.out", { text: "写好了。", wrapUp: true }))).toBeNull();
+    expect(renderExperience(ev("message.out", { text: "写好了。", wrapUp: true }))).toBe("我写完记忆时说：写好了。");
     expect(renderExperience(ev("message.out", { text: "写好了。" }))).toBe("我说：写好了。");
     expect(renderExperience(ev("tool.result", { name: "mcp__psyche__hotwrite_segment", callId: "2", ok: true, text: "……" }))).toBeNull();
   });

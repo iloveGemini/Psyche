@@ -92,3 +92,12 @@ test("常驻区：超额整批拒（情节也不写）；不是书架条目拒�
   expect((await r2.json()).error).toContain("不是书架条目");
   expect(() => intake(h.store, { kind: "pin.changed", source: "soma", payload: { pin: [], unpin: [] } })).toThrow("口子");
 });
+
+test("收尾那轮说的话：进经历（recall 找得到），但不算没写的", async () => {
+  const h = setup();
+  expect((await h.hot({})).status).toBe(200);
+  intake(h.store, { kind: "message.out", source: "soma", payload: { text: "写好了，顺带说一句 cp 的文件报错了人", wrapUp: true } });
+  expect(readSegment(h.store, "S1").lines).toHaveLength(0);
+  const exp = h.store.db.query(`SELECT text FROM p_experience WHERE kind = 'message.out'`).all() as { text: string }[];
+  expect(exp.map((r) => r.text)).toEqual(["我写完记忆时说：写好了，顺带说一句 cp 的文件报错了人"]);
+});
