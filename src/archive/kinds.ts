@@ -79,6 +79,8 @@ export const KINDS: Record<string, KindSpec> = {
   "semantic.revised": { class: "self", required: { target: "string", why: "string" }, rels: ["evidence", "revises"] },
   "semantic.retired": { class: "self", required: { target: "string", why: "string" }, rels: ["evidence"] },
   "coldwrite.done": { class: "self", required: { upTo: "string", unjudged: "array" } },
+  // 常驻区（self/pinned.ts）：跟 hotwrite 一起写，pin / unpin 是书架条目的 root
+  "pin.changed": { class: "self", required: { pin: "array", unpin: "array" } },
 
   // ── 处境 ──
   situation: { class: "situation", required: { harness: "string" } }, // + model?, harnessPrompt?: hash, selfPromptVersion?

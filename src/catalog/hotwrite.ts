@@ -9,6 +9,7 @@ import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
 import { renderExperience } from "../archive/render.ts";
+import { checkPins, PinError } from "../self/pinned.ts";
 
 export class HotwriteError extends Error {}
 
@@ -121,7 +122,7 @@ function checkEntry(store: EventStore, e: unknown, i: number, session: string, c
 /** POST /v1/hotwrite：校验全过才写，一个事务，整批进或整批不进 */
 export function writeEpisodes(
   store: EventStore,
-  input: { session?: string; upTo?: unknown; entries?: unknown },
+  input: { session?: string; upTo?: unknown; entries?: unknown; pin?: unknown; unpin?: unknown },
   promptVersion: number,
 ): { episodes: { id: string; archiveNo: string }[] } {
   const session = resolveSession(store, typeof input.session === "string" ? input.session : undefined);
@@ -140,9 +141,16 @@ export function writeEpisodes(
   const entries = input.entries;
   if (!Array.isArray(entries) || !entries.length) throw new HotwriteError("entries 是空的");
   const checked = entries.map((e, i) => ({ entry: e as EntryInput, cited: checkEntry(store, e, i, session, cursor, upTo) }));
+  let pins: ReturnType<typeof checkPins> = null;
+  try {
+    pins = checkPins(store, input.pin, input.unpin);
+  } catch (e) {
+    if (e instanceof PinError) throw new HotwriteError(e.message);
+    throw e;
+  }
 
-  const written = store.db.transaction(() =>
-    checked.map(({ entry, cited }, i) =>
+  const written = store.db.transaction(() => {
+    const eps = checked.map(({ entry, cited }, i) =>
       store.append({
         kind: "episode",
         class: "self",
@@ -153,8 +161,10 @@ export function writeEpisodes(
         links: cited.map((e) => ({ to: e.id, rel: "cites" })),
         idem: idemOf(session, upTo, i + 1),
       }),
-    ),
-  )();
+    );
+    if (pins) store.append({ kind: "pin.changed", class: "self", source: "agent", payload: pins, idem: `${idemOf(session, upTo, 0)}:pin` });
+    return eps;
+  })();
   return out(written);
 }
 

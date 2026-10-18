@@ -11,6 +11,7 @@ import { displayArchiveNo } from "../store/events.ts";
 import { localDay, wallClock } from "../core/time.ts";
 import { cosine, fromBlob, syncVectors, vectorOf, type Embedder } from "../archive/vectors.ts";
 import { readShelf, renderEntry, trackedByPerson, type ShelfEntry } from "../reading/shelf.ts";
+import { pinnedRoots } from "../self/pinned.ts";
 import { NOT_MEMORY_TOOL } from "../archive/recall.ts";
 import { sessionOf } from "../archive/experience.ts";
 import { harnessOf } from "../catalog/coldwrite.ts";
@@ -340,8 +341,10 @@ export async function surface(
         parts,
       });
     }
+    // 钉在常驻区的已经每轮都在了，名额留给别的（self/pinned.ts）
+    const pinned = new Set(pinnedRoots(store));
     for (const e of cue.trim() ? readShelf(store.db) : []) {
-      if (block.has(e.root)) continue;
+      if (block.has(e.root) || pinned.has(e.root)) continue;
       const p: Record<string, number> = shelfScore(e, cueNow, qvec, model ? vectorOf(store.db, e.current, model) : null, c.now);
       if (here && evidencePlaces(c, e.root).has(here)) p.place = W.place;
       if (idle) p.lex = 0; // 空档只认它写的留意词

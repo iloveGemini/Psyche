@@ -30,6 +30,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
       const att = Array.isArray(p.attachments) ? p.attachments.map(ref).join("") : "";
       return `${p.from}：${p.text}${att}`;
     }
+    // 常驻区跟热写一起改，落在 upTo 之后；它在下一段的 <continuity> 里看得到（self/pinned.ts）
+    case "pin.changed":
+      return null;
     case "message.out":
       // 收尾那轮（Soma 在会话里推的 <soma-hotwrite>）说的话是对着写记忆的，不算新经历（原件照存）
       if (p.wrapUp) return null;

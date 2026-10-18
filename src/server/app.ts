@@ -20,6 +20,7 @@ import { renderNow } from "../archive/now.ts";
 import { asleepPlace, asleepTask } from "../asleep.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
+import { pinnedRoots, pinStatus } from "../self/pinned.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
 import { readShelf, renderEntry, shelfDetail } from "../reading/shelf.ts";
 import { computeHealth } from "../reading/health.ts";
@@ -133,7 +134,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.get("/v1/hotwrite", (c) => {
     const prompt = readPrompt("hot-write.md", promptsDir);
     const seg = readSegment(store, c.req.query("session") || undefined);
-    return c.json({ session: seg.session, upTo: seg.upTo, prompt: prompt.text, promptVersion: prompt.version, lines: seg.lines });
+    return c.json({ session: seg.session, upTo: seg.upTo, prompt: prompt.text, promptVersion: prompt.version, lines: seg.lines, pinned: pinStatus(store) });
   });
 
   app.post("/v1/hotwrite", async (c) => {
@@ -184,7 +185,8 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.get("/v1/shelf", (c) => {
     const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
     const entries = readShelf(store.db, { shelf: c.req.query("shelf") || undefined, q: c.req.query("q") || undefined });
-    return c.json({ entries: entries.map(({ root, current, ...e }) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year) })) });
+    const pinned = new Set(pinnedRoots(store));
+    return c.json({ entries: entries.map(({ root, current, ...e }) => ({ ...e, archiveNo: displayArchiveNo(e.archiveNo, year), ...(pinned.has(root) ? { pinned: true } : {}) })) });
   });
 
   app.get("/v1/shelf/:no", (c) => {

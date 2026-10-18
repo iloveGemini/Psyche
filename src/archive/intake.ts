@@ -25,7 +25,7 @@ export interface IntakeItem {
 }
 
 /** 带系统闸的记忆与自我：只能从热写 / 冷写 / 自我的口子进，不能绕过校验直接上报 */
-const GATED = /^(episode|semantic\..+|coldwrite\.done|prompt\.changed|named|schedule\.changed|diary|gist|due|thread\..+|mood\.set|percept\.noticed|played|stopped|playlist\.changed|listen\..+|ear\..+|notice|mail\.(in|out|read))$/;
+const GATED = /^(episode|semantic\..+|coldwrite\.done|pin\.changed|prompt\.changed|named|schedule\.changed|diary|gist|due|thread\..+|mood\.set|percept\.noticed|played|stopped|playlist\.changed|listen\..+|ear\..+|notice|mail\.(in|out|read))$/;
 
 export function intake(store: EventStore, item: IntakeItem): PsycheEvent {
   if (GATED.test(item.kind)) throw new IntakeError(`${item.kind} 要经热写 / 冷写 / 自我 / 作息 / 通道 / 线索卷的口子写，不走上报`);

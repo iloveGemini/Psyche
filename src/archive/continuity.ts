@@ -9,6 +9,7 @@ import type { EventStore } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
 import { currentEpisodes, monthOf, readGists, weekOf } from "../catalog/gist.ts";
 import { renderOpenThreads } from "../self/threads.ts";
+import { renderPinned } from "../self/pinned.ts";
 
 export const CONTINUITY = { days: 7, weeks: 4, months: 12, episodeChars: 6000 };
 
@@ -34,10 +35,13 @@ export function renderContinuity(store: EventStore, limits = CONTINUITY): string
   const dropped = recent.length - kept.length;
 
   const threads = renderOpenThreads(store);
-  if (!months.length && !weeks.length && !days.length && !kept.length && !threads) return null;
+  // 常驻区（self/pinned.ts）：它自己钉上的书架条目，每次醒来都在
+  const pinned = renderPinned(store);
+  if (!months.length && !weeks.length && !days.length && !kept.length && !threads && !pinned) return null;
   const today = localDay(store.now(), store.timeZone);
   const short = (key: string) => (key.startsWith(today.slice(0, 5)) ? key.slice(5) : key);
   return [
+    ...(pinned ? [pinned, ""] : []),
     ...(months.length ? ["【月】", ...months.map((g) => `${g.key}：${g.text}`), ""] : []),
     ...(weeks.length ? ["【周】", ...weeks.map((g) => `${g.key}：${g.text}`), ""] : []),
     ...(days.length ? ["【天】", ...days.map((g) => `${short(g.key)}：${g.text}`), ""] : []),

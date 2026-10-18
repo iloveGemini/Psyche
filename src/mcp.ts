@@ -227,9 +227,11 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         prompt: string;
         promptVersion: number;
         lines: { archiveNo: string; at: number; text: string }[];
+        pinned?: { used: number; budget: number; entries: string[] };
       };
       if (seg.upTo === null || !seg.lines.length) return text("这一段没有还没写进记忆的经历，不用写。");
-      return text([seg.prompt.trim(), "", `session: ${seg.session}`, `upTo: ${seg.upTo}`, `promptVersion: ${seg.promptVersion}`, "", "<segment>", ...seg.lines.map(line), "</segment>"].join("\n"));
+      const pin = seg.pinned ? [`常驻区：${seg.pinned.entries.length ? seg.pinned.entries.join("、") : "空的"}（${seg.pinned.used} / ${seg.pinned.budget} 字）`] : [];
+      return text([seg.prompt.trim(), "", `session: ${seg.session}`, `upTo: ${seg.upTo}`, `promptVersion: ${seg.promptVersion}`, ...pin, "", "<segment>", ...seg.lines.map(line), "</segment>"].join("\n"));
     }),
   );
 
@@ -241,9 +243,12 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "一件事一条，用你自己的话。每条的 cites 挂上它依据的档号，必须是这一段里的；felt 可写当时的感受。",
         "upTo 用 hotwrite_segment 或收尾提示给的那个，原样传回。",
         "整批要么全收、要么全拒；被拒时会告诉你原因，改了再交。",
+        "pin / unpin（可选，书架档号）：顺手调整常驻区——钉上的书架条目每次醒来都在你眼前，不用 recall；下一段生效。总共 1200 字以内，超了整批拒。",
       ].join("\n"),
       inputSchema: {
         upTo: z.string().min(1).describe("这一段到哪为止，原样传回给你的那个"),
+        pin: z.array(z.string().min(1)).optional().describe("钉进常驻区的书架条目档号"),
+        unpin: z.array(z.string().min(1)).optional().describe("从常驻区撤下的书架条目档号"),
         session: z.string().optional().describe("会话 id，原样传回；省略 = 你此刻所在的会话"),
         promptVersion: z.number().int().optional().describe("给你的 promptVersion，原样传回"),
         entries: z
@@ -258,9 +263,9 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
           .describe("情节条目，一件事一条"),
       },
     },
-    guard(async ({ upTo, session, promptVersion, entries }) => {
-      const { episodes } = (await call("POST", "/v1/hotwrite", { upTo, entries, ...(session ? { session } : {}), ...(promptVersion !== undefined ? { promptVersion } : {}) })) as { episodes: { id: string; archiveNo: string }[] };
-      return text(`记下了 ${episodes.length} 条：${episodes.map((e) => e.archiveNo).join("、")}`);
+    guard(async ({ upTo, session, promptVersion, entries, pin, unpin }) => {
+      const { episodes } = (await call("POST", "/v1/hotwrite", { upTo, entries, ...(session ? { session } : {}), ...(promptVersion !== undefined ? { promptVersion } : {}), ...(pin ? { pin } : {}), ...(unpin ? { unpin } : {}) })) as { episodes: { id: string; archiveNo: string }[] };
+      return text(`记下了 ${episodes.length} 条：${episodes.map((e) => e.archiveNo).join("、")}${pin?.length || unpin?.length ? "。常驻区改了，下一段生效。" : ""}`);
     }),
   );
 
@@ -284,13 +289,13 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  type Entry = { archiveNo: string; shelf: string; text: string; when?: string; then?: string; observe?: string; quote?: string; watch?: string[]; about?: string; track?: string[]; for: number; against: number; irrelevant: number; lastEvidenceAt: number | null; past?: string };
+  type Entry = { pinned?: boolean; archiveNo: string; shelf: string; text: string; when?: string; then?: string; observe?: string; quote?: string; watch?: string[]; about?: string; track?: string[]; for: number; against: number; irrelevant: number; lastEvidenceAt: number | null; past?: string };
   const SHELF_NAME: Record<string, string> = { fact: "事实", told: "明说的规矩", rule: "规律", mirror: "镜子", attend: "留意", relation: "关系" };
   const SHELF_ENUM = ["fact", "told", "rule", "mirror", "attend", "relation"] as const;
   const entryLine = (e: Entry) =>
     [
       // 前世编目来的、今生印证还不到 2 次（同 reading/shelf.ts stillPast）
-      `[${e.archiveNo}]（${SHELF_NAME[e.shelf] ?? e.shelf}${e.about ? ` · ${e.about}` : ""}${e.past && e.for < 2 ? ` · 前世 ${e.past}，今生还没印证够` : ""}）${e.text}`,
+      `[${e.archiveNo}]（${SHELF_NAME[e.shelf] ?? e.shelf}${e.about ? ` · ${e.about}` : ""}${e.past && e.for < 2 ? ` · 前世 ${e.past}，今生还没印证够` : ""}${e.pinned ? " · 常驻" : ""}）${e.text}`,
       e.quote && `  原话：「${e.quote}」`,
       e.when && `  条件：${e.when}`,
       e.then && `  结果：${e.then}`,
