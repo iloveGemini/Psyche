@@ -18,6 +18,7 @@ import { bornRecord, currentSelf, ownSince } from "../self/self.ts";
 import { alarmKey, dailyKey, firedKeys, getSettings, readSchedule, type Settings } from "./schedule.ts";
 import { factsNow, lastActive, mailCandidates, NOT_PLACE_SQL } from "../channel/inbox.ts";
 import { pendingGists } from "../catalog/gist.ts";
+import { coldCursor } from "../catalog/coldwrite.ts";
 
 export const AWAKE_MS = 30 * 60_000;
 export const IDLE_MS = 3 * 3600_000;
@@ -206,11 +207,13 @@ function tidyDue(store: EventStore): Candidate | null {
   const last = lastActivity(store);
   if (last !== null && store.now() - last < IDLE_MS) return null;
   const done = store.db.query(`SELECT id, at FROM events WHERE kind = 'coldwrite.done' AND fonds = '' ORDER BY id DESC LIMIT 1`).get() as { id: string; at: number } | null;
-  const eps = store.db.query(`SELECT COUNT(*) AS n, MAX(id) AS newest FROM events WHERE kind = 'episode' AND fonds = '' AND id > ?`).get(done?.id ?? "") as { n: number; newest: string | null };
+  // 按游标数（10-18 起材料分批：交了一批，游标之后的情节还在，接着整理）
+  const cursor = coldCursor(store);
+  const eps = store.db.query(`SELECT COUNT(*) AS n, MAX(id) AS newest FROM events WHERE kind = 'episode' AND fonds = '' AND id > ?`).get(cursor) as { n: number; newest: string | null };
   if (!eps.n) return null;
   const longAgo = !done || store.now() - done.at >= TIDY_GAP_MS;
   if (eps.n < TIDY_EPISODES && !longAgo) return null;
-  return { by: "tidy", key: `tidy:${eps.newest}` };
+  return { by: "tidy", key: `tidy:${cursor}:${eps.newest}` };
 }
 
 /** 该写梗概了：空闲 ≥ 3h，有过完了还没写的天 / 周 / 月（同一批只叫一次） */

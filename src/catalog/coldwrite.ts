@@ -40,6 +40,25 @@ function lastMaterialId(store: EventStore): string | null {
   return r.id;
 }
 
+/**
+ * 一批材料最多多少字（经历行的正文，10-18）：太长它一次看不完（10-18 凌晨八十多万字，工具结果超了上限被存成文件，
+ * 那一轮读不到 upTo，什么也交不了）。超了就在前一行截断，这批交了游标前移，剩下的下一批再给。至少给一行。
+ */
+export const COLD_BUDGET = 16_000;
+
+/** 这批到哪：从 since 往后按档号累计正文字数，不超过 budget；rest = 截下来留给下一批的行数 */
+export function batchEnd(store: EventStore, since: string, last: string, budget = COLD_BUDGET): { upTo: string; rest: number } {
+  const rows = store.db
+    .query(`SELECT event_id, length(text) AS n FROM p_experience WHERE covered = 0 AND class <> 'situation' AND event_id > ? AND event_id <= ? ORDER BY event_id`)
+    .all(since, last) as { event_id: string; n: number }[];
+  let sum = 0;
+  for (const [i, r] of rows.entries()) {
+    sum += r.n;
+    if (sum > budget && i > 0) return { upTo: rows[i - 1].event_id, rest: rows.length - i };
+  }
+  return { upTo: last, rest: 0 };
+}
+
 /** (since, upTo] 内的可见经历（有情节的给情节，没写情节的给原话），按会话分组，组按首行时间、行按 at 排 */
 /** 会话在哪个地方（处境的 harness） */
 export function harnessOf(store: EventStore, session: string | null): string | null {
@@ -100,10 +119,11 @@ export function candidatesFor(store: EventStore, shelf: ShelfEntry[], material: 
   return out;
 }
 
-export function readColdwrite(store: EventStore, storeOf?: (id: string) => EventStore | undefined) {
+export function readColdwrite(store: EventStore, storeOf?: (id: string) => EventStore | undefined, budget = COLD_BUDGET) {
   const since = coldCursor(store);
   const last = lastMaterialId(store);
-  const upTo = last && last > since ? last : null;
+  const batch = last && last > since ? batchEnd(store, since, last, budget) : null;
+  const upTo = batch?.upTo ?? null;
   const groups = upTo ? materialLines(store, since, upTo) : [];
   const shelf = readShelf(store.db);
   const year = refYear(store);
@@ -120,6 +140,8 @@ export function readColdwrite(store: EventStore, storeOf?: (id: string) => Event
   return {
     upTo,
     since,
+    /** 这批之后还有几行经历没给（下一批） */
+    rest: batch?.rest ?? 0,
     stats,
     feedback: upTo ? feedbackLines(store, since, upTo) : [],
     // 你记下的观察 + 后来同样的环境又出现时的事（m8.md §4.2）；被书架引过的不再摆

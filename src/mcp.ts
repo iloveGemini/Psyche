@@ -351,6 +351,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   async function coldwriteMaterial(): Promise<CallToolResult> {
     const m = (await call("GET", "/v1/coldwrite")) as {
       upTo: string | null;
+      rest?: number;
       prompt: string;
       promptVersion: number;
       material: { session: string | null; harness: string | null; lines: { archiveNo: string; at: number; text: string }[] }[];
@@ -367,6 +368,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "",
         `upTo: ${m.upTo}`,
         `promptVersion: ${m.promptVersion}`,
+        ...(m.rest ? [`（材料太多，这次只给到 upTo 为止；之后还有 ${m.rest} 行。交了这批，游标前移，再不带参数调一次 coldwrite 取下一批，或留到下次整理）`] : []),
         "",
         "<shelf>",
         ...(m.shelf.length ? m.shelf.map(entryLine) : ["（书架还是空的）"]),

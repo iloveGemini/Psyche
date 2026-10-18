@@ -7,7 +7,7 @@ import { Projections } from "../src/store/projections.ts";
 import { intake } from "../src/archive/intake.ts";
 import { experienceProjector } from "../src/archive/experience.ts";
 import { shelfProjector } from "../src/reading/shelf.ts";
-import { coldCursor } from "../src/catalog/coldwrite.ts";
+import { coldCursor, readColdwrite } from "../src/catalog/coldwrite.ts";
 import { createApp } from "../src/server/app.ts";
 
 const T = (s: string) => Date.parse(`${s}+08:00`);
@@ -76,6 +76,24 @@ describe("材料与游标", () => {
     expect(coldCursor(t.store)).toBe(e.b2.id);
     expect((await t.get()).upTo).toBeNull();
   });
+});
+
+test("材料太长分批：截在超额前一行，交了这批游标前移、下一批接着给", async () => {
+  const t = setup();
+  t.session("s1", "2026-10-13T10:00:00");
+  const evs = Array.from({ length: 5 }, (_, i) => t.her(`第${i}句`.padEnd(10, "嗯"), `2026-10-13T10:0${i}:00`));
+  const first = readColdwrite(t.store, undefined, 30);
+  expect(first.upTo).toBe(evs[1].id);
+  expect(first.rest).toBe(3);
+  expect(first.material.flatMap((g) => g.lines).map((l) => l.text)).toEqual(["阿禾：第0句嗯嗯嗯嗯嗯嗯嗯", "阿禾：第1句嗯嗯嗯嗯嗯嗯嗯"]);
+  expect((await t.post({ upTo: first.upTo, entries: [] })).status).toBe(200);
+  const second = readColdwrite(t.store, undefined, 30);
+  expect(second.material.flatMap((g) => g.lines)[0].text).toContain("第2句");
+  expect(second.rest).toBe(1);
+  // 一行就超额也给这一行
+  expect(readColdwrite(t.store, undefined, 1).material.flatMap((g) => g.lines)).toHaveLength(1);
+  // 缺省额度够，一次给完
+  expect((await t.get()).rest).toBe(0);
 });
 
 describe("系统闸", () => {

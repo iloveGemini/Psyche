@@ -55,8 +55,9 @@ function quietSince(h: ReturnType<typeof setup>, at: string) {
 /** 情节写到 S1 最后一条（没有要补写的），并整理过（没有要整理的） */
 function cover(h: ReturnType<typeof setup>) {
   const last = h.store.db.query(`SELECT MAX(id) AS id FROM events`).get() as { id: string };
-  h.store.append({ kind: "episode", class: "self", source: "agent", payload: { text: "写到这", session: "S1", upTo: last.id } });
-  h.store.append({ kind: "coldwrite.done", class: "self", source: "agent", payload: { upTo: last.id, unjudged: [] } });
+  const ep = h.store.append({ kind: "episode", class: "self", source: "agent", payload: { text: "写到这", session: "S1", upTo: last.id } });
+  // 整理的 upTo 是当时最后一条材料：情节也是材料
+  h.store.append({ kind: "coldwrite.done", class: "self", source: "agent", payload: { upTo: ep.id, unjudged: [] } });
 }
 
 describe("纯函数 decide", () => {

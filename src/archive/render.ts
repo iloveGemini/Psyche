@@ -31,11 +31,13 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `${p.from}：${p.text}${att}`;
     }
     case "message.out":
+      // 收尾那轮（Soma 在会话里推的 <soma-hotwrite>）说的话是对着写记忆的，不算新经历（原件照存）
+      if (p.wrapUp) return null;
       return `我${p.to ? `对${p.to}` : ""}说：${p.text}`;
     case "tool.call":
       // 写记忆本身：情节正文已经是 episode 了，参数里的全文不再抄一遍
-      if (/(^|__)hotwrite$/.test(p.name)) return `我把这一段写成了 ${Array.isArray(p.args?.entries) ? p.args.entries.length : "?"} 条情节`;
-      if (/(^|__)hotwrite_segment$/.test(p.name)) return "我翻出这一段，准备写进记忆";
+      // 写记忆本身（10-18）：写下的情节就是 episode，调用不再记成一行——否则它落在 upTo 之后，又成了「还没写进记忆的」
+      if (/(^|__)(hotwrite|hotwrite_segment)$/.test(p.name)) return null;
       // 10-18 起 coldwrite 不给 upTo 就是取材料（原 coldwrite_material）
       if (/(^|__)coldwrite$/.test(p.name) && !p.args?.upTo) return "我翻出上次整理之后的经历，准备整理";
       if (/(^|__)coldwrite$/.test(p.name)) return `我整理了一遍记忆，往书架写了 ${Array.isArray(p.args?.entries) ? p.args.entries.length : "?"} 条`;
@@ -66,8 +68,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads|look|set_mood|player|play|stop|playlist|listen|listen_with|notice|past_life)$/.test(p.name)) return null;
       // coldwrite 取材料那次（不给 upTo）：材料大，多半只留了角标；写回的回执短、有字
       if (/(^|__)coldwrite$/.test(p.name) && (typeof p.text !== "string" || p.text.includes("<material>") || p.text.startsWith("上次整理之后没有新的经历"))) return null;
-      // 认领 / 编目成了就有 fonds.claimed / semantic.proposed；被拒的留着（它看得到自己为什么被拒）
+      // 认领 / 编目 / 热写成了就有 fonds.claimed / semantic.proposed / episode；被拒的留着（它看得到自己为什么被拒）
       if (/^mcp__psyche__(claim_past|past_catalog)$/.test(p.name) && p.ok) return null;
+      if (/(^|__)hotwrite$/.test(p.name) && p.ok) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
       return null; // 屋子记下的变化不等于它经历过的；递到眼前的在 percept.noticed 里（m8.md §五）
