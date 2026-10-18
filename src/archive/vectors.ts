@@ -25,8 +25,28 @@ export function embedderFromEnv(env: Record<string, string | undefined> = proces
   const model = env.PSYCHE_EMBED_MODEL;
   const key = env.PSYCHE_EMBED_KEY ?? env[env.PSYCHE_EMBED_KEY_ENV ?? "SILICONFLOW_API_KEY"];
   if (!url || !model || !key) return undefined;
-  return openaiEmbedder(url, model, key);
+  return openaiEmbedder(url, model, key, fetchV4Fallback);
 }
+
+/**
+ * 连不上时改走 IPv4 再试一次（10-18：硅基流动的 IPv6 握手被重置，curl 会自己退回 IPv4，Bun 的 fetch 不会，
+ * 报成 unknown certificate verification error，浮现拖过 Soma 等 <now> 的 3 秒）。HTTP 层的错照常返回，不重试。
+ */
+export const fetchV4Fallback: typeof fetch = Object.assign(
+  async (input: string | URL | Request, init?: RequestInit) => {
+    try {
+      return await fetch(input, init);
+    } catch (err) {
+      const u = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      const ips = await import("node:dns").then((d) => d.promises.resolve4(u.hostname)).catch(() => [] as string[]);
+      if (!ips.length || u.protocol !== "https:") throw err;
+      const host = u.host;
+      u.hostname = ips[0];
+      return fetch(u, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers).entries()), host }, tls: { serverName: host.split(":")[0] } } as RequestInit);
+    }
+  },
+  { preconnect: fetch.preconnect },
+);
 
 export function openaiEmbedder(url: string, model: string, key: string, doFetch: typeof fetch = fetch): Embedder {
   const endpoint = `${url.replace(/\/+$/, "")}/embeddings`;
