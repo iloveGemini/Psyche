@@ -98,7 +98,32 @@ setInterval(() => {
     console.error(`屋子看一圈出错：${e instanceof Error ? e.message : e}`);
   }
 }, TICK_MS);
-Bun.serve({ port, hostname: "127.0.0.1", fetch: createHouse(apps, { tokens: houseTokens, handle: house.handle, agentTokens }) });
+const houseFetch = createHouse(apps, { tokens: houseTokens, handle: house.handle, agentTokens });
+// 慢在哪（10-18：Soma 等 <now> 偶尔超时）：超过 1 秒的请求、主线程被占住超过半秒，都记一行。
+const SLOW_MS = Number(process.env.PSYCHE_SLOW_MS) || 1_000;
+Bun.serve({
+  port,
+  hostname: "127.0.0.1",
+  async fetch(req) {
+    const t0 = performance.now();
+    try {
+      return await houseFetch(req);
+    } finally {
+      const ms = performance.now() - t0;
+      if (ms > SLOW_MS) {
+        const u = new URL(req.url);
+        console.warn(`[慢] ${req.method} ${u.pathname} ${req.headers.get("x-psyche-agent") ?? u.searchParams.get("agent") ?? ""} ${Math.round(ms)}ms`);
+      }
+    }
+  },
+});
+let lagAt = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  const lag = now - lagAt - 200;
+  if (lag > 500) console.warn(`[卡] 主线程被占了 ${Math.round(lag)}ms`);
+  lagAt = now;
+}, 200).unref?.();
 console.log(
   `Psyche 在 http://127.0.0.1:${port}，数据在 ${dataDir}，住着 ${residents.map((r) => r.id).join("、") || "（没人）"}${embedder ? `，向量：${embedder.model}` : "，没配向量"}`,
 );

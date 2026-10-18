@@ -31,18 +31,35 @@ export function embedderFromEnv(env: Record<string, string | undefined> = proces
 /**
  * 连不上时改走 IPv4 再试一次（10-18：硅基流动的 IPv6 握手被重置，curl 会自己退回 IPv4，Bun 的 fetch 不会，
  * 报成 unknown certificate verification error，浮现拖过 Soma 等 <now> 的 3 秒）。HTTP 层的错照常返回，不重试。
+ * 退回过一次，之后半小时直接走 IPv4：每次先等 IPv6 失败要好几秒（10-18 测到冷连接 7.6 秒），<now> 照样超时。
  */
+const V4_STICKY_MS = 30 * 60_000;
+const v4Until = new Map<string, number>();
+
+async function viaV4(u: URL, init?: RequestInit): Promise<Response | undefined> {
+  const ips = await import("node:dns").then((d) => d.promises.resolve4(u.hostname)).catch(() => [] as string[]);
+  if (!ips.length || u.protocol !== "https:") return undefined;
+  const host = u.host;
+  const v4 = new URL(u);
+  v4.hostname = ips[0];
+  return fetch(v4, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers).entries()), host }, tls: { serverName: host.split(":")[0] } } as RequestInit);
+}
+
 export const fetchV4Fallback: typeof fetch = Object.assign(
   async (input: string | URL | Request, init?: RequestInit) => {
+    const u = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+    if ((v4Until.get(u.hostname) ?? 0) > Date.now()) {
+      const res = await viaV4(u, init).catch(() => undefined);
+      if (res) return res;
+      v4Until.delete(u.hostname);
+    }
     try {
       return await fetch(input, init);
     } catch (err) {
-      const u = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
-      const ips = await import("node:dns").then((d) => d.promises.resolve4(u.hostname)).catch(() => [] as string[]);
-      if (!ips.length || u.protocol !== "https:") throw err;
-      const host = u.host;
-      u.hostname = ips[0];
-      return fetch(u, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers).entries()), host }, tls: { serverName: host.split(":")[0] } } as RequestInit);
+      const res = await viaV4(u, init);
+      if (!res) throw err;
+      v4Until.set(u.hostname, Date.now() + V4_STICKY_MS);
+      return res;
     }
   },
   { preconnect: fetch.preconnect },
