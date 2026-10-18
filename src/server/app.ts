@@ -230,14 +230,14 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
   // <now>（m1 / m5 / m6 / m8 拼起来的）：Soma 每轮取一次；睡着那段的第一条也用它
-  const nowText = async (session: string | undefined, q: { muted?: string; ctx?: string; wrapAt?: string; q5h?: string; q5hReset?: string; q7d?: string; q7dReset?: string } = {}) => {
+  const nowText = async (session: string | undefined, q: { muted?: string; agendas?: string; ctx?: string; wrapAt?: string; q5h?: string; q5hReset?: string; q7d?: string; q7dReset?: string } = {}) => {
     // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）；来信 / 交接信只报有信（m6.md §二）
     const here = placeOf(store, session);
     const facts = factsNow(store, here);
     const notices = noticeMail(store, here, facts);
     const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
     const mail = mailStateLines(store, here, facts, notices);
-    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store), mutedLine(q.muted)]
+    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store), mutedLine(q.muted), agendaLines(q.agendas)]
       .filter(Boolean)
       .join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
@@ -448,6 +448,35 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.get("/v1/syslog", (c) => c.json({ entries: store.readSyslog({ kind: c.req.query("kind"), limit: num(c.req.query("limit")) }) }));
 
   return app;
+}
+
+/**
+ * 群里的议题（Soma 每轮带来，Soma 101 10-18）：住户自己开的讨论，招人时只在这里看得到，不叫醒谁。
+ * 是此刻的状态，每轮都报，不记经历。
+ */
+function agendaLines(raw: string | undefined): string | null {
+  let list: unknown;
+  try {
+    list = raw ? JSON.parse(raw) : [];
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(list)) return null;
+  const hhmm = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  const lines = list
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === "object" && typeof (a as { title?: unknown }).title === "string")
+    .map((a) => {
+      const joined = Array.isArray(a.joined) ? a.joined.map(String) : [];
+      const head = `《${a.room}》里 ${a.by} 开的《${a.title}》`;
+      if (a.state === "running") return `- ${head}正在开（第 ${a.round ?? 0}/${a.rounds} 轮，${joined.join("、")}）${a.mine ? "，轮到你时会叫你" : ""}`;
+      const left = Math.max(0, Number(a.need) - joined.length);
+      const about = typeof a.about === "string" && a.about ? `：${a.about}` : "";
+      return `- ${head}${about}，在招人：已报名 ${joined.join("、")}，还差 ${left} 人，${hhmm(String(a.until))} 前${a.mine ? "（你报名了）" : `——想来就 agenda join ${a.id}`}`;
+    });
+  return lines.length ? `议题：\n${lines.join("\n")}` : null;
 }
 
 /**
