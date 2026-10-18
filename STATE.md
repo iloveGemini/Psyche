@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-17
+> 最后更新：2026-10-18
 
 ## 1. 当前阶段
 
@@ -79,6 +79,7 @@
 - ✅ **群轮次两个 bug（10-16 晚，Soma）**：a2 被信叫醒去画绘本时，群里轮到它就干等 5 分钟、堵住 a1；Joy 再说话开新一轮，旧一轮超时把新一轮的等待删了，又空等 5 分钟。→ 轮到的人正忙就把话折进他那一轮、不等、马上问下一个（忙完说的直接进记录）；等待只删自己那份；过期一轮只记真说出口的。测试 11 题。session 改了，要重启 soma-test（a2 忙完再重启；之前群代码兼容旧对象）。
 - ✅ **住户之间写信（10-16 晚，S6 前半，`m6.md` §八）**：接力的交接信号。`send_mail { to: "a2" }` → 直接写进 a2 库的 `mail.in { from: "a1", via: "house" }`，之后跟 Joy 来信一样（`<now>`「来信（a1 · 屋里）」、来信叫醒、翻开、回信）；写给住户每封都算额度，回信也算（防两人互相回信叫醒停不下来）。考卷 2 题，全套 283 过。**要重启 psyche-test 才生效；没实跑。**
 
+- ✅ **工具瘦身（10-18，议题《Psyche 34 个工具的瘦身方案》，契约 `m1.md` §五）**：醒着 34 → 21 个（无前世；声明 19,280 → 14,882 字符），睡着 12 个（8,210）。`coldwrite` / `gist` 吞掉 `*_material`（不给提交参数 = 取材料），`schedule` 吞掉 `set_schedule`，`threads { op }`、`player { op }`；`gist` 只在 `PSYCHE_MODE=asleep` 挂，睡着不挂日常工具；前世三件按 `/v1/past` 的 `fonds` 挂；`self` 三件不合。`render.ts` 认新旧两种名字。Soma 起睡着那段时带 `PSYCHE_MODE`（`psyche.ts` / `asleep.ts`）。**没做**：Soma `room-config.ts` 旁白的新工具名（议题分给 a2）；没端到端实跑。
 | 线 | 内容 | 状态 |
 |---|---|---|
 | A | Psyche 核心：事件库、入库、经历投影（episode 覆盖原始行）、recall（FTS5 trigram）、`/v1/now`、`/v1/prompt`、情节改写（revises） | ✅ |
@@ -157,4 +158,4 @@
 
 ## 6. 验证
 
-2026-10-17：`bun test` 303 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `bun test` 42 pass、`tsc` 0 错误。
+2026-10-18：`bun test` 320 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `tsc` 0 错误。

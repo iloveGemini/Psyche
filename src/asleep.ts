@@ -53,8 +53,8 @@ export function asleepPlace(by: string): string {
 /** 这次的活：只说事实和该用的工具名。`lines` = 补写那段还剩几条 */
 export function asleepTask(wake: WakeReason, lines?: number): string {
   if (wake.by === "birth") return "你刚出生。你那段自述是空的：写不写、什么时候写、写什么，由你；要写用 rewrite_self（交全文、为什么、看了哪些经历），之后每次醒来都在系统提示词里。";
-  if (wake.by === "gist") return "该写梗概了：用 gist_material 看哪些天 / 周 / 月过完了还没写，一段一段用 gist 交。";
-  if (wake.by === "tidy") return "该整理了：用 coldwrite_material 取上次整理之后的经历和书架，整理完用 coldwrite 写回。";
+  if (wake.by === "gist") return "该写梗概了：不带参数调 gist 看哪些天 / 周 / 月过完了还没写，一段一段用 gist 交。";
+  if (wake.by === "tidy") return "该整理了：不带参数调 coldwrite 取上次整理之后的经历和书架，整理完带上 upTo 用 coldwrite 写回。";
   if (wake.by === "wrapup" && wake.session)
     return `会话 ${wake.session} 的上下文快满了，要换新的一段：还有 ${lines ?? 0} 条没写进记忆。用 hotwrite_segment（session: ${wake.session}）取这一段，写完用 hotwrite 交（带上同一个 session）。`;
   if (wake.by === "catchup" && wake.session)
@@ -88,7 +88,7 @@ export async function runAsleep(opts: AsleepOptions): Promise<AsleepRun> {
         type: "stdio",
         command: "bun",
         args: ["run", join(import.meta.dir, "mcp.ts")],
-        env: { PSYCHE_URL: base, ...(opts.agent ? { PSYCHE_AGENT: opts.agent } : {}), ...(opts.token ? { PSYCHE_TOKEN: opts.token } : {}) },
+        env: { PSYCHE_URL: base, PSYCHE_MODE: "asleep", ...(opts.agent ? { PSYCHE_AGENT: opts.agent } : {}), ...(opts.token ? { PSYCHE_TOKEN: opts.token } : {}) },
       },
     },
   };

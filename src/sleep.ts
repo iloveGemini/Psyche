@@ -49,11 +49,11 @@ if (material.upTo === null) {
         type: "stdio",
         command: "bun",
         args: ["run", join(import.meta.dir, "mcp.ts")],
-        env: { PSYCHE_URL: base, ...(agent ? { PSYCHE_AGENT: agent } : {}), ...(token ? { PSYCHE_TOKEN: token } : {}) },
+        env: { PSYCHE_URL: base, PSYCHE_MODE: "asleep", ...(agent ? { PSYCHE_AGENT: agent } : {}), ...(token ? { PSYCHE_TOKEN: token } : {}) },
       },
     },
   };
-  const tools = ["coldwrite_material", "coldwrite", "shelf", "recall", "detail"].map((t) => `mcp__psyche__${t}`);
+  const tools = ["coldwrite", "shelf", "recall", "detail"].map((t) => `mcp__psyche__${t}`);
   const cwd = mkdtempSync(join(tmpdir(), "psyche-sleep-"));
   const proc = Bun.spawn(
     [
@@ -65,7 +65,7 @@ if (material.upTo === null) {
       "--setting-sources", "project", "--no-session-persistence",
       "--output-format", "stream-json", "--verbose",
     ],
-    { cwd, stdin: new TextEncoder().encode("你睡了。用 coldwrite_material 取上次整理之后的经历和书架，整理完用 coldwrite 写回。"), stdout: "pipe", stderr: "inherit" },
+    { cwd, stdin: new TextEncoder().encode("你睡了。不带参数调 coldwrite 取上次整理之后的经历和书架，整理完带上 upTo 用 coldwrite 写回。"), stdout: "pipe", stderr: "inherit" },
   );
   const out = await new Response(proc.stdout).text();
   await proc.exited;

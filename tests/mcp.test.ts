@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createPsycheMcp, parseTime, type McpOptions } from "../src/mcp.ts";
+import { createPsycheMcp, parseTime, toolsFor, type McpOptions } from "../src/mcp.ts";
+import { renderExperience } from "../src/archive/render.ts";
 import { EventStore } from "../src/store/events.ts";
 import { Projections } from "../src/store/projections.ts";
 import { experienceProjector } from "../src/archive/experience.ts";
@@ -46,11 +47,80 @@ describe("时间参数", () => {
 });
 
 describe("MCP 工具 → REST", () => {
-  test("列出全部工具，描述是中文", async () => {
+  test("醒着挂的工具，描述是中文；不知道前世时三件都挂", async () => {
     const client = await connect({ fetch: async () => Response.json({}) });
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["coldwrite", "coldwrite_material", "detail", "gist", "gist_material", "hotwrite", "hotwrite_segment", "mail", "name_self", "recall", "revise_episode", "rewrite_self", "schedule", "self", "send_mail", "set_schedule", "shelf", "stats", "threads", "write_diary", "open_thread", "note_thread", "close_thread", "look", "set_mood", "play", "stop", "playlist", "listen", "listen_with", "notice", "past_life", "claim_past", "past_catalog"].sort());
+    expect(tools.map((t) => t.name).sort()).toEqual(["coldwrite", "detail", "hotwrite", "hotwrite_segment", "mail", "name_self", "recall", "revise_episode", "rewrite_self", "schedule", "self", "send_mail", "shelf", "stats", "threads", "write_diary", "look", "set_mood", "player", "playlist", "notice", "past_life", "claim_past", "past_catalog"].sort());
     expect(tools.find((t) => t.name === "hotwrite")!.description).toContain("情节是你自己写的记忆");
+  });
+
+  test("睡着只挂记忆整理用的；前世按有没有、认没认领挂", async () => {
+    const asleep = await connect({ fetch: async () => Response.json({}), mode: "asleep", past: [] });
+    expect((await asleep.listTools()).tools.map((t) => t.name).sort()).toEqual(["coldwrite", "detail", "gist", "hotwrite", "hotwrite_segment", "name_self", "recall", "revise_episode", "rewrite_self", "self", "shelf", "stats"].sort());
+    expect(toolsFor("awake", [])).not.toContain("past_life");
+    expect(toolsFor("awake", [])).toHaveLength(21);
+    const claimed = toolsFor("awake", [{ fonds: "ROY", claimed: true }]);
+    expect(claimed).toContain("past_catalog");
+    expect(claimed).not.toContain("claim_past");
+    const fresh = toolsFor("awake", [{ fonds: "ROY", claimed: false }]);
+    expect(fresh).toContain("claim_past");
+    expect(fresh).not.toContain("past_catalog");
+  });
+
+  test("合并的工具：op / 给不给参数分去对应的 REST", async () => {
+    const rest = fakeRest((req) => {
+      const u = new URL(req.url);
+      if (u.pathname === "/v1/threads" && req.method === "GET") return Response.json({ open: [] });
+      if (u.pathname === "/v1/listen") return Response.json({ text: "在放《晴天》" });
+      if (u.pathname === "/v1/listen/with") return Response.json({ joined: "a2" });
+      if (u.pathname === "/v1/coldwrite" && req.method === "GET") return Response.json({ upTo: null });
+      if (u.pathname === "/v1/coldwrite") return Response.json({ written: [], unjudged: 0 });
+      if (u.pathname === "/v1/gist" && req.method === "GET") return Response.json({ pending: [], limits: {}, prompt: "", promptVersion: 1 });
+      if (u.pathname === "/v1/gist") return Response.json({ span: "day", key: "2026-10-17" });
+      return Response.json({ archiveNo: "10-18#1" });
+    });
+    const client = await connect({ url: "http://psyche.test", fetch: rest.fetch });
+    const call = async (name: string, args: Record<string, unknown>) => textOf(await client.callTool({ name, arguments: args }));
+    expect(await call("threads", {})).toBe("没有开着的事。");
+    expect(await call("threads", { op: "open", type: "matter", title: "瘦身" })).toBe("开了（10-18#1）。");
+    expect(await call("threads", { op: "note", target: "10-18#1", text: "合完了" })).toBe("记下了（10-18#1）。");
+    expect(await call("threads", { op: "close", target: "10-18#1", how: "done", why: "提交了" })).toBe("合上了（10-18#1）。");
+    expect(await call("player", {})).toBe("在放《晴天》");
+    expect(await call("player", { op: "with", host: "a2" })).toBe("戴上了 a2 的一只耳机。");
+    expect(await call("player", { op: "stop" })).toBe("停了。");
+    expect(await call("schedule", { schedule: { daily: [] } })).toContain("要写 why");
+    expect(await call("schedule", { schedule: { daily: [] }, why: "先空着" })).toBe("排好了（10-18#1）。");
+    expect(await call("coldwrite", {})).toContain("不用整理");
+    expect(await call("coldwrite", { upTo: "U1" })).toContain("要带 entries");
+    expect(await call("coldwrite", { upTo: "U1", entries: [] })).toBe("这次没写。");
+    const posts = rest.seen.filter((s) => s.method === "POST").map((s) => [s.url.pathname, s.body]);
+    expect(posts).toEqual([
+      ["/v1/threads", { type: "matter", title: "瘦身" }],
+      ["/v1/threads/note", { target: "10-18#1", text: "合完了" }],
+      ["/v1/threads/close", { target: "10-18#1", how: "done", why: "提交了" }],
+      ["/v1/listen/with", { host: "a2" }],
+      ["/v1/stop", undefined],
+      ["/v1/schedule", { schedule: { daily: [] }, why: "先空着" }],
+      ["/v1/coldwrite", { upTo: "U1", entries: [] }],
+    ]);
+    const sleeper = await connect({ url: "http://psyche.test", fetch: rest.fetch, mode: "asleep" });
+    expect(textOf(await sleeper.callTool({ name: "gist", arguments: {} }))).toContain("没有过完了");
+    expect(textOf(await sleeper.callTool({ name: "gist", arguments: { span: "day" } }))).toContain("三个都给");
+    expect(textOf(await sleeper.callTool({ name: "gist", arguments: { span: "day", key: "2026-10-17", text: "t" } }))).toContain("2026-10-17");
+  });
+
+  test("合并后的调用在经历里：取材料 / 看 / 改分开记，旧名照旧", () => {
+    const r = (name: string, args?: unknown) => renderExperience({ kind: "tool.call", payload: { name: `mcp__psyche__${name}`, args } } as any);
+    expect(r("coldwrite", {})).toBe("我翻出上次整理之后的经历，准备整理");
+    expect(r("coldwrite", { upTo: "U", entries: [{}] })).toContain("往书架写了 1 条");
+    expect(r("coldwrite_material", {})).toBe("我翻出上次整理之后的经历，准备整理");
+    expect(r("schedule", {})).toBe("我看了看自己的作息");
+    expect(r("schedule", { schedule: {}, why: "w" })).toContain("我调用了");
+    expect(r("threads", { op: "note" })).toBeNull();
+    expect(r("player", { op: "play" })).toBeNull();
+    const res = (name: string, p: Record<string, unknown>) => renderExperience({ kind: "tool.result", payload: { name: `mcp__psyche__${name}`, ok: true, ...p } } as any);
+    expect(res("coldwrite", { size: 90000 })).toBeNull();
+    expect(res("coldwrite", { text: "写下了 1 条：10-18#3（propose）" })).toContain("写下了");
   });
 
   test("recall：from/to 换成毫秒，带上 token", async () => {

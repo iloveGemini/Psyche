@@ -133,6 +133,7 @@ test("经历里的痕：三种事件各一行，工具调用不重抄", async ()
   await h.ok("/v1/threads/note", { target: a.archiveNo, text: "写了一半" });
   await h.ok("/v1/threads/close", { target: a.archiveNo, how: "done", why: "交了" });
   intake(h.store, { kind: "tool.call", source: "soma", payload: { name: "mcp__psyche__open_thread", callId: "c1", args: { title: "写完契约" } } });
+  intake(h.store, { kind: "tool.call", source: "soma", payload: { name: "mcp__psyche__threads", callId: "c3", args: { op: "close", target: a.archiveNo, how: "done", why: "交了" } } });
   intake(h.store, { kind: "tool.call", source: "soma", payload: { name: "mcp__psyche__threads", callId: "c2" } });
   const lines = readExperience(h.store.db, {}).map((l) => l.text);
   expect(lines).toEqual([

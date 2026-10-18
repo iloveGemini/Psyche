@@ -36,16 +36,19 @@ export function renderExperience(ev: PsycheEvent): string | null {
       // 写记忆本身：情节正文已经是 episode 了，参数里的全文不再抄一遍
       if (/(^|__)hotwrite$/.test(p.name)) return `我把这一段写成了 ${Array.isArray(p.args?.entries) ? p.args.entries.length : "?"} 条情节`;
       if (/(^|__)hotwrite_segment$/.test(p.name)) return "我翻出这一段，准备写进记忆";
+      // 10-18 起 coldwrite 不给 upTo 就是取材料（原 coldwrite_material）
+      if (/(^|__)coldwrite$/.test(p.name) && !p.args?.upTo) return "我翻出上次整理之后的经历，准备整理";
       if (/(^|__)coldwrite$/.test(p.name)) return `我整理了一遍记忆，往书架写了 ${Array.isArray(p.args?.entries) ? p.args.entries.length : "?"} 条`;
       if (/(^|__)coldwrite_material$/.test(p.name)) return "我翻出上次整理之后的经历，准备整理";
       if (/^mcp__psyche__shelf$/.test(p.name)) return "我看了看自己的书架";
       if (/^mcp__psyche__self$/.test(p.name)) return "我看了看自己那段自述";
-      if (/^mcp__psyche__schedule$/.test(p.name)) return "我看了看自己的作息";
-      if (/^mcp__psyche__threads$/.test(p.name)) return "我看了看还开着的事";
-      // 开卷 / 记一笔 / 合卷本身就是 thread.* 事件，调用不再抄一遍
+      // 10-18 起 schedule 给了 schedule 就是排（原 set_schedule，照旧原样记参数）
+      if (/^mcp__psyche__schedule$/.test(p.name) && !p.args?.schedule) return "我看了看自己的作息";
+      // 10-18 起 threads 带 op；开卷 / 记一笔 / 合卷本身就是 thread.* 事件，调用不再抄一遍
+      if (/^mcp__psyche__threads$/.test(p.name)) return !p.args?.op || p.args.op === "list" ? "我看了看还开着的事" : null;
       if (/^mcp__psyche__(open|note|close)_thread$/.test(p.name)) return null;
       // 看到的、挂上的个签本身就是 percept.noticed / mood.set
-      if (/^mcp__psyche__(look|set_mood|play|stop|playlist|listen|listen_with|notice)$/.test(p.name)) return null;
+      if (/^mcp__psyche__(look|set_mood|player|play|stop|playlist|listen|listen_with|notice)$/.test(p.name)) return null;
       // 日记全文已在 diary 事件里（资料库）
       if (/^mcp__psyche__write_diary$/.test(p.name)) return "我写了一篇日记";
       // 自述全文已在 prompt.changed 里（资料库），调用不再抄一遍
@@ -60,7 +63,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我调用了 ${p.name}${p.args !== undefined ? `（${cut(JSON.stringify(p.args), 160)}）` : ref(p.argsRef)}`;
     case "tool.result":
       // 就是这一段本身 / 翻出来的旧记忆：再记一遍，下次 recall 会把它当新的又翻出来
-      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads|look|set_mood|play|stop|playlist|listen|listen_with|notice|past_life)$/.test(p.name)) return null;
+      if (/(^|__)(hotwrite_segment|coldwrite_material)$/.test(p.name) || /^mcp__psyche__(recall|detail|shelf|self|mail|threads|look|set_mood|player|play|stop|playlist|listen|listen_with|notice|past_life)$/.test(p.name)) return null;
+      // coldwrite 取材料那次（不给 upTo）：材料大，多半只留了角标；写回的回执短、有字
+      if (/(^|__)coldwrite$/.test(p.name) && (typeof p.text !== "string" || p.text.includes("<material>") || p.text.startsWith("上次整理之后没有新的经历"))) return null;
       // 认领 / 编目成了就有 fonds.claimed / semantic.proposed；被拒的留着（它看得到自己为什么被拒）
       if (/^mcp__psyche__(claim_past|past_catalog)$/.test(p.name) && p.ok) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;

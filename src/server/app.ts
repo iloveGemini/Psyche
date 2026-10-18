@@ -42,7 +42,7 @@ import { NoticeError, writeNotice } from "../perception/env.ts";
 import { deliverBody } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
-import { claimPast, PastError, pastBirthLines, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
+import { claimedFonds, claimPast, PastError, pastBirthLines, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
 import { writePastCatalog } from "../catalog/past-catalog.ts";
 
 export interface AppDeps {
@@ -353,7 +353,12 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.get("/v1/past", (c) => {
     const q = c.req.query();
     const view = (q.view || (q.fonds ? "overview" : "list")) as PastView["view"];
-    return c.json({ text: readPast(store, past, { view, fonds: q.fonds, key: q.key, q: q.q, id: q.id, page: num(q.page) }) });
+    // fonds：有哪几份、认没认领（MCP 启动时按这个决定挂不挂前世三件）
+    const claimed = new Set(claimedFonds(store));
+    return c.json({
+      text: readPast(store, past, { view, fonds: q.fonds, key: q.key, q: q.q, id: q.id, page: num(q.page) }),
+      fonds: (past ?? []).map((p) => ({ fonds: p.fonds, claimed: claimed.has(p.fonds) })),
+    });
   });
   app.post("/v1/past/claim", async (c) => {
     const r = claimPast(store, past, (await obj(c)) as Record<string, unknown>);

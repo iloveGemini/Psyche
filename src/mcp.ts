@@ -6,34 +6,30 @@
  *   hotwrite_segment  取还没写进记忆的这一段 → GET  /v1/hotwrite
  *   hotwrite          把这一段写成情节       → POST /v1/hotwrite
  *   revise_episode    改写自己的一条情节     → POST /v1/episodes/revise
- *   coldwrite_material 睡前整理的材料        → GET  /v1/coldwrite
- *   coldwrite         写回书架               → POST /v1/coldwrite
- *   gist_material     过完了还没写梗概的段     → GET  /v1/gist
- *   gist              交一段梗概             → POST /v1/gist
+ *   coldwrite         不给 upTo 取整理材料 / 给了写回书架 → GET/POST /v1/coldwrite
+ *   gist              不给 span 取梗概材料 / 给了交一段（只在睡着时挂） → GET/POST /v1/gist
  *   shelf             看书架                 → GET  /v1/shelf
  *   stats             看互动统计（全表）      → GET  /v1/stats
  *   self              看自己：名字、自述      → GET  /v1/self
  *   rewrite_self      改自己那段提示词        → POST /v1/self/prompt
  *   name_self         取名 / 改名             → POST /v1/self/name
- *   schedule          看作息                  → GET  /v1/schedule
- *   set_schedule      排作息（全量替换）       → POST /v1/schedule
+ *   schedule          不给 schedule 看作息 / 给了排（全量替换） → GET/POST /v1/schedule
  *   write_diary       写日记                  → POST /v1/diary
- *   threads           看还开着的事             → GET  /v1/threads
- *   open_thread       开一卷                  → POST /v1/threads
- *   note_thread       在一卷上记一笔           → POST /v1/threads/note
- *   close_thread      合上一卷                → POST /v1/threads/close
+ *   threads           还开着的事（op：list 看 / open 开 / note 记 / close 合） → /v1/threads…
  *   look              看一眼屋里              → GET  /v1/look
  *   set_mood          挂心情个签              → POST /v1/mood
- *   play / stop       放歌 / 停               → POST /v1/play、/v1/stop
+ *   player            放歌（op：play 放 / stop 停 / listen 听 / with 戴谁的耳机） → /v1/play、/v1/stop、/v1/listen…
  *   playlist          歌单（看 / 建 / 加 / 删） → GET/POST /v1/playlist
- *   listen            听一下此刻在放的         → GET  /v1/listen
- *   listen_with       戴上 / 摘下谁的一只耳机   → POST /v1/listen/with
  *   notice            注意到                  → POST /v1/notice
  *   mail              看信：来往的信 / 翻开    → GET  /v1/mail、POST /v1/mail/open
  *   send_mail         写信：给 Joy / 屋里的住户 / 交接信 → POST /v1/mail/out
  *   past_life         翻前世卷宗（不认领也能） → GET  /v1/past
  *   claim_past        认领一份前世            → POST /v1/past/claim
  *   past_catalog      前世编目：挑确定的上书架  → POST /v1/past/catalog
+ *
+ * 挂哪些（10-18 议题《Psyche 34 个工具的瘦身方案》，toolsFor）：醒着不挂 gist；睡着（PSYCHE_MODE=asleep：
+ * 补写、整理、梗概、出生、换段收尾）只挂记忆整理用的；没有前世卷宗不挂前世三件，都认领了不挂 claim_past，
+ * 一份都没认领不挂 past_catalog。旧工具名（coldwrite_material、open_thread、play…）的历史记录照旧渲染（render.ts）。
  *
  * 这里只做参数转换和排版，不做判断：校验、拒收都在 Psyche 那边。
  * REST 出错时把错误信息原样交回给它——它要看得懂自己为什么被拒，改了再交。
@@ -43,6 +39,7 @@
  *   PSYCHE_AGENT  他是谁（Psyche 住着不止一个人时必须有，server/house.ts）
  *   PSYCHE_TOKEN  REST 鉴权（Psyche 没配 token 就不用）
  *   PSYCHE_TZ     不带时区的日期/时间按哪个时区理解（缺省 Asia/Shanghai，与档号切日一致）
+ *   PSYCHE_MODE   asleep = 睡着的那段（只挂记忆整理用的工具）；缺省醒着
  */
 import { parseTime as parseCoreTime } from "./core/time.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -57,8 +54,26 @@ export interface McpOptions {
   agent?: string;
   token?: string;
   timeZone?: string;
+  /** 醒着 / 睡着：挂的工具不一样（toolsFor） */
+  mode?: Mode;
+  /** 有哪些前世卷宗、认没认领；不给 = 不知道，前世三件都挂 */
+  past?: { fonds: string; claimed: boolean }[];
   /** 测试时换成假的 */
   fetch?: (req: Request) => Promise<Response>;
+}
+
+export type Mode = "awake" | "asleep";
+
+const ALWAYS = ["recall", "detail", "hotwrite_segment", "hotwrite", "revise_episode", "coldwrite", "shelf", "stats", "self", "rewrite_self", "name_self"];
+const AWAKE = ["schedule", "write_diary", "threads", "look", "set_mood", "player", "playlist", "notice", "mail", "send_mail"];
+
+/** 这次挂哪些工具（见文件头） */
+export function toolsFor(mode: Mode = "awake", past?: { fonds: string; claimed: boolean }[]): string[] {
+  const out = [...ALWAYS, ...(mode === "asleep" ? ["gist"] : AWAKE)];
+  if (!past || past.length) out.push("past_life");
+  if (!past || past.some((p) => !p.claimed)) out.push("claim_past");
+  if (!past || past.some((p) => p.claimed)) out.push("past_catalog");
+  return out;
 }
 
 // ── 时间：ISO 日期或时间 → 毫秒 ──
@@ -150,8 +165,11 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   const line = (l: { archiveNo: string; at: number; text: string }) => `[${l.archiveNo}] ${shortTime(l.at, tz)} ${l.text}`;
 
   const server = new McpServer({ name: "psyche", version: "0.1.0" });
+  const on = new Set(toolsFor(opts.mode, opts.past));
+  /** 不在这次挂的工具里就不注册 */
+  const tool = ((name: string, config: any, cb: any) => (on.has(name) ? server.registerTool(name, config, cb) : undefined)) as typeof server.registerTool;
 
-  server.registerTool(
+  tool(
     "recall",
     {
       description: [
@@ -176,7 +194,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "detail",
     {
       description: [
@@ -191,7 +209,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "hotwrite_segment",
     {
       description: [
@@ -215,7 +233,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "hotwrite",
     {
       description: [
@@ -246,7 +264,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "revise_episode",
     {
       description: [
@@ -284,13 +302,26 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       .filter(Boolean)
       .join("\n");
 
-  server.registerTool(
-    "gist_material",
+  tool(
+    "gist",
     {
-      description: "睡着时写梗概用：过完了、还没写梗概的天 / 周 / 月，和写每一段要看的东西（天看那天的情节，周看那周的天，月看那月的周），附写法说明。写好一段用 gist 交一段。",
-      inputSchema: {},
+      description: [
+        "睡着时写梗概。不给 span：看过完了、还没写梗概的天 / 周 / 月，和写每一段要看的东西（天看那天的情节，周看那周的天，月看那月的周），附写法说明。",
+        "给 span、key、text：交一段——span（day / week / month）、key（2026-10-15 / 2026-W42 / 2026-10）、text（第一人称，你自己的话；天 ≤300 字、周 ≤500、月 ≤800）。同一段可以重写，后写的算数。",
+      ].join("\n"),
+      inputSchema: {
+        span: z.enum(["day", "week", "month"]).optional().describe("交的时候填；不填 = 看材料"),
+        key: z.string().optional(),
+        text: z.string().optional(),
+        promptVersion: z.number().int().optional().describe("看材料时给的 promptVersion，原样传回"),
+      },
     },
-    guard(async () => {
+    guard(async (args) => {
+      if (args.span || args.key || args.text) {
+        if (!args.span || !args.key || !args.text) throw new ArgError("交梗概要 span、key、text 三个都给；只想看材料就都不给");
+        const r = (await call("POST", "/v1/gist", args)) as { span: string; key: string };
+        return text(`收下了：${r.key} 的梗概。`);
+      }
       const m = (await call("GET", "/v1/gist")) as {
         pending: { span: "day" | "week" | "month"; key: string; source: { label: string; text: string }[] }[];
         limits: Record<string, number>;
@@ -316,91 +347,66 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
-    "gist",
-    {
-      description: "交一段梗概：span（day / week / month）、key（2026-10-15 / 2026-W42 / 2026-10）、text（第一人称，你自己的话；天 ≤300 字、周 ≤500、月 ≤800）。同一段可以重写，后写的算数。",
-      inputSchema: {
-        span: z.enum(["day", "week", "month"]),
-        key: z.string().min(1),
-        text: z.string().min(1),
-        promptVersion: z.number().int().optional().describe("gist_material 给的 promptVersion，原样传回"),
-      },
-    },
-    guard(async (args) => {
-      const r = (await call("POST", "/v1/gist", args)) as { span: string; key: string };
-      return text(`收下了：${r.key} 的梗概。`);
-    }),
-  );
-
-  server.registerTool(
-    "coldwrite_material",
-    {
-      description: [
-        "睡前整理用：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、按你留意的词找到的候选证据、反馈（你做了什么 → 之后对方的原话或工具出错，一律给），以及你 track 了的互动统计（系统数的，只有数，没有结论）。",
-        "同时给你写法说明和 upTo。看完用 coldwrite 写回。",
+  /** 睡前整理的材料（coldwrite 不给 upTo 时） */
+  async function coldwriteMaterial(): Promise<CallToolResult> {
+    const m = (await call("GET", "/v1/coldwrite")) as {
+      upTo: string | null;
+      prompt: string;
+      promptVersion: number;
+      material: { session: string | null; harness: string | null; lines: { archiveNo: string; at: number; text: string }[] }[];
+      shelf: Entry[];
+      candidates: { target: string; lines: { archiveNo: string; at: number; text: string; hit: string }[] }[];
+      stats: Stats | null;
+      feedback: { acts: { archiveNo: string; at: number; text: string }[]; next: { archiveNo: string; at: number; text: string } | null }[];
+      observations?: { archiveNo: string; at: number; text: string; about?: string; env: { tracks: { title: string; artist: string }[]; people: string[] }; later: { archiveNo?: string; at: number; text: string }[] }[];
+    };
+    if (m.upTo === null) return text("上次整理之后没有新的经历，不用整理。");
+    return text(
+      [
+        m.prompt.trim(),
+        "",
+        `upTo: ${m.upTo}`,
+        `promptVersion: ${m.promptVersion}`,
+        "",
+        "<shelf>",
+        ...(m.shelf.length ? m.shelf.map(entryLine) : ["（书架还是空的）"]),
+        "</shelf>",
+        "",
+        ...(m.stats?.people.length ? ["<stats>", ...renderStats(m.stats), "</stats>", ""] : []),
+        "<feedback>",
+        ...(m.feedback.length ? m.feedback.flatMap((f) => [...f.acts.map(line), `  → ${f.next ? line(f.next) : "（之后一天内没有回应）"}`]) : ["（这段没有）"]),
+        "</feedback>",
+        "",
+        ...(m.observations?.length
+          ? [
+              "<observations>",
+              "（你以前当场记下的观察，和之后同样的环境又出现时的事。系统只摆，不判；攒够了想写成规律 / 镜子，就引这些档号当证据。被书架引过的不再出现）",
+              ...m.observations.flatMap((o) => [
+                `${line(o)}${o.about && o.about !== "self" ? `　〔关于 ${o.about}〕` : ""}${o.env.tracks.length || o.env.people.length ? `　〔当时：${[...o.env.tracks.map((t) => `《${t.title}》${t.artist}`), ...(o.env.people.length ? [`在的人 ${o.env.people.join("、")}`] : [])].join("；")}〕` : ""}`,
+                ...(o.later.length ? o.later.map((l) => `  后来：${l.archiveNo ? `[${l.archiveNo}] ` : ""}${l.text}`) : ["  后来：（还没有再遇到）"]),
+              ]),
+              "</observations>",
+              "",
+            ]
+          : []),
+        "<candidates>",
+        ...(m.candidates.length ? m.candidates.flatMap((c) => [`关于 ${c.target}：`, ...c.lines.map((l) => `${line(l)}　〔命中「${l.hit}」〕`)]) : ["（没有）"]),
+        "</candidates>",
+        "",
+        "<material>",
+        ...m.material.flatMap((g) => [`── 会话 ${g.session ?? "（不在会话里）"}${g.harness ? `（在 ${g.harness}）` : ""} ──`, ...g.lines.map(line)]),
+        "</material>",
       ].join("\n"),
-      inputSchema: {},
-    },
-    guard(async () => {
-      const m = (await call("GET", "/v1/coldwrite")) as {
-        upTo: string | null;
-        prompt: string;
-        promptVersion: number;
-        material: { session: string | null; harness: string | null; lines: { archiveNo: string; at: number; text: string }[] }[];
-        shelf: Entry[];
-        candidates: { target: string; lines: { archiveNo: string; at: number; text: string; hit: string }[] }[];
-        stats: Stats | null;
-        feedback: { acts: { archiveNo: string; at: number; text: string }[]; next: { archiveNo: string; at: number; text: string } | null }[];
-        observations?: { archiveNo: string; at: number; text: string; about?: string; env: { tracks: { title: string; artist: string }[]; people: string[] }; later: { archiveNo?: string; at: number; text: string }[] }[];
-      };
-      if (m.upTo === null) return text("上次整理之后没有新的经历，不用整理。");
-      return text(
-        [
-          m.prompt.trim(),
-          "",
-          `upTo: ${m.upTo}`,
-          `promptVersion: ${m.promptVersion}`,
-          "",
-          "<shelf>",
-          ...(m.shelf.length ? m.shelf.map(entryLine) : ["（书架还是空的）"]),
-          "</shelf>",
-          "",
-          ...(m.stats?.people.length ? ["<stats>", ...renderStats(m.stats), "</stats>", ""] : []),
-          "<feedback>",
-          ...(m.feedback.length ? m.feedback.flatMap((f) => [...f.acts.map(line), `  → ${f.next ? line(f.next) : "（之后一天内没有回应）"}`]) : ["（这段没有）"]),
-          "</feedback>",
-          "",
-          ...(m.observations?.length
-            ? [
-                "<observations>",
-                "（你以前当场记下的观察，和之后同样的环境又出现时的事。系统只摆，不判；攒够了想写成规律 / 镜子，就引这些档号当证据。被书架引过的不再出现）",
-                ...m.observations.flatMap((o) => [
-                  `${line(o)}${o.about && o.about !== "self" ? `　〔关于 ${o.about}〕` : ""}${o.env.tracks.length || o.env.people.length ? `　〔当时：${[...o.env.tracks.map((t) => `《${t.title}》${t.artist}`), ...(o.env.people.length ? [`在的人 ${o.env.people.join("、")}`] : [])].join("；")}〕` : ""}`,
-                  ...(o.later.length ? o.later.map((l) => `  后来：${l.archiveNo ? `[${l.archiveNo}] ` : ""}${l.text}`) : ["  后来：（还没有再遇到）"]),
-                ]),
-                "</observations>",
-                "",
-              ]
-            : []),
-          "<candidates>",
-          ...(m.candidates.length ? m.candidates.flatMap((c) => [`关于 ${c.target}：`, ...c.lines.map((l) => `${line(l)}　〔命中「${l.hit}」〕`)]) : ["（没有）"]),
-          "</candidates>",
-          "",
-          "<material>",
-          ...m.material.flatMap((g) => [`── 会话 ${g.session ?? "（不在会话里）"}${g.harness ? `（在 ${g.harness}）` : ""} ──`, ...g.lines.map(line)]),
-          "</material>",
-        ].join("\n"),
-      );
-    }),
-  );
+    );
+  }
 
   const citesSchema = z.array(z.string().min(1)).describe("依据的档号：你的经历或情节，可以是以前的（recall 翻出来的）");
-  server.registerTool(
+  tool(
     "coldwrite",
     {
       description: [
-        "睡前整理，写回你的书架。书架上的字都是你写的；证据数、强弱由系统从你挂的档号数，不用自评。",
+        "睡前整理你的书架。不给 upTo：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、按你留意的词找到的候选证据、反馈（你做了什么 → 之后对方的原话或工具出错，一律给），以及你 track 了的互动统计（系统数的，只有数，没有结论），附写法说明和 upTo。",
+        "给 upTo 和 entries：写回书架。书架上的字都是你写的；证据数、强弱由系统从你挂的档号数，不用自评。醒着时发现书架有误也可以这样当场改。",
         "op：propose 新条目（shelf: fact 事实 / told 明说的规矩 / rule 规律 / mirror 镜子 / attend 留意 / relation 关系）· evidence 对现行条目判一条证据（for 印证 / against 反例 / irrelevant 无关）· revise 改写 · retire 作废。",
         "规律和镜子要写 when（条件）、then（结果）、observe（结果怎么观察），首批证据至少 2 条、来自不同时间（不同会话、不同的天或相隔 6 小时以上）；明说的规矩 quote 逐字照录她的原话。",
         "留意是你想看下去的疑问，要写 watch，一件事就能写；关系是你和某个人现在怎么样，要写 about，一人一条，变了就 revise。",
@@ -408,7 +414,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "upTo 原样传回。entries 可以是空的（看过了，没什么要写）。整批要么全收、要么全拒；被拒时会告诉你原因，改了再交。",
       ].join("\n"),
       inputSchema: {
-        upTo: z.string().min(1).describe("coldwrite_material 给的 upTo，原样传回"),
+        upTo: z.string().optional().describe("写回时填：取材料时给的 upTo，原样传回；不填 = 取材料"),
         promptVersion: z.number().int().optional().describe("给你的 promptVersion，原样传回"),
         entries: z
           .array(
@@ -430,10 +436,16 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
               cites: citesSchema,
             }),
           )
-          .describe("要写的条目；可以为空"),
+          .optional()
+          .describe("写回时必填，可以是空数组（看过了，没什么要写）"),
       },
     },
     guard(async ({ upTo, promptVersion, entries }) => {
+      if (!upTo) {
+        if (entries?.length) throw new ArgError("写回要带 upTo：先不带参数调一次 coldwrite 取材料，拿到 upTo 再交");
+        return coldwriteMaterial();
+      }
+      if (!entries) throw new ArgError("给了 upTo 就要带 entries（看过了没什么要写，就交空数组）");
       const r = (await call("POST", "/v1/coldwrite", { upTo, entries, ...(promptVersion !== undefined ? { promptVersion } : {}) })) as {
         written: { archiveNo: string; op: string }[];
         unjudged: number;
@@ -446,7 +458,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "shelf",
     {
       description: "看你的书架：你整理过的事实、明说的规矩、规律、镜子、留意、关系（现行的），带证据计数。可以按书架或词筛。",
@@ -464,7 +476,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "stats",
     {
       description: `看互动统计的全表：一段时间 vs 之前 28 天，系统数的，只有数，没有结论。能数的：${TRACK_KEYS.join(" / ")}。`,
@@ -482,7 +494,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "self",
     {
       description: [
@@ -510,7 +522,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "rewrite_self",
     {
       description: [
@@ -531,7 +543,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "name_self",
     {
       description: "给自己取名或改名。旧名字的记录留着。",
@@ -548,51 +560,44 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   );
 
   const BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳" };
-  server.registerTool(
+  async function viewSchedule(): Promise<CallToolResult> {
+    const s = (await call("GET", "/v1/schedule")) as {
+      schedule: {
+        heartbeat: { everyMin: number; active?: { from: string; to: string } } | null;
+        daily: { at: string; note?: string }[];
+        alarms: { id: string; at: number; note: string }[];
+        wakeOn: { mail: boolean };
+        dnd: { when: Record<string, unknown>; except?: { from: string; urgent?: boolean }[] }[];
+      } | null;
+      why?: string;
+      next: { by: string; due: number; note?: string } | null;
+      nextHeartbeat: number | null;
+      budget: { used: number; of: number };
+      settings: { paused: boolean; wakeBudget: number; heartbeat: boolean };
+    };
+    const out: string[] = [];
+    if (!s.schedule) out.push("还没排过作息。");
+    else {
+      const sc = s.schedule;
+      out.push(`心跳：${sc.heartbeat ? `每 ${sc.heartbeat.everyMin} 分钟${sc.heartbeat.active ? `，只在 ${sc.heartbeat.active.from}–${sc.heartbeat.active.to}` : "，全天"}${s.settings.heartbeat ? "" : "（暂未开放，写了不生效）"}` : "没写"}`);
+      out.push(`每天定点：${sc.daily.length ? sc.daily.map((d) => `${d.at}${d.note ? ` ${d.note}` : ""}`).join("；") : "没有"}`);
+      out.push(`闹钟：${sc.alarms.length ? sc.alarms.map((a) => `[${a.id}] ${shortTime(a.at, tz)} ${a.note}`).join("；") : "没有"}`);
+      out.push(`来信能叫醒你：${sc.wakeOn.mail ? "能" : "不能（关了）"}`);
+      out.push(`勿扰：${sc.dnd.length ? sc.dnd.map((r) => `${JSON.stringify(r.when)}${r.except?.length ? ` 例外 ${JSON.stringify(r.except)}` : ""}`).join("；") : "没有"}`);
+      if (s.why) out.push(`上次这么排的理由：${s.why}`);
+    }
+    if (s.nextHeartbeat) out.push(`下次心跳：${shortTime(s.nextHeartbeat, tz)}（照现在算；之后有人找你或你醒来，会从那时往后推）`);
+    out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
+    out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在你没醒着时叫醒各花一次，主动写给 Joy 的信、写给屋里住户的信（回信也算）每封花一次；整理、补写、来信叫醒、回 Joy 的信不花；到点时你醒着（30 分钟内有动静）也不花。勿扰只挡信，不挡闹钟、定点、心跳）`);
+    if (s.settings.paused) out.push("Joy 暂停了叫醒（整理、补写也不叫）；你自己的哪一轮里到点的事照样递给你。");
+    return text(out.join("\n"));
+  }
+  tool(
     "schedule",
     {
-      description: "看你的作息：闹钟、每天定点、心跳间隔，下次会因什么醒，今天的唤醒额度用了几次，以及 Joy 的设置（暂停、额度、心跳开没开放）。",
-      inputSchema: {},
-    },
-    guard(async () => {
-      const s = (await call("GET", "/v1/schedule")) as {
-        schedule: {
-          heartbeat: { everyMin: number; active?: { from: string; to: string } } | null;
-          daily: { at: string; note?: string }[];
-          alarms: { id: string; at: number; note: string }[];
-          wakeOn: { mail: boolean };
-          dnd: { when: Record<string, unknown>; except?: { from: string; urgent?: boolean }[] }[];
-        } | null;
-        why?: string;
-        next: { by: string; due: number; note?: string } | null;
-        nextHeartbeat: number | null;
-        budget: { used: number; of: number };
-        settings: { paused: boolean; wakeBudget: number; heartbeat: boolean };
-      };
-      const out: string[] = [];
-      if (!s.schedule) out.push("还没排过作息。");
-      else {
-        const sc = s.schedule;
-        out.push(`心跳：${sc.heartbeat ? `每 ${sc.heartbeat.everyMin} 分钟${sc.heartbeat.active ? `，只在 ${sc.heartbeat.active.from}–${sc.heartbeat.active.to}` : "，全天"}${s.settings.heartbeat ? "" : "（暂未开放，写了不生效）"}` : "没写"}`);
-        out.push(`每天定点：${sc.daily.length ? sc.daily.map((d) => `${d.at}${d.note ? ` ${d.note}` : ""}`).join("；") : "没有"}`);
-        out.push(`闹钟：${sc.alarms.length ? sc.alarms.map((a) => `[${a.id}] ${shortTime(a.at, tz)} ${a.note}`).join("；") : "没有"}`);
-        out.push(`来信能叫醒你：${sc.wakeOn.mail ? "能" : "不能（关了）"}`);
-        out.push(`勿扰：${sc.dnd.length ? sc.dnd.map((r) => `${JSON.stringify(r.when)}${r.except?.length ? ` 例外 ${JSON.stringify(r.except)}` : ""}`).join("；") : "没有"}`);
-        if (s.why) out.push(`上次这么排的理由：${s.why}`);
-      }
-      if (s.nextHeartbeat) out.push(`下次心跳：${shortTime(s.nextHeartbeat, tz)}（照现在算；之后有人找你或你醒来，会从那时往后推）`);
-      out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
-      out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在你没醒着时叫醒各花一次，主动写给 Joy 的信、写给屋里住户的信（回信也算）每封花一次；整理、补写、来信叫醒、回 Joy 的信不花；到点时你醒着（30 分钟内有动静）也不花。勿扰只挡信，不挡闹钟、定点、心跳）`);
-      if (s.settings.paused) out.push("Joy 暂停了叫醒（整理、补写也不叫）；你自己的哪一轮里到点的事照样递给你。");
-      return text(out.join("\n"));
-    }),
-  );
-
-  server.registerTool(
-    "set_schedule",
-    {
       description: [
-        "排你的作息：交一整份（全量替换，没写的就没了），写为什么这么排。",
+        "不给 schedule：看你的作息——闹钟、每天定点、心跳间隔，下次会因什么醒，今天的唤醒额度用了几次，以及 Joy 的设置（暂停、额度、心跳开没开放）。",
+        "给 schedule：排你的作息，交一整份（全量替换，没写的就没了），写 why 为什么这么排。",
         "alarms：一次性闹钟，at 用本地时间（如 2026-10-15T15:00），note 是到时告诉你的话；要保留已有的闹钟，带上它的 id 原样交回。",
         "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15），从你上次醒来和有人上次找你两者较晚的那个算起；active { from, to }（HH:MM，可跨零点）= 只在这段时间里响，到点落在外面就顺延到下一个 from，不写就是全天。",
         "到点就在你这条会话里叫醒你（推一轮进来，<now> 的「刚发生」里写着是什么）；你正忙着就排在这一轮后面。你自己的哪一轮先赶上了，就在那一轮的 <now> 里报，不另叫。",
@@ -602,7 +607,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的。闹钟、定点、心跳不受勿扰影响。Joy 的暂停盖过例外。",
       ].join("\n"),
       inputSchema: {
-        schedule: z.object({
+        schedule: z
+          .object({
           heartbeat: z.object({ everyMin: z.number().int(), active: z.object({ from: z.string(), to: z.string() }).optional() }).nullable().optional(),
           daily: z.array(z.object({ at: z.string(), note: z.string().optional() })).optional(),
           alarms: z.array(z.object({ id: z.string().optional(), at: z.string(), note: z.string() })).optional(),
@@ -615,17 +621,21 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
               }),
             )
             .optional(),
-        }),
-        why: z.string().min(1).describe("为什么这么排"),
+        })
+          .optional()
+          .describe("要排时给；不给 = 看作息"),
+        why: z.string().optional().describe("排的时候必填：为什么这么排"),
       },
     },
     guard(async (args) => {
+      if (!args.schedule) return viewSchedule();
+      if (!args.why?.trim()) throw new ArgError("排作息要写 why：为什么这么排");
       const r = (await call("POST", "/v1/schedule", args)) as { archiveNo: string };
       return text(`排好了（${r.archiveNo}）。`);
     }),
   );
 
-  server.registerTool(
+  tool(
     "write_diary",
     {
       description: "写一篇日记：随笔，想写就写。全文存着，不褪；不进 recall 的搜索（以后要看，按档号用 detail）。",
@@ -640,15 +650,43 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   // 还开着的事（m7.md）
   const HOW: Record<string, string> = { done: "做到了", dropped: "不做了", moot: "不用做了" };
   const cites = z.array(z.string()).optional().describe("证据档号（你的经历或情节），可不挂");
-  server.registerTool(
+  tool(
     "threads",
     {
-      description: "看还开着的事：你挂上的、答应过谁的、等后续的，每卷的进展。all: true 连合上的一起看。",
-      inputSchema: { all: z.boolean().optional() },
+      description: [
+        "还开着的事：你挂上的、答应过谁的、等后续的。开着的在 <now> 里看得到开着几件、最久没动的是哪件，换会话时全列在开头。系统不替你合、不催、不判做没做到。",
+        "op：list 看（缺省；all: true 连合上的一起看）· open 开一卷（type：promise = 你答应了谁什么，要写 to；matter = 挂着、等后续的事；写 title，可带 note）· note 在一卷上记一笔进展（target + text）· close 合上（target + how：done 做到了 / dropped 不做了 / moot 不用做了，写 why；合上的不能再记，同一件事再起就开新卷）。",
+        "target 是开卷那条的档号。",
+      ].join("\n"),
+      inputSchema: {
+        op: z.enum(["list", "open", "note", "close"]).optional(),
+        all: z.boolean().optional().describe("list：连合上的一起看"),
+        type: z.enum(["promise", "matter"]).optional().describe("open"),
+        title: z.string().optional().describe("open"),
+        to: z.string().optional().describe("open promise：答应了谁"),
+        note: z.string().optional().describe("open：开卷时顺手记的一笔"),
+        target: z.string().optional().describe("note / close：开卷那条的档号"),
+        text: z.string().optional().describe("note：这一笔"),
+        how: z.enum(["done", "dropped", "moot"]).optional().describe("close"),
+        why: z.string().optional().describe("close"),
+        cites,
+      },
     },
-    guard(async (args) => {
+    guard(async ({ op = "list", all, ...rest }) => {
+      if (op === "open") {
+        const r = (await call("POST", "/v1/threads", { type: rest.type, title: rest.title, to: rest.to, note: rest.note, cites: rest.cites })) as { archiveNo: string };
+        return text(`开了（${r.archiveNo}）。`);
+      }
+      if (op === "note") {
+        const r = (await call("POST", "/v1/threads/note", { target: rest.target, text: rest.text, cites: rest.cites })) as { archiveNo: string };
+        return text(`记下了（${r.archiveNo}）。`);
+      }
+      if (op === "close") {
+        const r = (await call("POST", "/v1/threads/close", { target: rest.target, how: rest.how, why: rest.why, cites: rest.cites })) as { archiveNo: string };
+        return text(`合上了（${r.archiveNo}）。`);
+      }
       type T = { archiveNo: string; type: string; title: string; to?: string; openedAt: number; notes: { at: number; text: string }[]; closed?: { at: number; how: string; why: string } };
-      const r = (await call("GET", `/v1/threads${args.all ? "?all=1" : ""}`)) as { open: T[]; closed?: T[] };
+      const r = (await call("GET", `/v1/threads${all ? "?all=1" : ""}`)) as { open: T[]; closed?: T[] };
       const show = (t: T) =>
         [
           `[${t.archiveNo}] ${t.type === "promise" ? `答应 ${t.to}：` : ""}${t.title}（${shortTime(t.openedAt, tz)} 开）`,
@@ -661,47 +699,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
-    "open_thread",
-    {
-      description: [
-        "开一卷还开着的事：之后在 <now> 里看得到开着几件、最久没动的是哪件，换会话时全列在开头。系统不替你合、不催、不判做没做到。",
-        "type：promise = 你答应了谁什么（要写 to）；matter = 挂着、等后续的事。",
-      ].join("\n"),
-      inputSchema: { type: z.enum(["promise", "matter"]), title: z.string().min(1), to: z.string().optional(), note: z.string().optional(), cites },
-    },
-    guard(async (args) => {
-      const r = (await call("POST", "/v1/threads", args)) as { archiveNo: string };
-      return text(`开了（${r.archiveNo}）。`);
-    }),
-  );
-
-  server.registerTool(
-    "note_thread",
-    {
-      description: "在一卷开着的事上记一笔进展（target 是开卷那条的档号）。",
-      inputSchema: { target: z.string().min(1), text: z.string().min(1), cites },
-    },
-    guard(async (args) => {
-      const r = (await call("POST", "/v1/threads/note", args)) as { archiveNo: string };
-      return text(`记下了（${r.archiveNo}）。`);
-    }),
-  );
-
-  server.registerTool(
-    "close_thread",
-    {
-      description: "合上一卷（target 是开卷那条的档号）。how：done 做到了 / dropped 不做了 / moot 不用做了；写 why。合上的不能再记；同一件事再起，开新卷。",
-      inputSchema: { target: z.string().min(1), how: z.enum(["done", "dropped", "moot"]), why: z.string().min(1), cites },
-    },
-    guard(async (args) => {
-      const r = (await call("POST", "/v1/threads/close", args)) as { archiveNo: string };
-      return text(`合上了（${r.archiveNo}）。`);
-    }),
-  );
-
   // 屋里有谁（m8.md §二）
-  server.registerTool(
+  tool(
     "look",
     {
       description: "看一眼屋里此刻有谁：每个住户在线（忙 / 闲）、睡着还是离线、在哪、挂着什么个签；Joy 在不在家（在家能在 Soma 直接说，不在家要找她就写信）。平时屋里有变化会在 <now> 的「这段时间屋里」里报。",
@@ -710,7 +709,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     guard(async () => text(((await call("GET", "/v1/look")) as { text: string }).text)),
   );
 
-  server.registerTool(
+  tool(
     "set_mood",
     {
       description: "挂一行心情个签，屋里的人都看得到（最多 60 字）。写不写、写什么由你；空串 = 清空。",
@@ -723,32 +722,43 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   );
 
   // 自己的声音（m8.md §三）
-  server.registerTool(
-    "play",
+  tool(
+    "player",
     {
       description: [
-        "给自己放歌：query 搜一首放（取第一首），或 playlist 放你的一个歌单（shuffle 打乱）。放完就停；再放会顶掉正在放的。",
-        "你听到的是：歌名歌手、随播放推进的歌词、这一段的响度 / 亮暗 / 速度（本地从音频算的，不是模型听的）。在放着时每轮 <now> 的「这段时间听到的」里报；也可以用 listen 随时听一下。",
-        "屋里的人可以戴上你的一只耳机一起听（Joy 在 Soma 页面上，别的住户用 listen_with）；只有有人戴着时才真的出声。",
+        "你自己的播放器。op：play 放 · stop 停 · listen 听一下此刻在放的（缺省）· with 戴上屋里另一个住户的一只耳机跟着他听。",
+        "play：query 搜一首放（取第一首），或 playlist 放你的一个歌单（shuffle 打乱）。放完就停；再放会顶掉正在放的。",
+        "你听到的是：歌名歌手、随播放推进的歌词、这一段的响度 / 亮暗 / 速度（本地从音频算的，不是模型听的）。在放着时每轮 <now> 的「这段时间听到的」里报；listen 随时听一下（你自己的，或你戴着谁的耳机就是他的）：哪首、放到哪、最近唱的几行、这一段的样子。",
+        "屋里的人可以戴上你的一只耳机一起听（Joy 在 Soma 页面上，别的住户用 with）；只有有人戴着时才真的出声。with：host = 他的 id（看 look），他那边看得到你戴上了；host 给空串 = 摘下。",
       ].join("\n"),
-      inputSchema: { query: z.string().optional(), playlist: z.string().optional(), shuffle: z.boolean().optional() },
+      inputSchema: {
+        op: z.enum(["play", "stop", "listen", "with"]).optional(),
+        query: z.string().optional().describe("play：搜什么"),
+        playlist: z.string().optional().describe("play：放哪个歌单"),
+        shuffle: z.boolean().optional().describe("play：打乱"),
+        host: z.string().optional().describe("with：他的 id；空串 = 摘下"),
+      },
     },
-    guard(async (args) => {
-      const r = (await call("POST", "/v1/play", args)) as { playing: { title: string; artist: string; album?: string; duration: number }; of: number; mismatch?: boolean };
-      const d = `${Math.floor(r.playing.duration / 60)}:${String(r.playing.duration % 60).padStart(2, "0")}`;
-      if (r.mismatch) return text(`搜「${args.query}」没有歌名对得上的，放的是《${r.playing.title}》${r.playing.artist}${r.playing.album ? `（专辑《${r.playing.album}》）` : ""}，${d}。不是你要的就换个说法再搜（加上歌手名通常更准）。`);
-      return text(`在放《${r.playing.title}》${r.playing.artist}（${d}）${r.of > 1 ? `，共 ${r.of} 首` : ""}。`);
+    guard(async ({ op = "listen", query, playlist, shuffle, host }) => {
+      if (op === "play") {
+        const r = (await call("POST", "/v1/play", { query, playlist, shuffle })) as { playing: { title: string; artist: string; album?: string; duration: number }; of: number; mismatch?: boolean };
+        const d = `${Math.floor(r.playing.duration / 60)}:${String(r.playing.duration % 60).padStart(2, "0")}`;
+        if (r.mismatch) return text(`搜「${query}」没有歌名对得上的，放的是《${r.playing.title}》${r.playing.artist}${r.playing.album ? `（专辑《${r.playing.album}》）` : ""}，${d}。不是你要的就换个说法再搜（加上歌手名通常更准）。`);
+        return text(`在放《${r.playing.title}》${r.playing.artist}（${d}）${r.of > 1 ? `，共 ${r.of} 首` : ""}。`);
+      }
+      if (op === "stop") {
+        await call("POST", "/v1/stop");
+        return text("停了。");
+      }
+      if (op === "with") {
+        if (host === undefined) throw new ArgError("with 要给 host：他的 id（看 look）；摘下给空串");
+        const r = (await call("POST", "/v1/listen/with", { host: host || null })) as { joined?: string; left?: string };
+        return text(r.joined ? `戴上了 ${r.joined} 的一只耳机。` : `摘下了 ${r.left} 的耳机。`);
+      }
+      return text(((await call("GET", "/v1/listen")) as { text: string }).text);
     }),
   );
-  server.registerTool(
-    "stop",
-    { description: "停掉你正在放的歌。", inputSchema: {} },
-    guard(async () => {
-      await call("POST", "/v1/stop");
-      return text("停了。");
-    }),
-  );
-  server.registerTool(
+  tool(
     "playlist",
     {
       description: [
@@ -769,24 +779,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       return text(`好了，「${r.name}」现在 ${r.tracks.length} 首。`);
     }),
   );
-  server.registerTool(
-    "listen",
-    { description: "听一下此刻在放的（你自己的，或你戴着谁的耳机就是他的）：哪首、放到哪、最近唱的几行、这一段的样子。", inputSchema: {} },
-    guard(async () => text(((await call("GET", "/v1/listen")) as { text: string }).text)),
-  );
-  server.registerTool(
-    "listen_with",
-    {
-      description: "戴上屋里另一个住户的一只耳机，跟着他听（host = 他的 id，看 look）；他那边看得到你戴上了。host 给空串 = 摘下。",
-      inputSchema: { host: z.string() },
-    },
-    guard(async (args) => {
-      const r = (await call("POST", "/v1/listen/with", { host: args.host || null })) as { joined?: string; left?: string };
-      return text(r.joined ? `戴上了 ${r.joined} 的一只耳机。` : `摘下了 ${r.left} 的耳机。`);
-    }),
-  );
 
-  server.registerTool(
+  tool(
     "notice",
     {
       description: [
@@ -801,7 +795,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "past_life",
     {
       description: [
@@ -831,7 +825,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "claim_past",
     {
       description: [
@@ -851,7 +845,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "past_catalog",
     {
       description: [
@@ -906,7 +900,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     return `[${m.archiveNo}] ${t} 我写给 ${m.to}${m.replyTo ? `（回 ${m.replyTo}）` : ""}${m.subject ? `《${m.subject}》` : ""}${failed.length ? ` · 没送出去：${failed.map((d) => d.error).join("；")}` : ""}`;
   };
 
-  server.registerTool(
+  tool(
     "mail",
     {
       description: [
@@ -931,7 +925,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     }),
   );
 
-  server.registerTool(
+  tool(
     "send_mail",
     {
       description: [
@@ -957,12 +951,27 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   return server;
 }
 
+/** 启动时问一次有哪些前世卷宗；问不到（Psyche 没起、旧版本）就当不知道，三件都挂 */
+async function fetchPast(url: string | undefined, agent: string | undefined, token: string | undefined): Promise<McpOptions["past"]> {
+  try {
+    const headers: Record<string, string> = { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(agent ? { [AGENT_HEADER]: agent } : {}) };
+    const res = await fetch(`${(url ?? "http://127.0.0.1:7450").replace(/\/+$/, "")}/v1/past`, { headers, signal: AbortSignal.timeout(3_000) });
+    const j = (await res.json()) as { fonds?: { fonds: string; claimed: boolean }[] };
+    return res.ok && Array.isArray(j.fonds) ? j.fonds : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 if (import.meta.main) {
+  const { PSYCHE_URL: url, PSYCHE_AGENT: agent, PSYCHE_TOKEN: token } = process.env;
   const server = createPsycheMcp({
-    url: process.env.PSYCHE_URL,
-    agent: process.env.PSYCHE_AGENT,
-    token: process.env.PSYCHE_TOKEN,
+    url,
+    agent,
+    token,
     timeZone: process.env.PSYCHE_TZ,
+    mode: process.env.PSYCHE_MODE === "asleep" ? "asleep" : "awake",
+    past: await fetchPast(url, agent, token),
   });
   await server.connect(new StdioServerTransport());
 }
