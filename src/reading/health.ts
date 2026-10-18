@@ -6,21 +6,13 @@ import { localDay } from "../core/time.ts";
 import { NOT_PLACE_SQL } from "../channel/inbox.ts";
 import { readSegment } from "../catalog/hotwrite.ts";
 import { readColdwrite } from "../catalog/coldwrite.ts";
-import { readShelf, SHELVES, type Shelf } from "./shelf.ts";
+import { readShelf, SHELVES, shelfWarnings, type Shelf, type ShelfWarning } from "./shelf.ts";
 import { pendingGists, readGists } from "../catalog/gist.ts";
 import { CONTINUITY, renderContinuity } from "../archive/continuity.ts";
 import { readThreads } from "../self/threads.ts";
 import { ownSince } from "../self/self.ts";
 
-export interface HealthWarning {
-  archiveNo: string;
-  shelf: "rule" | "mirror";
-  reason: "no_against" | "stale";
-  for: number;
-  against: number;
-  revisions: number;
-  lastEvidenceAt: number | null;
-}
+export type HealthWarning = ShelfWarning;
 
 export interface ResidentPulse {
   episodes: number;
@@ -141,36 +133,7 @@ export function computeHealth(store: EventStore) {
     store.db.query(`SELECT COUNT(*) AS n FROM events WHERE kind = 'semantic.revised' AND fonds = ''`).get() as { n: number }
   ).n;
 
-  const warnings: HealthWarning[] = [];
-  for (const e of activeShelf) {
-    if (e.shelf !== "rule" && e.shelf !== "mirror") continue;
-    const verRow = store.db.query(`SELECT COUNT(*) AS n FROM p_shelf_ver WHERE root = ?`).get(e.root) as { n: number };
-    const revisions = Math.max(0, verRow.n - 1);
-    if (e.for >= 3 && e.against === 0 && revisions === 0) {
-      warnings.push({
-        archiveNo: showNo(e.archiveNo),
-        shelf: e.shelf,
-        reason: "no_against",
-        for: e.for,
-        against: e.against,
-        revisions,
-        lastEvidenceAt: e.lastEvidenceAt,
-      });
-      continue;
-    }
-    const refAt = e.lastEvidenceAt ?? e.at;
-    if (now - refAt >= 7 * DAY_MS && lastDoneAt !== null && lastDoneAt > refAt) {
-      warnings.push({
-        archiveNo: showNo(e.archiveNo),
-        shelf: e.shelf,
-        reason: "stale",
-        for: e.for,
-        against: e.against,
-        revisions,
-        lastEvidenceAt: e.lastEvidenceAt,
-      });
-    }
-  }
+  const warnings = shelfWarnings(store, activeShelf);
 
   // ── 3. 连续性（Gist & 种子） ──
   const gistsList = readGists(store);

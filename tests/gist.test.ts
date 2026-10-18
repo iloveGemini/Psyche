@@ -6,6 +6,8 @@ import { describe, expect, test } from "bun:test";
 import { EventStore } from "../src/store/events.ts";
 import { Projections } from "../src/store/projections.ts";
 import { experienceProjector } from "../src/archive/experience.ts";
+import { shelfProjector } from "../src/reading/shelf.ts";
+import { intake } from "../src/archive/intake.ts";
 import { createApp } from "../src/server/app.ts";
 import { pendingGists, weekOf, writeGist, GistError } from "../src/catalog/gist.ts";
 import { renderContinuity } from "../src/archive/continuity.ts";
@@ -19,6 +21,7 @@ function setup(start = "2026-10-16T09:00:00") {
   const store = new EventStore(":memory:", { now: () => clock });
   const projections = new Projections(store);
   projections.register(experienceProjector);
+  projections.register(shelfProjector);
   projections.live();
   const app = createApp({ store, projections });
   const get = async (path: string) => (await app.request(path)).json();
@@ -99,7 +102,7 @@ describe("闸", () => {
 });
 
 describe("接着往下过", () => {
-  test("月 → 周 → 天 → 最近的情节；天梗概之后的情节才放；同一段后写的算数", () => {
+  test("馆藏与书架 → 月 → 周 → 天 → 最近的情节；天梗概之后的情节才放；同一段后写的算数", () => {
     const h = setup("2026-11-12T09:00:00");
     writeGist(h.store, { span: "month", key: "2026-09", text: "九月" });
     writeGist(h.store, { span: "week", key: "2026-W44", text: "W44" });
@@ -109,7 +112,24 @@ describe("接着往下过", () => {
     h.episode("2026-11-11T10:00:00", "十一号的情节");
     h.episode("2026-11-12T08:00:00", "今天的情节");
     expect(renderContinuity(h.store)).toBe(
-      ["【月】", "2026-09：九月", "", "【周】", "2026-W44：W44", "", "【天】", "11-10：十号", "", "【最近的情节】", "十一号的情节", "今天的情节"].join("\n"),
+      [
+        "【馆藏与书架】",
+        "馆藏：原始记录 0 条 · 情节 3 条 · 梗概：天 1 / 周 1 / 月 1",
+        "书架：事实 0 · 明说的规矩 0 · 规律 0 · 镜子 0 · 留意 0 · 关系 0",
+        "",
+        "【月】",
+        "2026-09：九月",
+        "",
+        "【周】",
+        "2026-W44：W44",
+        "",
+        "【天】",
+        "11-10：十号",
+        "",
+        "【最近的情节】",
+        "十一号的情节",
+        "今天的情节",
+      ].join("\n"),
     );
   });
 
@@ -117,7 +137,16 @@ describe("接着往下过", () => {
     const h = setup();
     for (let i = 0; i < 5; i++) h.episode(`2026-10-16T0${i}:00:00`, `${i}`.repeat(10));
     expect(renderContinuity(h.store, { days: 7, weeks: 4, months: 12, episodeChars: 25 })).toBe(
-      ["【最近的情节】", "（更早的 3 条没放进来，要找用 recall）", "3".repeat(10), "4".repeat(10)].join("\n"),
+      [
+        "【馆藏与书架】",
+        "馆藏：原始记录 0 条 · 情节 5 条 · 梗概：天 0 / 周 0 / 月 0",
+        "书架：事实 0 · 明说的规矩 0 · 规律 0 · 镜子 0 · 留意 0 · 关系 0",
+        "",
+        "【最近的情节】",
+        "（更早的 3 条没放进来，要找用 recall）",
+        "3".repeat(10),
+        "4".repeat(10),
+      ].join("\n"),
     );
   });
 
@@ -134,5 +163,79 @@ describe("调度", () => {
     h.episode("2026-10-16T08:00:00", "今天");
     h.set("2026-10-17T09:00:00");
     expect(tick(h.store)).toMatchObject({ wake: { by: "gist", key: "gist:2026-10-15,2026-10-16" } });
+  });
+});
+
+describe("馆藏书架（Continuity）与备考表（<now>）", () => {
+  test("Continuity 顶部常驻馆藏、前世、书架分类、按人与规律预警", () => {
+    const h = setup("2026-10-18T12:00:00");
+    // 1. 前世全宗记录
+    h.store.append({ kind: "message.in", class: "experience", source: "past:ROY", fonds: "ROY", situation: null, at: T("2026-09-01T10:00:00"), payload: { from: "Joy", text: "旧话" } });
+    // 2. 今生经历与书架（含前世待印证、按人归属、印证>=3零反例的待复核规律）
+    const e1 = h.episode("2026-10-15T10:00:00", "证一");
+    const e2 = h.episode("2026-10-16T10:00:00", "证二");
+    const e3 = h.episode("2026-10-17T10:00:00", "证三");
+    h.store.append({ kind: "semantic.proposed", class: "self", source: "agent", at: T("2026-10-17T11:00:00"), payload: { shelf: "fact", text: "前世事实", past: "ROY" } });
+    h.store.append({ kind: "semantic.proposed", class: "self", source: "agent", at: T("2026-10-17T11:05:00"), payload: { shelf: "relation", about: "Joy", text: "和 Joy 的关系" }, links: [{ to: e1.id, rel: "evidence" }] });
+    h.store.append({
+      kind: "semantic.proposed",
+      class: "self",
+      source: "agent",
+      at: T("2026-10-17T12:00:00"),
+      payload: { shelf: "rule", text: "一条规律", when: "条件", then: "结果", observe: "观察" },
+      links: [
+        { to: e1.id, rel: "evidence" },
+        { to: e2.id, rel: "evidence" },
+        { to: e3.id, rel: "evidence" },
+      ],
+    });
+
+    const text = renderContinuity(h.store)!;
+    expect(text).toContain("馆藏：原始记录 0 条 · 情节 3 条 · 梗概：天 0 / 周 0 / 月 0 · 前世：ROY 1 条");
+    expect(text).toContain("书架：事实 1 · 明说的规矩 0 · 规律 1 · 镜子 0 · 留意 0 · 关系 1（含前世待印证 1 条）；按人：Joy 1；预警：待复核 1 条 [10-17#4]");
+  });
+
+  test("<now> 备考表：实时感知旧会话断层、待写梗概、后台失败、静默缺口与书架积压，处理完自动消失", async () => {
+    const h = setup("2026-10-14T10:00:00");
+    h.store.setSituation({ harness: "soma", session: "S1" }, "soma", T("2026-10-14T10:00:00"));
+    intake(h.store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "早" }, at: T("2026-10-14T10:01:00") });
+
+    // 正常状态：无备考行
+    expect((await h.get("/v1/now?session=S1")).text).not.toContain("备考：");
+
+    // 切到新会话 S2（且隔了 26 小时，触发 ≥24h 静默缺口 + S1 未写情节的旧会话）
+    h.set("2026-10-15T12:30:00");
+    h.store.setSituation({ harness: "soma", session: "S2" }, "soma", T("2026-10-15T12:30:00"));
+    intake(h.store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "在吗" }, at: T("2026-10-15T12:30:00") });
+
+    // 记一笔后台 tidy 失败日志
+    h.store.syslog("wake.run", { key: "tidy:1", error: "timeout" });
+
+    const now1 = (await h.get("/v1/now?session=S2")).text as string;
+    expect(now1).toContain("备考：");
+    expect(now1).toContain("未写情节的旧会话 1 段（共 1 条）");
+    expect(now1).toContain("后台整理失败于 10-15 12:30");
+    expect(now1).toContain("静默缺口：10-14 10:01 至 10-15 12:30 连续 26h 无记录");
+
+    // 补写 S1 的情节 → 旧会话断层立刻消失，但因 10-14 有了情节且已过完，实时浮现「待写梗概：2026-10-14」
+    const seg1 = await h.get("/v1/hotwrite?session=S1");
+    await h.post("/v1/hotwrite", { session: "S1", upTo: seg1.upTo, entries: [{ text: "十四号早上问好", cites: ["10-14#2"] }] });
+
+    const now2 = (await h.get("/v1/now?session=S2")).text as string;
+    expect(now2).not.toContain("未写情节的旧会话");
+    expect(now2).toContain("待写梗概：2026-10-14");
+
+    // 交回 2026-10-14 的天梗概 + 补交 coldwrite.done → 待写梗概与后台整理失败均消失
+    writeGist(h.store, { span: "day", key: "2026-10-14", text: "十四号梗概" });
+    h.store.append({ kind: "coldwrite.done", class: "self", source: "agent", at: T("2026-10-15T12:31:00"), payload: { upTo: "z", unjudged: [] } });
+
+    const now3 = (await h.get("/v1/now?session=S2")).text as string;
+    expect(now3).not.toContain("待写梗概");
+    expect(now3).not.toContain("后台整理失败");
+
+    // 新攒 5 条情节 → 实时提示书架待整理
+    for (let i = 0; i < 5; i++) h.episode(`2026-10-15T13:0${i}:00`, `新情节 ${i}`);
+    const now4 = (await h.get("/v1/now?session=S2")).text as string;
+    expect(now4).toContain("书架待整理：已攒 5 条新情节（上次整理：10-15 12:31）");
   });
 });

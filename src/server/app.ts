@@ -16,7 +16,7 @@ import { IntakeError } from "../archive/kinds.ts";
 import { readExperience } from "../archive/experience.ts";
 import { hybridRecall, queryVector, renderShelfHit, shelfRecall } from "../archive/recall.ts";
 import type { Embedder } from "../archive/vectors.ts";
-import { renderNow } from "../archive/now.ts";
+import { renderNow, noteSheetLine } from "../archive/now.ts";
 import { asleepPlace, asleepTask } from "../asleep.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
@@ -239,7 +239,15 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const notices = noticeMail(store, here, facts);
     const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
     const mail = mailStateLines(store, here, facts, notices);
-    const extra = [pendingSelfLine(store, promptsDir), ...mail.lines, scheduleLine(store, { held: mail.held }), threadsLine(store), mutedLine(q.muted), agendaLines(q.agendas)]
+    const extra = [
+      pendingSelfLine(store, promptsDir),
+      ...mail.lines,
+      scheduleLine(store, { held: mail.held }),
+      threadsLine(store),
+      noteSheetLine(store, session),
+      mutedLine(q.muted),
+      agendaLines(q.agendas),
+    ]
       .filter(Boolean)
       .join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);

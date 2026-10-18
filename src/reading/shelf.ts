@@ -205,6 +205,62 @@ export function renderEntry(e: ShelfEntry): string {
   return parts.join("；");
 }
 
+export interface ShelfWarning {
+  archiveNo: string;
+  shelf: "rule" | "mirror";
+  reason: "no_against" | "stale";
+  for: number;
+  against: number;
+  revisions: number;
+  lastEvidenceAt: number | null;
+}
+
+const WARN_STALE_MS = 7 * 86_400_000;
+
+/** 规律与镜子的闭环预警：待复核（印证 ≥ 3、0 反例、0 改写）与久未验证（≥ 7 天无新证据且期间跑过冷写） */
+export function shelfWarnings(store: EventStore, activeShelf = readShelf(store.db)): ShelfWarning[] {
+  if (!activeShelf.length) return [];
+  const now = store.now();
+  const year = Number(localDay(now, store.timeZone).slice(0, 4));
+  const showNo = (no: string) => displayArchiveNo(no, year);
+  const lastDone = store.db
+    .query(`SELECT at FROM events WHERE kind = 'coldwrite.done' AND fonds = '' ORDER BY id DESC LIMIT 1`)
+    .get() as { at: number } | null;
+  const lastDoneAt = lastDone?.at ?? null;
+
+  const warnings: ShelfWarning[] = [];
+  for (const e of activeShelf) {
+    if (e.shelf !== "rule" && e.shelf !== "mirror") continue;
+    const verRow = store.db.query(`SELECT COUNT(*) AS n FROM p_shelf_ver WHERE root = ?`).get(e.root) as { n: number };
+    const revisions = Math.max(0, verRow.n - 1);
+    if (e.for >= 3 && e.against === 0 && revisions === 0) {
+      warnings.push({
+        archiveNo: showNo(e.archiveNo),
+        shelf: e.shelf,
+        reason: "no_against",
+        for: e.for,
+        against: e.against,
+        revisions,
+        lastEvidenceAt: e.lastEvidenceAt,
+      });
+      continue;
+    }
+    const refAt = e.lastEvidenceAt ?? e.at;
+    if (now - refAt >= WARN_STALE_MS && lastDoneAt !== null && lastDoneAt > refAt) {
+      warnings.push({
+        archiveNo: showNo(e.archiveNo),
+        shelf: e.shelf,
+        reason: "stale",
+        for: e.for,
+        against: e.against,
+        revisions,
+        lastEvidenceAt: e.lastEvidenceAt,
+      });
+    }
+  }
+  return warnings;
+}
+
 /** 单条书架认知的完整演变链与证据明细（GET /v1/shelf/:no，dashboard.md §4.2.3） */
 export function shelfDetail(store: EventStore, archiveNo: string) {
   if (!store.db.query(`SELECT 1 FROM sqlite_master WHERE name = 'p_shelf'`).get()) return null;
