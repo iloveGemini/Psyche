@@ -7,7 +7,7 @@ import { Projections } from "../src/store/projections.ts";
 import { intake } from "../src/archive/intake.ts";
 import { experienceProjector } from "../src/archive/experience.ts";
 import { shelfProjector } from "../src/reading/shelf.ts";
-import { coldCursor, readColdwrite } from "../src/catalog/coldwrite.ts";
+import { coldCursor, FEEDBACK_BUDGET, readColdwrite } from "../src/catalog/coldwrite.ts";
 import { createApp } from "../src/server/app.ts";
 
 const T = (s: string) => Date.parse(`${s}+08:00`);
@@ -94,6 +94,19 @@ test("材料太长分批：截在超额前一行，交了这批游标前移、�
   expect(readColdwrite(t.store, undefined, 1).material.flatMap((g) => g.lines)).toHaveLength(1);
   // 缺省额度够，一次给完
   expect((await t.get()).rest).toBe(0);
+});
+
+test("反馈封顶：超了 FEEDBACK_BUDGET 留最近的", () => {
+  const t = setup();
+  t.session("s1", "2026-10-13T10:00:00");
+  for (let i = 0; i < 20; i++) {
+    t.me(`第${i}次`.padEnd(500, "长"), `2026-10-13T10:${String(i * 2).padStart(2, "0")}:00`);
+    t.her(`回${i}`, `2026-10-13T10:${String(i * 2 + 1).padStart(2, "0")}:00`);
+  }
+  const fb = readColdwrite(t.store, undefined, 1_000_000).feedback;
+  const size = fb.reduce((n, f) => n + [...f.acts, ...(f.next ? [f.next] : [])].reduce((m, l) => m + l.text.length, 0), 0);
+  expect(size).toBeLessThanOrEqual(FEEDBACK_BUDGET);
+  expect(fb.at(-1)!.next!.text).toContain("回19");
 });
 
 describe("系统闸", () => {

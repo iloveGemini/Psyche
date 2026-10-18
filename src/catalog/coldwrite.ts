@@ -25,6 +25,7 @@ export interface MaterialLine {
 }
 
 const refYear = (store: EventStore) => Number(localDay(store.now(), store.timeZone).slice(0, 4));
+const DAY_MS = 86_400_000;
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 /** 冷写写的事件：不当材料、不当证据 */
 const OWN = `kind LIKE 'semantic.%' OR kind = 'coldwrite.done'`;
@@ -44,7 +45,9 @@ function lastMaterialId(store: EventStore): string | null {
  * 一批材料最多多少字（经历行的正文，10-18）：太长它一次看不完（10-18 凌晨八十多万字，工具结果超了上限被存成文件，
  * 那一轮读不到 upTo，什么也交不了）。超了就在前一行截断，这批交了游标前移，剩下的下一批再给。至少给一行。
  */
-export const COLD_BUDGET = 16_000;
+export const COLD_BUDGET = 10_000;
+/** 反馈另有额度：素材 + 反馈 + 提示词要在工具结果上限（约 2.5 万 token）以内 */
+export const FEEDBACK_BUDGET = 6_000;
 
 /** 这批到哪：从 since 往后按档号累计正文字数，不超过 budget；rest = 截下来留给下一批的行数 */
 export function batchEnd(store: EventStore, since: string, last: string, budget = COLD_BUDGET): { upTo: string; rest: number } {
@@ -119,6 +122,27 @@ export function candidatesFor(store: EventStore, shelf: ShelfEntry[], material: 
   return out;
 }
 
+/**
+ * 反馈只给这批素材说到的那段时间（10-18）：区间按档号切，情节多半写得晚、档号在后，(since, upTo] 里装着大量
+ * 已被情节覆盖、但情节要到后面几批才出现的原话（我的库：素材 1.6 万字，反馈 81.7 万字）。按素材的时间跨度取，
+ * 那些原话等它们的情节那一批再给；再按字数封顶兜底（留最近的）。
+ */
+function spanOf(groups: { lines: MaterialLine[] }[]): { from: number; to: number } | undefined {
+  const ats = groups.flatMap((g) => g.lines.map((l) => l.at));
+  return ats.length ? { from: Math.min(...ats), to: Math.max(...ats) + DAY_MS } : undefined;
+}
+function capFeedback(fb: Feedback[], budget: number): Feedback[] {
+  const size = (f: Feedback) => [...f.acts, ...(f.next ? [f.next] : [])].reduce((n, l) => n + l.text.length, 0);
+  const out: Feedback[] = [];
+  let n = 0;
+  for (const f of [...fb].reverse()) {
+    if (out.length && n + size(f) > budget) break;
+    out.unshift(f);
+    n += size(f);
+  }
+  return out;
+}
+
 export function readColdwrite(store: EventStore, storeOf?: (id: string) => EventStore | undefined, budget = COLD_BUDGET) {
   const since = coldCursor(store);
   const last = lastMaterialId(store);
@@ -143,7 +167,7 @@ export function readColdwrite(store: EventStore, storeOf?: (id: string) => Event
     /** 这批之后还有几行经历没给（下一批） */
     rest: batch?.rest ?? 0,
     stats,
-    feedback: upTo ? feedbackLines(store, since, upTo) : [],
+    feedback: upTo ? capFeedback(feedbackLines(store, since, upTo, spanOf(groups)), FEEDBACK_BUDGET) : [],
     // 你记下的观察 + 后来同样的环境又出现时的事（m8.md §4.2）；被书架引过的不再摆
     observations: upTo ? observationsFor(store, upTo, storeOf) : [],
     material: groups.map((g) => ({ session: g.session, harness: g.harness, from: g.lines[0].at, to: g.lines.at(-1)!.at, lines: g.lines.map(({ eventId, ...l }) => l) })),
@@ -170,13 +194,13 @@ export interface Feedback {
  *   对话：同一会话里我连着说的几条 → 其后第一条她的话（1 天内，没有就是 null）；
  *   工具：只列出错的，配上那次调用。
  */
-export function feedbackLines(store: EventStore, since: string, upTo: string): Feedback[] {
+export function feedbackLines(store: EventStore, since: string, upTo: string, span?: { from: number; to: number }): Feedback[] {
   const year = refYear(store);
   const rows = store.db
     .query(
-      `SELECT * FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND id > ? AND id <= ? ORDER BY at, id`,
+      `SELECT * FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND id > ? AND id <= ? AND at >= ? AND at <= ? ORDER BY at, id`,
     )
-    .all(since, upTo) as Record<string, any>[];
+    .all(since, upTo, span?.from ?? 0, span?.to ?? Number.MAX_SAFE_INTEGER) as Record<string, any>[];
   const evs = rows.map((r) => ({ ...r, payload: JSON.parse(r.payload), archiveNo: `${r.day}#${r.seq}` }) as PsycheEvent);
   const line = (e: PsycheEvent): FeedbackLine => ({ archiveNo: displayArchiveNo(e.archiveNo, year), at: e.at, kind: e.kind, text: renderExperience(e) ?? "" });
   const out: (Feedback & { at: number })[] = [];
