@@ -35,7 +35,7 @@ import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setC
 import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, readGists, writeGist } from "../catalog/gist.ts";
 import { renderContinuity } from "../archive/continuity.ts";
-import { deliverPresence, lookPresence, MoodError, setMood } from "../house/presence.ts";
+import { deliverPresence, lookPresence, MoodError, setMood, enterRoom } from "../house/presence.ts";
 import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, readPlaylists, SoundError, stop, type SoundDeps } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { analyzeTrack } from "../perception/features.ts";
@@ -232,7 +232,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
   // <now>（m1 / m5 / m6 / m8 拼起来的）：Soma 每轮取一次；睡着那段的第一条也用它
-  const nowText = async (session: string | undefined, q: { muted?: string; agendas?: string; ctx?: string; wrapAt?: string; q5h?: string; q5hReset?: string; q7d?: string; q7dReset?: string } = {}) => {
+  const nowText = async (session: string | undefined, q: { muted?: string; room?: string; agendas?: string; ctx?: string; wrapAt?: string; q5h?: string; q5hReset?: string; q7d?: string; q7dReset?: string } = {}) => {
     // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）；来信 / 交接信只报有信（m6.md §二）
     const here = placeOf(store, session);
     const facts = factsNow(store, here);
@@ -245,6 +245,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
       scheduleLine(store, { held: mail.held }),
       threadsLine(store),
       noteSheetLine(store, session),
+      roomLine(q.room),
       mutedLine(q.muted),
       agendaLines(q.agendas),
     ]
@@ -382,6 +383,11 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     if (!b || typeof b !== "object" || Array.isArray(b)) throw new MoodError("body 必须是对象");
     return c.json(setMood(store, b as Record<string, unknown>));
   });
+  app.post("/v1/room", async (c) => {
+    const b = await c.req.json();
+    if (!b || typeof b !== "object" || Array.isArray(b)) throw new MoodError("body 必须是对象");
+    return c.json(enterRoom(store, b as Record<string, unknown>));
+  });
 
   // 自己的声音（m8.md §三）
   const obj2 = async (c: { req: { json: () => Promise<unknown> } }) => {
@@ -430,11 +436,11 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.post("/v1/mail/out", async (c) => {
     const housemates = (residentIds?.() ?? []).filter((id) => id !== selfId && storeOf?.(id));
     const { ev, ...r } = sendMail(store, await body(c), housemates);
-    const p = ev.payload as { to: string; text: string; subject?: string };
+    const p = ev.payload as { to: string; text: string; subject?: string; urgent?: boolean };
     if (housemates.includes(p.to)) {
       // 屋里的信：直接进对方的库，之后跟 Joy 来信一样（报有信、叫醒、翻开、回信）
       try {
-        receiveMail(storeOf!(p.to)!, { from: selfId, text: p.text, via: "house", ...(p.subject ? { subject: p.subject } : {}), ext: ev.id });
+        receiveMail(storeOf!(p.to)!, { from: selfId, text: p.text, via: "house", ...(p.subject ? { subject: p.subject } : {}), ...(p.urgent ? { urgent: true } : {}), ext: ev.id });
         store.syslog("mail.sent", { ref: ev.id, via: "house", ok: true });
       } catch (e) {
         store.syslog("mail.sent", { ref: ev.id, via: "house", ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -495,7 +501,25 @@ function agendaLines(raw: string | undefined): string | null {
 }
 
 /**
- * 在哪些群被静音（Soma 每轮带来，soma2.md §5.7，a1 提）：静音了就没人来问，不说它会以为大家都安静了。
+ * 在哪个房间（Soma 每轮带来，P3 10-19）：在哪、还有谁在、有几条没读。在房间里才听得到那里说的话；
+ * 睡着时 Joy 在那里说的不叫醒他（除非她标了紧急），醒了靠这一行知道。是此刻的状态，每轮都报，不记经历。
+ */
+function roomLine(raw: string | undefined): string | null {
+  let r: { in?: unknown; with?: unknown; unread?: unknown } | null;
+  try {
+    r = raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+  if (!r || typeof r !== "object") return null;
+  if (typeof r.in !== "string" || !r.in) return "房间：你在自己房间——公共房间里说的话这里听不到（rooms 看有哪些房间、进哪间）";
+  const others = Array.isArray(r.with) ? r.with.filter((n): n is string => typeof n === "string" && !!n) : [];
+  const unread = typeof r.unread === "number" && r.unread > 0 ? r.unread : 0;
+  return `房间：你在《${r.in}》${others.length ? `，${others.join("、")} 也在` : "，就你一个"}${unread ? `；有 ${unread} 条没读（rooms 的 read 看）` : ""}`;
+}
+
+/**
+ * 在哪些房间被静音（Soma 每轮带来，soma2.md §5.7，a1 提）：静音了就没人来问，不说它会以为大家都安静了。
  * 是此刻的状态，每轮都报，不记经历。
  */
 function mutedLine(raw: string | undefined): string | null {
@@ -507,5 +531,5 @@ function mutedLine(raw: string | undefined): string | null {
   }
   const list = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && !!n) : [];
   if (!list.length) return null;
-  return `群：你在${list.map((n) => `《${n}》`).join("、")}被静音了（连着两次没说话）——那里不会再轮到你，等 Joy 开新话题或有人 @ 你才会再问你`;
+  return `房间：你在${list.map((n) => `《${n}》`).join("、")}被静音了（连着两次没说话）——那里不会再轮到你，等 Joy 开新话题或有人 @ 你才会再问你`;
 }

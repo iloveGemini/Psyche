@@ -101,6 +101,8 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我注意到${p.about && p.about !== "self" ? `（关于 ${p.about}）` : ""}：${p.text}`;
     case "mood.set":
       return p.text ? `我把个签改成了「${p.text}」` : "我清空了个签";
+    case "room.entered":
+      return p.room ? `我进了《${p.room}》` : "我回了自己房间";
     case "mail.in":
       return mailInText(p as { from: string; text: string; via: string }, false);
     case "mail.read":

@@ -8,7 +8,7 @@ import { Projections } from "../src/store/projections.ts";
 import { intake } from "../src/archive/intake.ts";
 import { experienceProjector, readExperience } from "../src/archive/experience.ts";
 import { createApp } from "../src/server/app.ts";
-import { houseTick, presenceOf, joyPresence, deliverPresence, lookPresence, JOY } from "../src/house/presence.ts";
+import { houseTick, presenceOf, joyPresence, deliverPresence, lookPresence, JOY, describe as line } from "../src/house/presence.ts";
 import { openHouse } from "../src/house/house.ts";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,6 +94,24 @@ describe("只记变化，记进别人的库", () => {
     expect(h.percepts(h.a1).find((p) => p.subject === "a2").value).toEqual({ state: "offline", mood: "在赶 S2" });
     await post({ text: "" });
     expect(presenceOf(h.a2).mood).toBeUndefined();
+  });
+
+  test("换房间（P3）：本人经历里有这一步；别人看得到在哪间，睡着离线也看得到", async () => {
+    const h = setup();
+    const app = createApp({ store: h.a2, projections: new Projections(h.a2) });
+    const post = (body: unknown) => app.request("/v1/room", { method: "POST", headers: JSON_H, body: JSON.stringify(body) });
+    expect(presenceOf(h.a2).room).toBeUndefined();
+    expect((await post({ room: "客厅", id: "soma-101" })).status).toBe(200);
+    expect((await post({ room: 3 })).status).toBe(400);
+    expect(readExperience(h.a2.db, {}).map((l) => l.text)).toContain("我进了《客厅》");
+    h.tick();
+    expect(h.percepts(h.a1).find((p) => p.subject === "a2").value).toEqual({ state: "offline", room: "客厅" });
+    expect(line("a2", "a2", { state: "offline", room: "客厅" })).toBe("a2：离线（在《客厅》）");
+    expect(line("a2", "a2", { state: "idle", where: "soma", room: "客厅" })).toBe("a2：在 soma · 《客厅》，闲");
+    await post({ room: "" });
+    expect(presenceOf(h.a2).room).toBe("");
+    expect(line("a2", "a2", presenceOf(h.a2))).toBe("a2：离线（在自己房间）");
+    expect(readExperience(h.a2.db, {}).map((l) => l.text)).toContain("我回了自己房间");
   });
 });
 

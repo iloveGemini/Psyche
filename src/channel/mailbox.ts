@@ -105,7 +105,7 @@ export function sendMail(
   body: Record<string, unknown>,
   housemates: string[] = [],
 ): { ev: PsycheEvent; id: string; archiveNo: string; budget: { used: number; of: number } } {
-  const { to, text, subject, replyTo, for: dest } = body;
+  const { to, text, subject, replyTo, for: dest, urgent } = body;
   if (!nonEmpty(text)) throw new MailError("text 是空的");
   if (!nonEmpty(to)) throw new MailError("to 是空的：写给谁（Joy、屋里的住户），或 self（交接信）");
   const who = to.trim();
@@ -114,6 +114,9 @@ export function sendMail(
   if (who !== "self" && !people.includes(who) && !housemate)
     throw new MailError(`没登记 ${who}：现在能写给 ${[...people, ...housemates].join("、")}，或 self（交接信）`);
   if (subject !== undefined && typeof subject !== "string") throw new MailError("subject 应为字符串");
+  if (urgent !== undefined && typeof urgent !== "boolean") throw new MailError("urgent 应为 true / false");
+  // 紧急通道（P3，Joy 10-19）：住户之间的信才标得了；叫不叫得醒看收信人自己的勿扰
+  if (urgent === true && !housemate) throw new MailError("urgent 只给写给屋里住户的信用");
   if (dest !== undefined) {
     if (who !== "self") throw new MailError("for 只给交接信用（to: self）");
     if (!nonEmpty(dest) || !knownPlaces(store).has(dest.trim())) throw new MailError(`不认识这个地方：${String(dest)}（认识：${[...knownPlaces(store)].join("、")}）`);
@@ -142,6 +145,7 @@ export function sendMail(
       ...(nonEmpty(dest) ? { for: dest.trim() } : {}),
       // 写给住户：回信也算额度（budgetToday 认这个）
       ...(housemate ? { house: true } : {}),
+      ...(urgent === true ? { urgent: true } : {}),
       from: { harness: here?.harness ?? null, session: here?.session ?? null },
     },
   });

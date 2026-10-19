@@ -531,6 +531,16 @@ describe("住户之间写信（m6.md §八）", () => {
     const nobody = await send(a1, "a1", { to: "a3", text: "在吗" });
     expect(nobody.j.error).toContain("能写给 Joy、a2");
   });
+
+  test("紧急通道（P3）：写给住户的信能标急，对方那边写明是急的；写给 Joy 标不了", async () => {
+    const { a1, a2, send } = house();
+    const r = await send(a1, "a1", { to: "a2", text: "服务挂了，你那边能看下吗", urgent: true });
+    expect(r.status).toBe(200);
+    expect(a2.store.list({ kinds: ["mail.in"], fonds: "", limit: 10 })[0].payload).toMatchObject({ from: "a1", urgent: true });
+    expect(await a2.now()).toContain("· 急");
+    expect((await send(a1, "a1", { to: "Joy", text: "急", urgent: true })).status).toBe(400);
+    expect((await send(a1, "a1", { to: "a2", text: "x", urgent: "yes" })).status).toBe(400);
+  });
 });
 
 describe("房子的一个邮箱按 @ 分（soma2.md §8.2）", () => {

@@ -19,6 +19,8 @@ export interface ResidentPresence {
   state: State;
   /** 在线时在哪（soma / pi / …） */
   where?: string;
+  /** 在 Soma 的哪个房间（P3）：最后一次 room.entered；空串 = 自己房间；没有 = 没换过 */
+  room?: string;
   mood?: string;
 }
 export interface JoyPresence {
@@ -43,7 +45,8 @@ export function presenceOf(store: EventStore, now = store.now()): ResidentPresen
        ORDER BY e.at DESC, e.id DESC LIMIT 1`,
     )
     .get(now) as { at: number; kind: string; harness: string | null } | null;
-  const withMood = <T extends object>(p: T) => (mood ? { ...p, mood } : p);
+  const room = currentRoom(store);
+  const withMood = <T extends object>(p: T) => ({ ...p, ...(room !== undefined ? { room } : {}), ...(mood ? { mood } : {}) });
 
   if (last && now - last.at < AWAKE_MS) {
     // 忙：一轮还没说完（最后一条是别人说的话或工具），或最近 15 分钟调过记忆以外的工具
@@ -85,6 +88,25 @@ export function currentMood(store: EventStore): string | undefined {
   const ev = ownSince(store, "mood.set").at(-1);
   const t = (ev?.payload as { text?: string } | undefined)?.text;
   return t || undefined;
+}
+
+export function currentRoom(store: EventStore): string | undefined {
+  const ev = ownSince(store, "room.entered").at(-1);
+  return ev ? ((ev.payload as { room?: string }).room ?? "") : undefined;
+}
+
+/** POST /v1/room：{ room, id?, from? }，Soma 在他换房间时记；room 空串 = 回自己房间 */
+export function enterRoom(store: EventStore, body: Record<string, unknown>) {
+  const { room, id, from } = body;
+  if (typeof room !== "string") throw new MoodError("room 应为字符串（空串 = 自己房间）");
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  const ev = store.append({
+    kind: "room.entered",
+    class: "self",
+    source: "agent",
+    payload: { room: room.trim(), ...(str(id) ? { id: str(id) } : {}), ...(typeof from === "string" ? { from: from.trim() } : {}) },
+  });
+  return { id: ev.id };
 }
 
 /** POST /v1/mood：{ text }，空串 = 清空 */
@@ -148,8 +170,11 @@ export function houseTick(residents: Viewer[], joy: { lastSeen?: number; mood?: 
 export function describe(subject: string, name: string, v: Presence): string {
   const who = subject === JOY || name === subject ? name : `${name}（${subject}）`;
   if ("home" in v) return `${who}：${v.home ? "在家（Soma 里能直接说）" : "不在家（要找她就写信）"}${v.mood ? `；个签「${v.mood}」` : ""}`;
-  const where = v.where && (v.state === "busy" || v.state === "idle") ? `在 ${v.where}，` : "";
-  return `${who}：${where}${STATE_NAME[v.state]}${v.mood ? `；个签「${v.mood}」` : ""}`;
+  const online = v.state === "busy" || v.state === "idle";
+  const room = v.room === undefined ? "" : v.room ? `《${v.room}》` : "自己房间";
+  const where = v.where && online ? `在 ${v.where}${room ? ` · ${room}` : ""}，` : "";
+  const away = room && !online ? `（在${room}）` : "";
+  return `${who}：${where}${STATE_NAME[v.state]}${away}${v.mood ? `；个签「${v.mood}」` : ""}`;
 }
 
 /** 一个对象一段时间里的变化压成一行：只变一次就说变成了什么；变了几次说首尾和次数 */

@@ -612,7 +612,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "到点时你醒着（30 分钟内有对话或工具调用）不花额度；没醒着的，闹钟、定点、心跳各花一次唤醒额度。",
         "wakeOn.mail：来信能不能在你没醒着时叫醒你（缺省能，不花额度）。",
         "dnd：勿扰，一条条规则；一条里的条件都满足才算。条件：time { from, to }（HH:MM，可跨零点）、awake（醒着）、in（在哪个地方，如 soma）、busy（最近 15 分钟用过记忆以外的工具，在做事）。",
-        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的。闹钟、定点、心跳不受勿扰影响。Joy 的暂停盖过例外。",
+        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的；from 也可以写住户的 id（如 { from: \"a2\", urgent: true }）。闹钟、定点、心跳不受勿扰影响。Joy 的暂停盖过例外。",
       ].join("\n"),
       inputSchema: {
         schedule: z
@@ -939,7 +939,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       description: [
         "写信。在哪都能写。",
         "to: \"Joy\"：经她设的通道送到她那里（邮件 / Soma 留言）。回她的某封信挂 replyTo（那封的档号），不算额度；没挂 replyTo 就是你主动找她，每封花一次唤醒额度，额度用完会被拒。subject 可选（邮件主题，不写就用正文第一行）。",
-        "to: 屋里别的住户的 id（如 a2）：直接送到他那里，他醒着时下一轮看到，没醒着会被叫醒（他设了来信叫醒的话）。每封都花你一次唤醒额度，回信也算。做接力时，做完自己那棒告诉下一个人用这个。",
+        "to: 屋里别的住户的 id（如 a2）：直接送到他那里，他醒着时下一轮看到，没醒着会被叫醒（他设了来信叫醒的话）。每封都花你一次唤醒额度，回信也算。做接力时，做完自己那棒告诉下一个人用这个。真有急事可以标 urgent：他那边会写明是急的，勿扰挡不挡由他自己的例外定。",
         "to: \"self\"：交接信，写给之后去了别处的自己（离开家：Soma 是家，别的 harness 才算别处）——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 soma、roxy）就只送那里。不过期，不叫醒你。",
       ].join("\n"),
       inputSchema: {
@@ -948,6 +948,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         subject: z.string().optional(),
         replyTo: z.string().optional().describe("回哪封信（档号）"),
         for: z.string().optional().describe("交接信送到哪个地方"),
+        urgent: z.boolean().optional().describe("写给住户的信标急（紧急通道）"),
       },
     },
     guard(async (args) => {

@@ -51,6 +51,8 @@ export const KINDS: Record<string, KindSpec> = {
   "thread.closed": { class: "self", required: { target: "string", title: "string", how: "string", why: "string" }, rels: ["evidence"] },
   // 心情个签（m8.md §二）：本人挂，空串 = 清空
   "mood.set": { class: "self", required: { text: "string" } },
+  // 换房间（P3，10-19）：在哪间由 Soma 管，这里记他走的这一步；room 空串 = 回了自己房间
+  "room.entered": { class: "self", required: { room: "string" } }, // + id?, from?
   // 自己的声音（m8.md §三）：放、停、歌单、跟着谁听——它的动作；别人来戴 / 摘它的耳机是它经历到的
   played: { class: "self", required: { tracks: "array", startAt: "number" } }, // + playlist?
   stopped: { class: "self", required: {} },

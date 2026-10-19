@@ -61,14 +61,27 @@ test("工具老出错：半小时内 ≥3 次才说，次数跨档再说；经�
   expect(text).toContain("身上：\n- 这一段的上下文用了收尾线的 80%，快满了");
 });
 
-test("群里被静音：Soma 带来的群名报成一行，没有就不报（soma2.md §5.7）", async () => {
+test("房间里被静音：Soma 带来的房间名报成一行，没有就不报（soma2.md §5.7）", async () => {
   const { store, p } = setup();
   store.setSituation({ harness: "soma", session: "s1" }, "soma");
   const app = createApp({ store, projections: p });
   const now = async (q: string) => ((await (await app.request(`/v1/now?session=s1${q}`)).json()) as { text: string }).text;
-  expect(await now(`&muted=${encodeURIComponent(JSON.stringify(["S3 测试"]))}`)).toContain("群：你在《S3 测试》被静音了");
+  expect(await now(`&muted=${encodeURIComponent(JSON.stringify(["S3 测试"]))}`)).toContain("房间：你在《S3 测试》被静音了");
   expect(await now("")).not.toContain("被静音");
   expect(await now("&muted=oops")).not.toContain("被静音");
+});
+
+test("房间（P3）：在哪间、谁也在、几条没读；在自己房间也说一声；看不懂不报", async () => {
+  const { store, p } = setup();
+  store.setSituation({ harness: "soma", session: "s1" }, "soma");
+  const app = createApp({ store, projections: p });
+  const now = async (q: string) => ((await (await app.request(`/v1/now?session=s1${q}`)).json()) as { text: string }).text;
+  const room = (r: unknown) => `&room=${encodeURIComponent(JSON.stringify(r))}`;
+  expect(await now(room({ in: "客厅", with: ["a1", "Argon"], unread: 3 }))).toContain("房间：你在《客厅》，a1、Argon 也在；有 3 条没读（rooms 的 read 看）");
+  expect(await now(room({ in: "客厅", with: [], unread: 0 }))).toContain("房间：你在《客厅》，就你一个\n");
+  expect(await now(room({ in: null }))).toContain("房间：你在自己房间");
+  expect(await now("&room=oops")).not.toContain("房间：");
+  expect(await now("")).not.toContain("房间：");
 });
 
 test("订阅额度：跨档才说，跟窗口走、换一段不重报，窗口重置后从头算", () => {
