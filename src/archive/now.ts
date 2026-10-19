@@ -100,20 +100,20 @@ export function noteSheetLine(store: EventStore, session?: string): string | nul
     : null;
 
   // 1. 记忆断层（GAP）：非当前会话的旧会话还有未写进 episode 的经历行（先在 SQL 筛出游标之后仍有事件的会话，避免逐个扫已热写的历史会话）
+  // 游标每个会话先算一次、事件只扫一遍（10-19：原来按处境逐条套关联子查询，1.4 万条的库要 1.5 秒，占住主线程）
   const sessionRows = store.db
     .query(
-      `SELECT DISTINCT json_extract(s.payload, '$.session') AS s
-       FROM events s
-       WHERE s.class = 'situation' AND s.fonds = '' AND ${NOT_PLACE_SQL}
-         AND json_extract(s.payload, '$.session') IS NOT NULL
-         AND EXISTS (
-           SELECT 1 FROM events e
-           WHERE e.situation = s.id AND e.fonds = '' AND e.class IN ('experience', 'self') AND e.kind <> 'episode'
-             AND e.id > COALESCE((
-               SELECT MAX(json_extract(ep.payload, '$.upTo')) FROM events ep
-               WHERE ep.kind = 'episode' AND ep.fonds = '' AND json_extract(ep.payload, '$.session') = json_extract(s.payload, '$.session')
-             ), '')
-         )`,
+      `WITH sit AS (
+         SELECT s.id, json_extract(s.payload, '$.session') AS sess FROM events s
+         WHERE s.class = 'situation' AND s.fonds = '' AND ${NOT_PLACE_SQL} AND json_extract(s.payload, '$.session') IS NOT NULL
+       ), cur AS (
+         SELECT json_extract(payload, '$.session') AS sess, MAX(json_extract(payload, '$.upTo')) AS upTo FROM events
+         WHERE kind = 'episode' AND fonds = '' GROUP BY sess
+       )
+       SELECT DISTINCT sit.sess AS s FROM events e
+       JOIN sit ON e.situation = sit.id
+       LEFT JOIN cur ON cur.sess = sit.sess
+       WHERE e.fonds = '' AND e.class IN ('experience', 'self') AND e.kind <> 'episode' AND e.id > COALESCE(cur.upTo, '')`,
     )
     .all() as { s: string }[];
   let oldSessions = 0;
