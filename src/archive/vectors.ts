@@ -9,9 +9,11 @@
  * 环境变量（OpenAI 兼容的 /embeddings）：
  *   PSYCHE_EMBED_URL    如 https://api.siliconflow.cn/v1
  *   PSYCHE_EMBED_MODEL  如 BAAI/bge-m3
- *   PSYCHE_EMBED_KEY    密钥；不设则读 PSYCHE_EMBED_KEY_ENV 指的那个变量（缺省 SILICONFLOW_API_KEY）
+ *   PSYCHE_EMBED_KEY    密钥；不设则读 PSYCHE_EMBED_KEY_FILE 那个文件，再不设读 PSYCHE_EMBED_KEY_ENV 指的那个变量（缺省 SILICONFLOW_API_KEY）。
+ *                       常驻服务用文件：启动时带的环境变量同一个用户的任何进程都读得到（Soma sandbox.ts）
  */
 import type { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs";
 import { renderEntry, readShelf } from "../reading/shelf.ts";
 
 export interface Embedder {
@@ -23,7 +25,8 @@ export interface Embedder {
 export function embedderFromEnv(env: Record<string, string | undefined> = process.env): Embedder | undefined {
   const url = env.PSYCHE_EMBED_URL;
   const model = env.PSYCHE_EMBED_MODEL;
-  const key = env.PSYCHE_EMBED_KEY ?? env[env.PSYCHE_EMBED_KEY_ENV ?? "SILICONFLOW_API_KEY"];
+  const key =
+    env.PSYCHE_EMBED_KEY ?? (env.PSYCHE_EMBED_KEY_FILE ? readFileSync(env.PSYCHE_EMBED_KEY_FILE, "utf8").trim() : undefined) ?? env[env.PSYCHE_EMBED_KEY_ENV ?? "SILICONFLOW_API_KEY"];
   if (!url || !model || !key) return undefined;
   return openaiEmbedder(url, model, key, fetchV4Fallback);
 }

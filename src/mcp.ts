@@ -37,10 +37,11 @@
  * 环境变量：
  *   PSYCHE_URL    缺省 http://127.0.0.1:7450
  *   PSYCHE_AGENT  他是谁（Psyche 住着不止一个人时必须有，server/house.ts）
- *   PSYCHE_TOKEN  REST 鉴权（Psyche 没配 token 就不用）
+ *   PSYCHE_TOKEN  REST 鉴权（Psyche 没配 token 就不用）；PSYCHE_TOKEN_FILE = 从文件读（harness 用这个，见 Soma sandbox.ts）
  *   PSYCHE_TZ     不带时区的日期/时间按哪个时区理解（缺省 Asia/Shanghai，与档号切日一致）
  *   PSYCHE_MODE   asleep = 睡着的那段（只挂记忆整理用的工具）；缺省醒着
  */
+import { readFileSync } from "node:fs";
 import { parseTime as parseCoreTime } from "./core/time.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -971,7 +972,9 @@ async function fetchPast(url: string | undefined, agent: string | undefined, tok
 }
 
 if (import.meta.main) {
-  const { PSYCHE_URL: url, PSYCHE_AGENT: agent, PSYCHE_TOKEN: token } = process.env;
+  const { PSYCHE_URL: url, PSYCHE_AGENT: agent } = process.env;
+  // From a file when the harness gives one: a variable set at launch is readable by any process of the same user.
+  const token = process.env.PSYCHE_TOKEN ?? (process.env.PSYCHE_TOKEN_FILE ? readFileSync(process.env.PSYCHE_TOKEN_FILE, "utf8").trim() : undefined);
   const server = createPsycheMcp({
     url,
     agent,

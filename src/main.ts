@@ -9,13 +9,14 @@
  *   PSYCHE_EMBED_*   嵌入服务（archive/vectors.ts）；不设 = 只用字面检索。大家共用
  *   PSYCHE_SCHEDULER 设成 1 才开调度器（m5.md §六：缺省关，开着才会醒）；每人一个
  *   PSYCHE_COMMONS   公共文件夹（Soma 的 commons）：屋里人人看得到它的文件变化（m8.md §6.2）；每人的 home 写在 agents.json
+ *   SOMA_KEY_FILE    Soma 的钥匙文件（Soma web-auth.ts）：调度器推醒来 / 睡着时带上
  *   PSYCHE_NCM_COOKIE 网易云登录（cookies.json 的路径，Roxy 那份的格式）：全屋共用一个账号放歌（m8.md §三）
  *   只住一个人时给他当缺省（住几个人就写进 agents.json）：
  *   PSYCHE_MODEL     他的模型，出生时没记下的库用它（睡着时整理用）
  *   SOMA_URL         他的家（Soma，如 http://127.0.0.1:30151）：醒来推到这里。不设 = 只做睡着时的整理，不叫醒
  *   PSYCHE_EMAIL     设成 1 才收房子的邮箱（agently-cli，m6.md §〇.1）；AGENTLY_WORKSPACE 缺省 psyche
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { EventStore } from "./store/events.ts";
@@ -197,11 +198,21 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
     return undefined;
   }
   let asleep = false;
+  // Soma 的门要钥匙（Soma web-auth.ts）：从 SOMA_KEY_FILE 读，每次现读，换了钥匙不用重启
+  const somaKey = (): Record<string, string> => {
+    const file = process.env.SOMA_KEY_FILE;
+    if (!file) return {};
+    try {
+      return { "x-soma-key": readFileSync(file, "utf8").trim() };
+    } catch {
+      return {};
+    }
+  };
   // Soma 在不在：不在 = 当它睡着，醒来不推、不记账，等它回来
   const bodyUp = async () => {
     if (!soma) return false;
     try {
-      return (await fetch(wakeUrl, { signal: AbortSignal.timeout(3_000) })).ok;
+      return (await fetch(wakeUrl, { headers: somaKey(), signal: AbortSignal.timeout(3_000) })).ok;
     } catch {
       return false;
     }
@@ -223,7 +234,7 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
       console.log(`${tag}叫醒（${BY_NAME[by] ?? by}${note ? `：${note}` : ""}）→ Soma`);
       fetch(wakeUrl, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...somaKey() },
         body: JSON.stringify({ by, key, ...(note ? { note } : {}) }),
         signal: AbortSignal.timeout(10_000),
       })
@@ -241,7 +252,7 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
     // Soma 用醒着的同一个身体另开一段，跑完才回（m5.md §三 10-17 改）
     fetch(asleepUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...somaKey() },
       body: JSON.stringify({ by, key, ...(note ? { note } : {}), ...(session ? { session } : {}) }),
       signal: AbortSignal.timeout(20 * 60_000),
       // Bun 的 fetch 默认空闲 5 分钟就断（10-17 Roy 出生那段：argon 想得慢，跑到 5 分钟被记成没推成、还招来重试）；只认上面的 20 分钟
