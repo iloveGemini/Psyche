@@ -98,15 +98,28 @@ export function rrf<T extends { eventId: string }>(lists: T[][], limit: number, 
   return [...score.values()].sort((a, b) => b.s - a.s).slice(0, limit).map((x) => x.item);
 }
 
-/** 查询的向量：先补齐库里的向量；没配或失败 = null（只用字面） */
-export async function queryVector(db: Database, embedder: Embedder | undefined, q: string): Promise<Float32Array | null> {
+/** 嵌入服务卡住时最多等多久（10-19：一次 recall 等了 13 秒，连接被掐断；本地检索本身只要几十毫秒） */
+export const QUERY_VECTOR_TIMEOUT_MS = 5_000;
+
+/** 查询的向量：先补齐库里的向量；没配、失败或超时 = null（只用字面；超时后补向量在后台接着跑） */
+export async function queryVector(db: Database, embedder: Embedder | undefined, q: string, timeoutMs = QUERY_VECTOR_TIMEOUT_MS): Promise<Float32Array | null> {
   if (!embedder || !q.trim()) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await syncVectors(db, embedder);
-    return (await embedder.embed([q]))[0];
+    const embedTask = (async () => {
+      await syncVectors(db, embedder);
+      return (await embedder.embed([q]))[0];
+    })();
+    const timeoutTask = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`超时（>${timeoutMs}ms）`)), timeoutMs);
+    });
+    embedTask.catch(() => {}); // 超时后它再出错，不要变成未处理的 rejection
+    return await Promise.race([embedTask, timeoutTask]);
   } catch (e) {
     console.error(`向量检索失败，只用字面：${e instanceof Error ? e.message : e}`);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

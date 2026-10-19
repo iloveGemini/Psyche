@@ -6,7 +6,7 @@ import { experienceProjector } from "../src/archive/experience.ts";
 import { shelfProjector } from "../src/reading/shelf.ts";
 import { grams, isIdle, keywords, surface } from "../src/association/surface.ts";
 import { writeEpisodes } from "../src/catalog/hotwrite.ts";
-import { hybridRecall, rrf } from "../src/archive/recall.ts";
+import { hybridRecall, queryVector, rrf } from "../src/archive/recall.ts";
 import { normalize, type Embedder } from "../src/archive/vectors.ts";
 
 const T = (s: string) => Date.parse(`${s}+08:00`);
@@ -158,5 +158,14 @@ describe("浮现", () => {
     t.evenings();
     const lines = await hybridRecall(t.store.db, fake, { q: "上次退款那笔" });
     expect(lines[0].text).toContain("耳机");
+  });
+
+  test("嵌入服务卡住：查询向量超时就只用字面，不干等", async () => {
+    const t = setup();
+    t.evenings();
+    const stuck: Embedder = { model: "stuck", embed: () => new Promise(() => {}) };
+    const t0 = performance.now();
+    expect(await queryVector(t.store.db, stuck, "耳机", 50)).toBeNull();
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 });
