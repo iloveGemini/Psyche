@@ -64,8 +64,8 @@ export interface McpOptions {
 
 export type Mode = "awake" | "asleep";
 
-const ALWAYS = ["recall", "detail", "hotwrite_segment", "hotwrite", "revise_episode", "coldwrite", "shelf", "stats", "self", "rewrite_self", "name_self"];
-const AWAKE = ["schedule", "write_diary", "threads", "look", "set_mood", "player", "playlist", "notice", "mail", "send_mail"];
+const ALWAYS = ["recall", "detail", "hotwrite_segment", "hotwrite", "revise_episode", "coldwrite", "shelf", "stats", "self", "rewrite_self", "name_self", "mail"];
+const AWAKE = ["schedule", "write_diary", "threads", "look", "set_mood", "player", "playlist", "notice", "send_mail"];
 
 /** 这次挂哪些工具（见文件头） */
 export function toolsFor(mode: Mode = "awake", past?: { fonds: string; claimed: boolean }[]): string[] {

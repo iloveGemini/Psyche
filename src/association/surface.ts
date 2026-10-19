@@ -285,12 +285,22 @@ export async function surface(
 
   let qvec: Float32Array | null = null;
   if (embedder && cue.trim() && !idle) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await syncVectors(store.db, embedder);
-      // 她这一轮的话够长就只嵌它（前几行会把意思冲淡）；太短（"嗯 在吗"）才带上前文
-      [qvec] = await embedder.embed([Array.from(cueNow).length >= 6 ? cueNow : cue]);
+      const embedTask = (async () => {
+        await syncVectors(store.db, embedder, 64, { surfaceOnly: true });
+        // 她这一轮的话够长就只嵌它（前几行会把意思冲淡）；太短（"嗯 在吗"）才带上前文
+        const [v] = await embedder.embed([Array.from(cueNow).length >= 6 ? cueNow : cue]);
+        return v;
+      })();
+      const timeoutTask = new Promise<null>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("浮现向量超时（>1800ms）")), 1800);
+      });
+      qvec = await Promise.race([embedTask, timeoutTask]);
     } catch (e) {
       console.error(`浮现的向量失败，只用字面：${e instanceof Error ? e.message : e}`);
+    } finally {
+      clearTimeout(timer);
     }
   }
   const model = qvec ? embedder!.model : null;

@@ -45,12 +45,14 @@ const tokens = residents.map((r) => r.config.token).filter(Boolean);
 if (new Set(tokens).size < tokens.length) console.error("有人共用一个 token：A 的 token 能进 B 的门。每人在 agents.json 里设自己的");
 
 const apps = new Map<string, (req: Request) => Response | Promise<Response>>();
+const residentTimers = new Map<string, () => void>();
 const viewers: { id: string; store: EventStore }[] = [];
 // 屋里别人的库：一起听要跨住户读播放器、记 ear.*（openResident 时还没全开，用到时才查）
 const storeOf = (id: string) => viewers.find((v) => v.id === id)?.store;
 for (const r of residents) {
-  const { app, store } = openResident(r);
+  const { app, store, stopTimers } = openResident(r);
   apps.set(r.id, app.fetch);
+  residentTimers.set(r.id, stopTimers);
   viewers.push({ id: r.id, store });
 }
 // 屋子：每 30 秒看一圈谁变了，记进其他人的库（m8.md §二）
@@ -66,13 +68,32 @@ const agentTokens: Record<string, string> = Object.fromEntries(
 const house = openHouse(dataDir, viewers, Date.now, undefined, places, {
   onAddResident: (r) => {
     const resolved: Resident = { ...r, config: { ...r.config, token: r.config.token ?? process.env.PSYCHE_TOKEN } };
-    const { app, store } = openResident(resolved);
+    const { app, store, stopTimers } = openResident(resolved);
     apps.set(r.id, app.fetch);
+    residentTimers.set(r.id, stopTimers);
     if (resolved.config.token && !houseTokens.includes(resolved.config.token)) houseTokens.push(resolved.config.token);
     if (resolved.config.token) agentTokens[resolved.id] = resolved.config.token;
     const v = { id: r.id, store };
     viewers.push(v);
     return v;
+  },
+  onRenameResident: (from, to, config) => {
+    residentTimers.get(from)?.();
+    residentTimers.delete(from);
+    apps.delete(from);
+    delete agentTokens[from];
+    const resolved: Resident = { id: to, dir: join(dataDir, to), config: { ...config, token: config.token ?? process.env.PSYCHE_TOKEN } };
+    const { app, store, stopTimers } = openResident(resolved);
+    apps.set(to, app.fetch);
+    residentTimers.set(to, stopTimers);
+    if (resolved.config.token) agentTokens[to] = resolved.config.token;
+    for (const p of places) {
+      if ("owner" in p && p.owner === from) {
+        p.owner = to;
+        if (config.home) p.dir = expand(config.home);
+      }
+    }
+    return { id: to, store };
   },
 });
 // 房子的一个邮箱（soma2.md §8.2）：只起一个 +watch，来信按 [名字] / @名字 / 同一话题分，都不是给第一个开了 email 的人
@@ -93,7 +114,10 @@ if (mailer) {
 house.tick();
 setInterval(() => {
   try {
+    const t0 = performance.now();
     house.tick();
+    const ms = performance.now() - t0;
+    if (ms > 300) console.warn(`[卡] 屋子看一圈 ${Math.round(ms)}ms`);
   } catch (e) {
     console.error(`屋子看一圈出错：${e instanceof Error ? e.message : e}`);
   }
@@ -104,6 +128,8 @@ const SLOW_MS = Number(process.env.PSYCHE_SLOW_MS) || 1_000;
 Bun.serve({
   port,
   hostname: "127.0.0.1",
+  // Bun 缺省 10 秒没响应就掐断连接；10-19 一次 recall 跑了 13 秒，客户端只看到 socket closed
+  idleTimeout: 60,
   async fetch(req) {
     const t0 = performance.now();
     try {
@@ -138,10 +164,11 @@ function openResident({ id, dir, config }: Resident) {
   projections.live();
 
   // 向量不是投影（要调外部服务）：后台慢慢补，失败了下次再补
-  if (embedder)
-    setInterval(() => {
-      syncVectors(store.db, embedder, 256).catch((e) => console.error(`${tag}补向量失败：${e instanceof Error ? e.message : e}`));
-    }, 10_000);
+  const vecTimer = embedder
+    ? setInterval(() => {
+        syncVectors(store.db, embedder, 256).catch((e) => console.error(`${tag}补向量失败：${e instanceof Error ? e.message : e}`));
+      }, 10_000)
+    : undefined;
   // 写给人的信：按通道设置投递（soma-note 不用做什么——留言页自己读 /v1/mail）
   const outbox = (ev: PsycheEvent) => {
     const to = (ev.payload as { to: string }).to;
@@ -151,8 +178,12 @@ function openResident({ id, dir, config }: Resident) {
   };
   const app = createApp({ store, projections, token: config.token, embedder, outbox, storeOf, selfId: id, residentIds: () => viewers.map((v) => v.id), past: config.past });
 
-  if (process.env.PSYCHE_SCHEDULER === "1") startScheduler(id, store, config, tag);
-  return { app, store };
+  const schedTimer = process.env.PSYCHE_SCHEDULER === "1" ? startScheduler(id, store, config, tag) : undefined;
+  const stopTimers = () => {
+    if (vecTimer) clearInterval(vecTimer);
+    if (schedTimer) clearInterval(schedTimer);
+  };
+  return { app, store, stopTimers };
 }
 
 // 调度器（m5.md §二；10-16 家 = Soma）：每人一个，每分钟判一次。醒来推给他的 Soma（同一条会话）；补写、整理、梗概也推给 Soma 另开一段（10-17）
@@ -163,7 +194,7 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
   const asleepUrl = `${soma}/api/line/asleep?agent=${encodeURIComponent(id)}`;
   if (!soma) {
     console.error(`${tag}调度器没开：没设家（agents.json 的 soma / SOMA_URL）——醒来和睡着都在 Soma 跑`);
-    return;
+    return undefined;
   }
   let asleep = false;
   // Soma 在不在：不在 = 当它睡着，醒来不推、不记账，等它回来
@@ -175,8 +206,17 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
       return false;
     }
   };
-  setInterval(async () => {
-    const d = tick(store, { asleep, bodyUp: await bodyUp() });
+  const timer = setInterval(async () => {
+    let d: ReturnType<typeof tick>;
+    try {
+      const up = await bodyUp();
+      const t0 = performance.now();
+      d = tick(store, { asleep, bodyUp: up });
+      const ms = performance.now() - t0;
+      if (ms > 300) console.warn(`[卡] ${tag}作息检查 ${Math.round(ms)}ms`);
+    } catch {
+      return;
+    }
     if (!d || !("wake" in d)) return;
     const { by, note, session, key } = d.wake;
     if (!asleepWork(d.wake)) {
@@ -220,4 +260,5 @@ function startScheduler(id: string, store: EventStore, config: ResidentConfig, t
       .finally(() => (asleep = false));
   }, 60_000);
   console.log(`${tag}调度器开着（家在 ${soma}）`);
+  return timer;
 }

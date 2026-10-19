@@ -99,13 +99,21 @@ export function noteSheetLine(store: EventStore, session?: string): string | nul
       ).at
     : null;
 
-  // 1. 记忆断层（GAP）：非当前会话的旧会话还有未写进 episode 的经历行
+  // 1. 记忆断层（GAP）：非当前会话的旧会话还有未写进 episode 的经历行（先在 SQL 筛出游标之后仍有事件的会话，避免逐个扫已热写的历史会话）
   const sessionRows = store.db
     .query(
       `SELECT DISTINCT json_extract(s.payload, '$.session') AS s
        FROM events s
        WHERE s.class = 'situation' AND s.fonds = '' AND ${NOT_PLACE_SQL}
-         AND json_extract(s.payload, '$.session') IS NOT NULL`,
+         AND json_extract(s.payload, '$.session') IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM events e
+           WHERE e.situation = s.id AND e.fonds = '' AND e.class IN ('experience', 'self') AND e.kind <> 'episode'
+             AND e.id > COALESCE((
+               SELECT MAX(json_extract(ep.payload, '$.upTo')) FROM events ep
+               WHERE ep.kind = 'episode' AND ep.fonds = '' AND json_extract(ep.payload, '$.session') = json_extract(s.payload, '$.session')
+             ), '')
+         )`,
     )
     .all() as { s: string }[];
   let oldSessions = 0;

@@ -33,7 +33,8 @@ export function embedderFromEnv(env: Record<string, string | undefined> = proces
  * 报成 unknown certificate verification error，浮现拖过 Soma 等 <now> 的 3 秒）。HTTP 层的错照常返回，不重试。
  * 退回过一次，之后半小时直接走 IPv4：每次先等 IPv6 失败要好几秒（10-18 测到冷连接 7.6 秒），<now> 照样超时。
  */
-const V4_STICKY_MS = 30 * 60_000;
+const V4_STICKY_MS = 24 * 3600_000;
+const V4_PROBE_TIMEOUT_MS = 1200;
 const v4Until = new Map<string, number>();
 
 async function viaV4(u: URL, init?: RequestInit): Promise<Response | undefined> {
@@ -54,7 +55,8 @@ export const fetchV4Fallback: typeof fetch = Object.assign(
       v4Until.delete(u.hostname);
     }
     try {
-      return await fetch(input, init);
+      const probeInit = u.protocol === "https:" && !init?.signal ? { ...init, signal: AbortSignal.timeout(V4_PROBE_TIMEOUT_MS) } : init;
+      return await fetch(input, probeInit);
     } catch (err) {
       const res = await viaV4(u, init);
       if (!res) throw err;
@@ -113,12 +115,13 @@ const BATCH = 32;
 /** 嵌入时截到多长：情节和原话都不长；工具返回已在渲染时截过 */
 const MAX_CHARS = 1000;
 
-/** 还没有向量的：经历可见行（不含处境）+ 现行书架条目 */
-function missing(db: Database, model: string, limit: number): { ref: string; text: string }[] {
+/** 还没有向量的：经历可见行（不含处境；surfaceOnly 时只看浮现用得到的 episode / notice）+ 现行书架条目 */
+function missing(db: Database, model: string, limit: number, surfaceOnly = false): { ref: string; text: string }[] {
+  const kindFilter = surfaceOnly ? `AND p.kind IN ('episode', 'notice')` : `AND p.class <> 'situation'`;
   const exp = db
     .query(
       `SELECT p.event_id AS ref, p.text FROM p_experience p
-       WHERE p.covered = 0 AND p.class <> 'situation'
+       WHERE p.covered = 0 ${kindFilter}
          AND NOT EXISTS (SELECT 1 FROM p_vec v WHERE v.ref = p.event_id AND v.model = ?)
        ORDER BY p.event_id LIMIT ?`,
     )
@@ -133,11 +136,11 @@ function missing(db: Database, model: string, limit: number): { ref: string; tex
 }
 
 /** 补齐向量；返回这次补了几条。出错（网络、额度）向上抛，调用方决定要不要吞 */
-export async function syncVectors(db: Database, embedder: Embedder, max = 2000): Promise<number> {
+export async function syncVectors(db: Database, embedder: Embedder, max = 2000, opts?: { surfaceOnly?: boolean }): Promise<number> {
   setupVectors(db);
   let done = 0;
   while (done < max) {
-    const rows = missing(db, embedder.model, Math.min(BATCH, max - done));
+    const rows = missing(db, embedder.model, Math.min(BATCH, max - done), opts?.surfaceOnly);
     if (!rows.length) break;
     const vecs = await embedder.embed(rows.map((r) => Array.from(r.text).slice(0, MAX_CHARS).join("")));
     const put = db.query(`INSERT OR REPLACE INTO p_vec (ref, model, vec) VALUES (?, ?, ?)`);

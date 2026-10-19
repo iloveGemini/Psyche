@@ -9,8 +9,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { houseTick, joyPresence, presenceOf, JOY, MOOD_MAX, type Viewer } from "./presence.ts";
-import { birth, currentName, letterText, SelfError, type BornDetail } from "../self/self.ts";
+import { birth, currentName, letterText, nameSelf, SelfError, type BornDetail } from "../self/self.ts";
 import { readLetter, registerResident } from "./add.ts";
+import { renameResidentFiles } from "./rename.ts";
 import { nowPlaying } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { filesTick, loadSnaps, saveSnaps, type Place } from "./files.ts";
@@ -29,6 +30,8 @@ export interface HouseOptions {
   promptsDir?: string;
   /** 新建住户时由宿主挂载 app 与调度器；缺省直接开库挂进 viewers */
   onAddResident?: (r: Resident) => Viewer;
+  /** 改 id 时由宿主重开并替换内存里的 app 与 viewer */
+  onRenameResident?: (from: string, to: string, config: ResidentConfig) => Viewer;
 }
 
 export function openHouse(
@@ -142,6 +145,58 @@ export function openHouse(
         if (e instanceof SelfError) return Response.json({ error: e.message }, { status: 400 });
         throw e;
       }
+    }
+    if (req.method === "POST" && path === "/v1/house/residents/rename") {
+      const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+      const from = typeof b?.from === "string" ? b.from.trim() : "";
+      const to = typeof b?.to === "string" && b.to.trim() ? b.to.trim() : from;
+      const name = typeof b?.name === "string" && b.name.trim() ? b.name.trim() : undefined;
+      const why = typeof b?.why === "string" && b.why.trim() ? b.why.trim() : undefined;
+      const home = typeof b?.home === "string" && b.home.trim() ? b.home.trim() : undefined;
+      if (!ID_PATTERN.test(from)) return Response.json({ error: "原 id 格式不对" }, { status: 400 });
+      if (!ID_PATTERN.test(to)) return Response.json({ error: "新 id 格式不对" }, { status: 400 });
+      const idx = residents.findIndex((r) => r.id === from);
+      if (idx < 0) return Response.json({ error: `屋里没有 ${from}` }, { status: 404 });
+      let viewer = residents[idx];
+      if (from !== to) {
+        try {
+          viewer.store.close();
+          const config = renameResidentFiles(dataDir, { from, to, home });
+          if (opts.onRenameResident) {
+            viewer = opts.onRenameResident(from, to, config);
+            residents[idx] = viewer;
+          } else {
+            const store = new EventStore(join(dataDir, to, "psyche.db"), { now });
+            const p = new Projections(store);
+            p.register(experienceProjector);
+            p.register(shelfProjector);
+            p.live();
+            viewer = { id: to, store };
+            residents[idx] = viewer;
+          }
+          // 同步迁移各住户库里旧 id 的 presence 感知对象，避免 <now> 残留旧 id
+          for (const r of residents) {
+            try {
+              r.store.db.exec("DROP TRIGGER IF EXISTS events_no_update;");
+              r.store.db
+                .query(`UPDATE events SET payload = json_set(payload, '$.subject', ?) WHERE kind = 'percept' AND json_extract(payload, '$.subject') = ?`)
+                .run(to, from);
+              r.store.db.exec("CREATE TRIGGER events_no_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT, 'events 只追加，不可修改'); END;");
+            } catch {}
+          }
+        } catch (e) {
+          return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+        }
+      }
+      let named: { name: string; archiveNo: string } | undefined;
+      if (name) {
+        try {
+          named = nameSelf(viewer.store, { name, why: why ?? (from !== to ? `改 id ${from} → ${to}` : "改名") });
+        } catch (e) {
+          return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+        }
+      }
+      return Response.json({ from, to: viewer.id, name: currentName(viewer.store) ?? viewer.id, ...(named ? { archiveNo: named.archiveNo } : {}) });
     }
     if (req.method === "POST" && path === "/v1/house/joy/seen") {
       joy.lastSeen = now();

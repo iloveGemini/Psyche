@@ -56,7 +56,7 @@ describe("MCP 工具 → REST", () => {
 
   test("睡着只挂记忆整理用的；前世按有没有、认没认领挂", async () => {
     const asleep = await connect({ fetch: async () => Response.json({}), mode: "asleep", past: [] });
-    expect((await asleep.listTools()).tools.map((t) => t.name).sort()).toEqual(["coldwrite", "detail", "gist", "hotwrite", "hotwrite_segment", "name_self", "recall", "revise_episode", "rewrite_self", "self", "shelf", "stats"].sort());
+    expect((await asleep.listTools()).tools.map((t) => t.name).sort()).toEqual(["coldwrite", "detail", "gist", "hotwrite", "hotwrite_segment", "mail", "name_self", "recall", "revise_episode", "rewrite_self", "self", "shelf", "stats"].sort());
     expect(toolsFor("awake", [])).not.toContain("past_life");
     expect(toolsFor("awake", [])).toHaveLength(21);
     const claimed = toolsFor("awake", [{ fonds: "ROY", claimed: true }]);

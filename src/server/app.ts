@@ -250,7 +250,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     ]
       .filter(Boolean)
       .join("\n");
-    let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, `\n${extra}\n</now>`) : renderNow(store, session);
+    let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, () => `\n${extra}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session, storeOf }));
     // 屋里有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
     const house = deliverPresence(store, session);
@@ -265,7 +265,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
       const other = storeOf?.(id);
       return (other && currentName(other)) || id;
     });
-    for (const block of [just, body, house, things, heard, s]) if (block) text = text.replace(/\n<\/now>$/, `\n\n${block}\n</now>`);
+    for (const block of [just, body, house, things, heard, s]) if (block) text = text.replace(/\n<\/now>$/, () => `\n\n${block}\n</now>`);
     return text;
   };
   app.get("/v1/now", async (c) => {

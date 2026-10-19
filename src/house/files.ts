@@ -141,14 +141,23 @@ const CHANGE: Record<Change, string> = { added: "新出现", modified: "被改�
 
 /** <now> 的「屋里的东西」：本会话上次递到之后的变化，同一个文件压成一行（最后的样子 + 次数）；最多 10 行 */
 export function deliverFiles(store: EventStore, session: string | undefined, names: (id: string) => string = (id) => id): string | null {
-  const noticed = store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { sensor?: string }).sensor === "files");
+  const lastRow =
+    (session
+      ? store.db
+          .query(
+            `SELECT id FROM events WHERE kind = 'percept.noticed' AND fonds = '' AND json_extract(payload, '$.sensor') = 'files' AND json_extract(payload, '$.session') = ? ORDER BY id DESC LIMIT 1`,
+          )
+          .get(session)
+      : null) ??
+    store.db
+      .query(`SELECT id FROM events WHERE kind = 'percept.noticed' AND fonds = '' AND json_extract(payload, '$.sensor') = 'files' ORDER BY id DESC LIMIT 1`)
+      .get();
   // 本会话递过就从那次算；新会话接任何会话最后递到的那次（递过的不再翻）；从没递过：只报最近 6 小时的
-  const last = noticed.filter((e) => (e.payload as { session?: string }).session === session).at(-1) ?? noticed.at(-1);
-  const since = last?.id ?? "";
-  const floor = last ? 0 : store.now() - 6 * 3_600_000;
+  const since = (lastRow as { id: string } | null)?.id ?? "";
+  const floor = lastRow ? 0 : store.now() - 6 * 3_600_000;
   const fresh = store
-    .list({ kinds: ["percept"], fonds: "", limit: 100_000 })
-    .filter((e) => (e.payload as { sensor: string }).sensor === "files" && e.id > since && e.at >= floor);
+    .list({ kinds: ["percept"], fonds: "", afterId: since || undefined, from: floor || undefined, limit: 100_000 })
+    .filter((e) => (e.payload as { sensor: string }).sensor === "files");
   if (!fresh.length) return null;
   const by = new Map<string, PsycheEvent[]>();
   for (const e of fresh) {
