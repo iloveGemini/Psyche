@@ -216,13 +216,17 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       description: [
         "取这一段还没写进记忆的经历：本会话里、从你上次写情节到现在发生的事，每行带档号。",
         "同时给你写法说明和 upTo（这一段到哪为止）。读完用 hotwrite 把它写成情节。",
+        "写眼前这个会话时每行只给开头（原文就在你上面的对话里）；补写别的会话、或者原文已经不在上下文里了，给全文。",
       ].join("\n"),
       inputSchema: {
         session: z.string().optional().describe("会话 id；省略 = 你此刻所在的会话。只有事后补写别的会话时才需要"),
+        full: z.boolean().optional().describe("要全文：这一段的原文已经不在你的上下文里了（比如被压缩过）"),
       },
     },
-    guard(async ({ session }) => {
-      const seg = (await call("GET", `/v1/hotwrite${session ? `?session=${encodeURIComponent(session)}` : ""}`)) as {
+    guard(async ({ session, full }) => {
+      // 写眼前这个会话：原文在上下文里，只给开头对档号（m1.md §二 brief）
+      const q = session ? `?session=${encodeURIComponent(session)}` : full ? "" : "?brief=1";
+      const seg = (await call("GET", `/v1/hotwrite${q}`)) as {
         session: string;
         upTo: string | null;
         prompt: string;

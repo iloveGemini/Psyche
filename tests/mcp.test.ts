@@ -191,6 +191,15 @@ describe("MCP 工具 → REST", () => {
     expect(textOf(await empty.callTool({ name: "hotwrite_segment", arguments: {} }))).toContain("不用写");
   });
 
+  test("hotwrite_segment：眼前这个会话只要开头；带 session 或 full 要全文", async () => {
+    const rest = fakeRest(() => Response.json({ session: "s1", upTo: null, prompt: "", promptVersion: 1, lines: [] }));
+    const client = await connect({ fetch: rest.fetch });
+    await client.callTool({ name: "hotwrite_segment", arguments: {} });
+    await client.callTool({ name: "hotwrite_segment", arguments: { full: true } });
+    await client.callTool({ name: "hotwrite_segment", arguments: { session: "s0" } });
+    expect(rest.seen.map((s) => new URL(s.url).search)).toEqual(["?brief=1", "", "?session=s0"]);
+  });
+
   test("hotwrite：参数原样 POST；被拒时把理由原样交回", async () => {
     const entries = [{ text: "她早上来打了个招呼，我回了。", felt: "轻松", cites: ["10-14#12", "10-14#13"] }];
     const ok = fakeRest(() => Response.json({ episodes: [{ id: "e1", archiveNo: "10-14#20" }] }));
