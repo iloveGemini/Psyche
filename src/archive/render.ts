@@ -33,6 +33,8 @@ export function renderExperience(ev: PsycheEvent): string | null {
     // 常驻区跟热写一起改，落在 upTo 之后；它在下一段的 <continuity> 里看得到（self/pinned.ts）
     case "pin.changed":
       return null;
+    case "speech.silent":
+      return `我${p.to ? `对${p.to}` : ""}没出声`;
     case "message.out":
       // 收尾那轮（harness 在会话里推的 <psyche-hotwrite>）说的话照样是经历；只是不算没写的（hotwrite.ts segmentLines）
       if (p.wrapUp) return `我写完记忆时说：${p.text}`;

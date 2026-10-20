@@ -65,6 +65,16 @@ describe("在线 / 忙 / 闲 / 睡着 / 离线", () => {
     h.tool(h.a2, "mcp__psyche__hotwrite");
     expect(presenceOf(h.a2).state).toBe("asleep"); // 睡着时的动静不算在线
   });
+
+  test("没出声也是这一轮完了（speech.silent）", () => {
+    const h = setup();
+    h.sit(h.a1, "s1", "pi");
+    h.her(h.a1, "在吗");
+    expect(presenceOf(h.a1).state).toBe("busy");
+    h.pass(MIN);
+    intake(h.a1, { kind: "speech.silent", source: "roxy", payload: {} });
+    expect(presenceOf(h.a1).state).toBe("idle");
+  });
 });
 
 describe("只记变化，记进别人的库", () => {

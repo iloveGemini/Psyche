@@ -83,7 +83,7 @@ export function lastActive(store: EventStore, at?: number): { at: number; harnes
   const r = store.db
     .query(
       `SELECT e.at, json_extract(s.payload, '$.harness') AS harness FROM events e LEFT JOIN events s ON s.id = e.situation
-       WHERE e.kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND e.fonds = ''
+       WHERE e.kind IN ('message.in', 'message.out', 'speech.silent', 'tool.call', 'tool.result') AND e.fonds = ''
          AND ${NOT_PLACE_SQL} AND e.at <= ? ORDER BY e.at DESC LIMIT 1`,
     )
     .get(at ?? Number.MAX_SAFE_INTEGER) as { at: number; harness: string | null } | null;

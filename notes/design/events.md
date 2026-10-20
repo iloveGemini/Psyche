@@ -108,7 +108,7 @@ Lethe 是作用层与机制层，持续运行，不是事件：可见状态由"�
 
 ## 六、kind 清单（初版，payload 随各块细化再定）
 
-- **经历**：`message.in` / `message.out`（哪个 harness、对方是谁）· `tool.call` / `tool.result` · `percept`（传感器、敏感标签、精度级别）· `mail.in` · `surfaced`（浮现了哪条、清晰度）· `woke` / `slept`（被什么唤醒）
+- **经历**：`message.in` / `message.out`（哪个 harness、对方是谁）/ `speech.silent`（这一轮选了不开口，10-20）· `tool.call` / `tool.result` · `percept`（传感器、敏感标签、精度级别）· `mail.in` · `surfaced`（浮现了哪条、清晰度）· `woke` / `slept`（被什么唤醒）
 - **自我**：`episode`（热写的情节条目：正文、感受、角标；改写也是一条 `episode`，`revises` 指向旧条）· `named` · `diary` · `loaded` / `evicted` · `policy.changed` · `focus.changed` · `prompt.changed`（附证据）· `moved` · `mail.out` · `ignored`（浮现了没理）
 - **自我（冷写）**：`semantic.*`（事实/规律/印象；proposed / evidence / revised / retired）· `lesson.*`（经验复盘）· `thread.*` · `entity` / `alias`。见 `reading-room.md`
 - ~~`imprint`~~（10-14 并入 `episode` 的感受）· ~~`scene`~~（分场撤掉）

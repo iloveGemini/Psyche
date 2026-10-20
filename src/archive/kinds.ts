@@ -24,6 +24,8 @@ export const KINDS: Record<string, KindSpec> = {
   // ── 经历：发生在它身上、它经历到的 ──
   "message.in": { class: "experience", required: { from: "string", text: "string" } }, // + session?, attachments?: MaterialRef[]
   "message.out": { class: "experience", required: { text: "string" } }, // + to?, session?
+  // 这一轮选了不开口（10-20：Roxy 的 <keep_silence/>）；跟没轮到他说（没能回应）、什么都没发生都不一样
+  "speech.silent": { class: "experience", required: {} }, // + to?, session?
   "tool.call": { class: "experience", required: { name: "string", callId: "string" } }, // + args?
   "tool.result": { class: "experience", required: { callId: "string", name: "string", ok: "boolean" } }, // + text? | result?: MaterialRef
   percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + subject?, name?, prev?（m8.md：屋子记下的变化；不进经历，递到才算）

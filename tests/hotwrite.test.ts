@@ -240,6 +240,7 @@ describe("写记忆本身怎么进经历", () => {
     expect(renderExperience(ev("tool.result", { name: "mcp__psyche__hotwrite", callId: "1", ok: false, text: "Psyche 拒绝了（400）：cites 不在段里" }))).toContain("拒绝了");
     expect(renderExperience(ev("message.out", { text: "写好了。", wrapUp: true }))).toBe("我写完记忆时说：写好了。");
     expect(renderExperience(ev("message.out", { text: "写好了。" }))).toBe("我说：写好了。");
+    expect(renderExperience(ev("speech.silent", {}))).toBe("我没出声");
     expect(renderExperience(ev("tool.result", { name: "mcp__psyche__hotwrite_segment", callId: "2", ok: true, text: "……" }))).toBeNull();
   });
 });

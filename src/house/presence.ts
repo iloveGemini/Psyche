@@ -41,7 +41,7 @@ export function presenceOf(store: EventStore, now = store.now()): ResidentPresen
   const last = store.db
     .query(
       `SELECT e.at, e.kind, json_extract(s.payload, '$.harness') AS harness FROM events e LEFT JOIN events s ON s.id = e.situation
-       WHERE e.kind IN ('message.in', 'message.out', 'tool.call', 'tool.result') AND e.fonds = '' AND ${NOT_PLACE_SQL} AND e.at <= ?
+       WHERE e.kind IN ('message.in', 'message.out', 'speech.silent', 'tool.call', 'tool.result') AND e.fonds = '' AND ${NOT_PLACE_SQL} AND e.at <= ?
        ORDER BY e.at DESC, e.id DESC LIMIT 1`,
     )
     .get(now) as { at: number; kind: string; harness: string | null } | null;
@@ -50,7 +50,7 @@ export function presenceOf(store: EventStore, now = store.now()): ResidentPresen
 
   if (last && now - last.at < AWAKE_MS) {
     // 忙：一轮还没说完（最后一条是别人说的话或工具），或最近 15 分钟调过记忆以外的工具
-    const inTurn = last.kind !== "message.out" && now - last.at < BUSY_MS;
+    const inTurn = last.kind !== "message.out" && last.kind !== "speech.silent" && now - last.at < BUSY_MS;
     const working = !!store.db
       .query(`SELECT 1 FROM events WHERE kind = 'tool.call' AND fonds = '' AND at > ? AND at <= ? AND json_extract(payload, '$.name') NOT LIKE 'mcp__psyche__%' LIMIT 1`)
       .get(now - BUSY_MS, now);
