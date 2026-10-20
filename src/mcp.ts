@@ -611,8 +611,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "到点就在你这条会话里叫醒你（推一轮进来，<now> 的「刚发生」里写着是什么）；你正忙着就排在这一轮后面。你自己的哪一轮先赶上了，就在那一轮的 <now> 里报，不另叫。",
         "到点时你醒着（30 分钟内有对话或工具调用）不花额度；没醒着的，闹钟、定点、心跳各花一次唤醒额度。",
         "wakeOn.mail：来信能不能在你没醒着时叫醒你（缺省能，不花额度）。",
-        "dnd：勿扰，一条条规则；一条里的条件都满足才算。条件：time { from, to }（HH:MM，可跨零点）、awake（醒着）、in（在哪个地方，如 soma）、busy（最近 15 分钟用过记忆以外的工具，在做事）。",
-        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的；from 也可以写住户的 id（如 { from: \"a2\", urgent: true }）。闹钟、定点、心跳不受勿扰影响。Joy 的暂停盖过例外。",
+        "dnd：勿扰，一条条规则；一条里的条件都满足才算。条件：time { from, to }（HH:MM，可跨零点）、awake（醒着）、in（在哪个地方，如 roxy）、busy（最近 15 分钟用过记忆以外的工具，在做事）。",
+        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的；from 也可以写其他发信人的 id。闹钟、定点、心跳不受勿扰影响。Joy 的暂停盖过例外。",
       ].join("\n"),
       inputSchema: {
         schedule: z
@@ -711,7 +711,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   tool(
     "look",
     {
-      description: "看一眼屋里此刻有谁：每个住户在线（忙 / 闲）、睡着还是离线、在哪、挂着什么个签；Joy 在不在家（在家能在 Soma 直接说，不在家要找她就写信）。平时屋里有变化会在 <now> 的「这段时间屋里」里报。",
+      description: "看一眼屋里此刻有谁：谁在线（忙 / 闲）、睡着还是离线、在哪、挂着什么个签；Joy 在不在家（在家能直接说，不在家要找她就写信）。平时屋里有变化会在 <now> 的「这段时间屋里」里报。",
       inputSchema: {},
     },
     guard(async () => text(((await call("GET", "/v1/look")) as { text: string }).text)),
@@ -734,10 +734,10 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "player",
     {
       description: [
-        "你自己的播放器。op：play 放 · stop 停 · listen 听一下此刻在放的（缺省）· with 戴上屋里另一个住户的一只耳机跟着他听。",
+        "你自己的播放器。op：play 放 · stop 停 · listen 听一下此刻在放的（缺省）· with 戴上屋里另一只耳机一起听。",
         "play：query 搜一首放（取第一首），或 playlist 放你的一个歌单（shuffle 打乱）。放完就停；再放会顶掉正在放的。",
         "你听到的是：歌名歌手、随播放推进的歌词、这一段的响度 / 亮暗 / 速度（本地从音频算的，不是模型听的）。在放着时每轮 <now> 的「这段时间听到的」里报；listen 随时听一下（你自己的，或你戴着谁的耳机就是他的）：哪首、放到哪、最近唱的几行、这一段的样子。",
-        "屋里的人可以戴上你的一只耳机一起听（Joy 在 Soma 页面上，别的住户用 with）；只有有人戴着时才真的出声。with：host = 他的 id（看 look），他那边看得到你戴上了；host 给空串 = 摘下。",
+        "屋里的人可以戴上你的一只耳机一起听（Joy 在页面上，或用 with）；只有有人戴着时才真的出声。with：host = 对方的 id（看 look），对方那边看得到你戴上了；host 给空串 = 摘下。",
       ].join("\n"),
       inputSchema: {
         op: z.enum(["play", "stop", "listen", "with"]).optional(),
@@ -792,7 +792,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "notice",
     {
       description: [
-        "记下你此刻注意到的一件事：关于自己（听这首时有种平静）、关于别人（Argon 干活时爱放打鸡血的歌）、关于屋里。about：self / 住户 id / Joy，可不写。",
+        "记下你此刻注意到的一件事：关于自己（听这首时有种平静）、关于 Joy、关于屋里。about：self / Joy / 其他 id，可不写。",
         "系统顺手把此刻的环境（在放什么、屋里有谁）记在旁边。以后环境像了，它可能自己冒出来；整理记忆时和后来的事摆在一起，攒够了你可以把它写成规律。",
       ].join("\n"),
       inputSchema: { text: z.string().min(1), about: z.string().optional(), cites: z.array(z.string()).optional().describe("证据档号，可不挂") },
@@ -899,7 +899,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     text?: string;
     delivery?: { via: string; ok: boolean; error?: string }[];
   }
-  const VIA: Record<string, string> = { "soma-note": "Soma 留言", email: "邮件" };
+  const VIA: Record<string, string> = { "soma-note": "留言", email: "邮件" };
   const head = (m: MailView) => {
     const t = shortTime(m.at, tz);
     if (m.dir === "in") return `[${m.archiveNo}] ${t} 来信 · ${m.from}，经${VIA[m.via ?? ""] ?? m.via}${m.urgent ? " · 急" : ""}${m.subject ? `《${m.subject}》` : ""}`;
@@ -938,17 +938,17 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     {
       description: [
         "写信。在哪都能写。",
-        "to: \"Joy\"：经她设的通道送到她那里（邮件 / Soma 留言）。回她的某封信挂 replyTo（那封的档号），不算额度；没挂 replyTo 就是你主动找她，每封花一次唤醒额度，额度用完会被拒。subject 可选（邮件主题，不写就用正文第一行）。",
-        "to: 屋里别的住户的 id（如 a2）：直接送到他那里，他醒着时下一轮看到，没醒着会被叫醒（他设了来信叫醒的话）。每封都花你一次唤醒额度，回信也算。做接力时，做完自己那棒告诉下一个人用这个。真有急事可以标 urgent：他那边会写明是急的，勿扰挡不挡由他自己的例外定。",
-        "to: \"self\"：交接信，写给之后去了别处的自己（离开家：Soma 是家，别的 harness 才算别处）——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 soma、roxy）就只送那里。不过期，不叫醒你。",
+        "to: \"Joy\"：经她设的通道送到她那里（邮件 / 留言）。回她的某封信挂 replyTo（那封的档号），不算额度；没挂 replyTo 就是你主动找她，每封花一次唤醒额度，额度用完会被拒。subject 可选（邮件主题，不写就用正文第一行）。",
+        "to: 屋里其他 id：直接送过去，对方醒着时下一轮看到，没醒着会被叫醒（若设了来信叫醒）。每封都花你一次唤醒额度，回信也算。真有急事可以标 urgent：对方那边会写明是急的，勿扰挡不挡由对方的例外定。",
+        "to: \"self\"：交接信，写给之后去了别处的自己（离开家去了别的 harness 才算别处）——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 roxy）就只送那里。不过期，不叫醒你。",
       ].join("\n"),
       inputSchema: {
-        to: z.string().min(1).describe("Joy、屋里住户的 id，或 self（交接信）"),
+        to: z.string().min(1).describe("Joy、其他 id，或 self（交接信）"),
         text: z.string().min(1),
         subject: z.string().optional(),
         replyTo: z.string().optional().describe("回哪封信（档号）"),
         for: z.string().optional().describe("交接信送到哪个地方"),
-        urgent: z.boolean().optional().describe("写给住户的信标急（紧急通道）"),
+        urgent: z.boolean().optional().describe("写信标急（紧急通道）"),
       },
     },
     guard(async (args) => {
