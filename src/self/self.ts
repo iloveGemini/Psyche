@@ -1,7 +1,8 @@
 /**
  * 自我（notes/plan/m4.md）：自述 + 名字 + 出生冻结初我。
  *
- * 系统提示词 = 机制段（prompts/mechanism.md，系统的，它不能改）+ 自述（它自己那段）。
+ * 系统提示词 = 自述（它自己那段）+ 机制段（prompts/mechanism.md，系统的，它不能改）。
+ * 自述在前（10-20 Joy 定）：是谁先于记忆怎么运转；机制段同日改成第一人称，两段都是「我」。
  * - 没出生：自述 = 现读 prompts/self-v0.md（开发期改了立刻生效），它改过就用它改的。
  * - 出生（系统日志 born，不占档号）：把初我（系统的 / Joy 改过的）存进资料库冻结；之后只认冻结版 + 它自己的改动。
  *   出生前的改动、名字不带过去：只认 id > upTo 的事件。
@@ -31,7 +32,7 @@ const year = (store: EventStore) => Number(localDay(store.now(), store.timeZone)
 
 /** 文件拼的那份（机制 + 初我）：考卷、没出生的库用 */
 export function filePrompt(dir = PROMPTS_DIR): string {
-  return [readPrompt("mechanism.md", dir).text, readPrompt("self-v0.md", dir).text].filter(Boolean).join("\n\n");
+  return [readPrompt("self-v0.md", dir).text, readPrompt("mechanism.md", dir).text].filter(Boolean).join("\n\n");
 }
 
 export function bornRecord(store: EventStore): BornDetail | null {
@@ -123,7 +124,7 @@ export function currentName(store: EventStore): string | null {
 export function composePrompt(store: EventStore, dir = PROMPTS_DIR) {
   const mech = readPrompt("mechanism.md", dir);
   const cur = currentSelf(store, dir);
-  return { text: [mech.text, cur.text].filter(Boolean).join("\n\n"), version: cur.version, mechanismVersion: mech.version, born: !!bornRecord(store) };
+  return { text: [cur.text, mech.text].filter(Boolean).join("\n\n"), version: cur.version, mechanismVersion: mech.version, born: !!bornRecord(store) };
 }
 
 /** 逐行比对（LCS）：- 出厂的 / + Joy 的；一样返回 null */

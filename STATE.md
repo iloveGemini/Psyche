@@ -7,6 +7,8 @@
 
 **P3a 房间（10-19，Joy 在 Soma 101 定，Claude 在 Soma 里做；交接 `notes/plan/p3-p4-handoff.md`）**：群 → 房间。私人房间 = 住户的 home，永不对任何人开放（沙箱管）；公共房间是住户 / Joy 用工具开的（要写 why，记谁开的），进房间只是在那里听得到、说得上话，不带文件权利；住户同一时刻在一间公共房间或自己房间，Joy 没有位置。Soma：`rooms.ts`（`openRoom` / `moveTo` / `whereIs` / `archiveRoom`，公共房间的记录谁说的都收）、`rooms-round.ts`（Joy 说话只问醒着的，`@` 照问，`urgent` 叫醒房间里所有人）、`rooms-flow.ts`（醒没醒问 Psyche `/v1/house`，问不到当醒着）、议题（Joy 也能开、need 只数住户、不问她收尾；谁都能报名）、MCP `rooms` 合成 list / read / go / open，`say_in_room` 只能说进自己在的那间；`<now>` 带 `room`（在哪、谁也在、几条没读）。Psyche：`room.entered`（`POST /v1/room`，presence 带 `room`，「屋里」显示在哪间）、住户之间的信能标 `urgent`（勿扰例外 `from` 写住户 id）。迁移 `Soma/scripts/rooms-p3.mjs`（先看、`--apply --archive <id>` 照做，沙箱外跑）：Soma 101 → 客厅，历史接着用。考卷 Psyche +3、Soma +5。**改名没做**：Soma 的 `rooms` 现在就是房间，群聊那套不另起名。**还没做**：P3b share 工具、P4 感知设置。P0–P2（10-19）的事还没写进这里。
 
+- **系统提示词顺序（10-20 Joy 定）**：自述在前、机制段在后（`composePrompt` / `filePrompt`）；机制段 v2 改成第一人称（「# 我的记忆」，加一句「是系统的，我改不了」），自述和机制两段都是「我」。没出考卷（Joy：小调整不用）。所有住户下一段起生效（机制现读；顺序要重启 Psyche）。
+
 **M4「我是谁」✅（10-15）**，契约 `notes/plan/m4.md`：机制 `prompts/mechanism.md`（它改不了）+ 自述 `self-v0.md`（初我 v2）；`src/self/self.ts`、`src/birth.ts`（只能一次）。端到端通过；测试库已出生（备份 `~/.psyche/test.bak-1015-prebirth.db`），之后改 `self-v0.md` 不影响测试库。机制段还没提「自述你可以改」，要写先有考卷。
 **M5「会醒」✅（10-15）**，契约 `notes/plan/m5.md`：作息 / 设置 / 日记 / 调度器（gather → decide → 账本 `wake` / `wake.run`），缺省关（`PSYCHE_SCHEDULER=1` = launch `psyche-test-wake`，开着会补写所有 ≥3h 没写完的会话）。10-15 端到端（补写、闹钟醒着 / 没醒两路）通过。没做：Soma 观测面板「唤醒」块。
 **M6「通道」✅（10-15）**，契约 `notes/plan/m6.md`：收件箱、邮箱（agently-cli，workspace `psyche`）、勿扰、来信叫醒；10-16 端到端（留言页、手机回信叫醒、自发自收挡掉）通过；`email.ts` `cutQuote` 截掉回信里的引用。邮件 `mail.in` 没记 `replyTo`，只能靠主题 `Re:` 对上。
