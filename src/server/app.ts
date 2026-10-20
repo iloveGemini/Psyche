@@ -133,7 +133,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   // 热写：取本段清单 + 提示词；交回情节（m1.md §二）
   app.get("/v1/hotwrite", (c) => {
     const prompt = readPrompt("hot-write.md", promptsDir);
-    const seg = readSegment(store, c.req.query("session") || undefined);
+    const seg = readSegment(store, c.req.query("session") || undefined, { brief: c.req.query("brief") === "1" });
     return c.json({ session: seg.session, upTo: seg.upTo, prompt: prompt.text, promptVersion: prompt.version, lines: seg.lines, pinned: pinStatus(store) });
   });
 

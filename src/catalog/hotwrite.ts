@@ -74,11 +74,24 @@ export function segmentLines(store: EventStore, events: PsycheEvent[]): SegmentL
   return lines.map(({ id, ...l }) => l);
 }
 
-/** GET /v1/hotwrite 的正文（不含提示词） */
-export function readSegment(store: EventStore, session?: string): { session: string; upTo: string | null; lines: SegmentLine[] } {
+/** 索引行留多少字（m1.md §二 brief） */
+export const BRIEF_CHARS = 30;
+
+/** 一行的开头：空白压成一个空格，按码点截 */
+export function briefText(text: string, n = BRIEF_CHARS): string {
+  const cps = Array.from(text.replace(/\s+/g, " ").trim());
+  return cps.length > n ? `${cps.slice(0, n).join("")}…` : cps.join("");
+}
+
+/**
+ * GET /v1/hotwrite 的正文（不含提示词）。
+ * brief：会话里的收尾轮用，原文就在它上下文里，每行只给开头对档号（10-20）
+ */
+export function readSegment(store: EventStore, session?: string, opts: { brief?: boolean } = {}): { session: string; upTo: string | null; lines: SegmentLine[] } {
   const s = resolveSession(store, session);
   const events = segmentEvents(store, s);
-  return { session: s, upTo: events.at(-1)?.id ?? null, lines: segmentLines(store, events) };
+  const lines = segmentLines(store, events);
+  return { session: s, upTo: events.at(-1)?.id ?? null, lines: opts.brief ? lines.map((l) => ({ ...l, text: briefText(l.text) })) : lines };
 }
 
 const idemOf = (session: string, upTo: string, n: number) => `hot:${session}:${upTo}:${n}`;

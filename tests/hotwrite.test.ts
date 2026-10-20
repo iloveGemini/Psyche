@@ -49,6 +49,18 @@ describe("段与游标", () => {
     ]);
   });
 
+  test("brief=1：每行只留开头（空白压平、超 30 字截断），档号和 upTo 不变", async () => {
+    const { store, say, get } = setup();
+    store.setSituation({ harness: "soma", session: "S1" });
+    say("短的");
+    say(`第一行\n\n${"长".repeat(40)}`);
+    const full = await get();
+    const brief = await get("?brief=1");
+    expect(brief.upTo).toBe(full.upTo);
+    expect(brief.lines.map((l: { archiveNo: string }) => l.archiveNo)).toEqual(full.lines.map((l: { archiveNo: string }) => l.archiveNo));
+    expect(brief.lines.map((l: { text: string }) => l.text)).toEqual(["Joy：短的", `Joy：第一行 ${"长".repeat(22)}…`]);
+  });
+
   test("写过之后：第二次只看新事件；晚到的事件 id 更大，进下一段、不被覆盖", async () => {
     const { store, say, reply, get, post, no, tick } = setup();
     store.setSituation({ harness: "soma", session: "S1" });
