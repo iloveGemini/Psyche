@@ -90,6 +90,41 @@ export function openHouse(
         joy: joyPresence(residents.map((r) => r.store), joy, t),
       });
     }
+    if (req.method === "GET" && path === "/v1/house/feed") {
+      const limit = Math.min(Math.max(1, Number(new URL(req.url).searchParams.get("limit") || 40)), 100);
+      const items: Array<{
+        residentId: string;
+        residentName: string;
+        id: string;
+        at: number;
+        kind: string;
+        archiveNo: string;
+        payload: any;
+      }> = [];
+      for (const r of residents) {
+        const name = currentName(r.store) ?? r.id;
+        const rows = r.store.db
+          .query(
+            `SELECT id, at, kind, day, seq, payload FROM events
+             WHERE kind IN ('woke', 'slept', 'coldwrite.done', 'mail.in', 'mail.out', 'semantic.proposed', 'semantic.revised', 'episode', 'mood.set', 'room.entered', 'named', 'thread.opened', 'thread.closed')
+             ORDER BY at DESC LIMIT ?`,
+          )
+          .all(limit) as { id: string; at: number; kind: string; day: string; seq: number; payload: string }[];
+        for (const row of rows) {
+          items.push({
+            residentId: r.id,
+            residentName: name,
+            id: row.id,
+            at: row.at,
+            kind: row.kind,
+            archiveNo: `${row.day}#${row.seq}`,
+            payload: JSON.parse(row.payload || "{}"),
+          });
+        }
+      }
+      items.sort((a, b) => b.at - a.at);
+      return Response.json({ feed: items.slice(0, limit) });
+    }
     if (req.method === "POST" && path === "/v1/house/residents") {
       const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
       const id = typeof b?.id === "string" ? b.id.trim() : "";

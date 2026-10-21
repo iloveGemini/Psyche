@@ -102,6 +102,10 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     if (typeof body?.harness !== "string") throw new IntakeError("situation 缺字段 harness");
     // at：处境从何时起（缺省 = 收到时）；source 不进 payload
     const { at, source, ...payload } = body;
+    if (typeof payload.model === "string") {
+      // 归一化 provider 渠道前缀：如 google-vertex/gemini-4-argon -> gemini-4-argon
+      payload.model = payload.model.replace(/^[a-zA-Z0-9_-]+\/(?=gemini|claude|gpt|deepseek)/, "");
+    }
     const ev = store.setSituation(payload, typeof source === "string" ? source : body.harness, typeof at === "number" ? at : undefined);
     return c.json({ id: ev.id, archiveNo: ev.archiveNo });
   });
@@ -125,9 +129,108 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     return ev ? c.json({ event: ev, links: store.linksFrom(ev.id), referencedBy: store.linksTo(ev.id) }) : c.json({ error: "没有这个档号" }, 404);
   });
 
+  // 卷宗上下文：展开引用与前后邻近原始行
+  app.get("/v1/archive/:no/context", (c) => {
+    const ev = store.byArchiveNo(decodeURIComponent(c.req.param("no")));
+    if (!ev) return c.json({ error: "没有这个档号" }, 404);
+    const links = store.linksFrom(ev.id);
+    const citedIds = links.filter((l) => l.rel === "cites" || l.rel === "evidence").map((l) => l.to);
+    const citedEvents = citedIds.map((id) => store.get(id)).filter(Boolean);
+
+    // 取该事件前后相邻的时间范围（同 session 优先，否则同时间窗口）
+    const sessionRow = store.db.query(`SELECT session FROM p_experience WHERE event_id = ?`).get(ev.id) as { session: string | null } | null;
+    const session = sessionRow?.session || (ev.payload as any)?.session;
+    let nearbyRows: Array<{ id: string; at: number; kind: string; day: string; seq: number; payload: string }> = [];
+    if (session) {
+      nearbyRows = store.db
+        .query(
+          `SELECT e.id, e.at, e.kind, e.day, e.seq, e.payload FROM p_experience p
+           JOIN events e ON e.id = p.event_id
+           WHERE p.session = ?
+           ORDER BY e.at, e.id LIMIT 40`,
+        )
+        .all(session) as any[];
+    }
+    if (nearbyRows.length < 3) {
+      nearbyRows = store.db
+        .query(
+          `SELECT id, at, kind, day, seq, payload FROM events
+           WHERE fonds = ? AND at BETWEEN ? AND ?
+           ORDER BY at, id LIMIT 40`,
+        )
+        .all(ev.fonds, ev.at - 30 * 60_000, ev.at + 30 * 60_000) as any[];
+    }
+    const context = nearbyRows.map((r) => ({
+      id: r.id,
+      at: r.at,
+      kind: r.kind,
+      archiveNo: `${r.day}#${r.seq}`,
+      payload: JSON.parse(r.payload || "{}"),
+      isSelf: r.id === ev.id,
+      isCited: citedIds.includes(r.id),
+    }));
+
+    return c.json({
+      event: ev,
+      links,
+      referencedBy: store.linksTo(ev.id),
+      cited: citedEvents,
+      context,
+    });
+  });
+
   app.get("/v1/experience", (c) => {
     const q = c.req.query();
-    return c.json({ lines: readExperience(store.db, { from: num(q.from), to: num(q.to), limit: num(q.limit) }) });
+    return c.json({
+      lines: readExperience(store.db, {
+        from: num(q.from),
+        to: num(q.to),
+        limit: num(q.limit),
+        offset: num(q.offset),
+        includeCovered: q.includeCovered === "1",
+        kind: q.kind || undefined,
+        q: q.q || undefined,
+        order: q.order === "desc" ? "desc" : "asc",
+      }),
+    });
+  });
+
+  // 潜意识浮现历史与雷达
+  app.get("/v1/surfaced", (c) => {
+    const limit = Math.min(Math.max(1, num(c.req.query("limit")) ?? 30), 100);
+    const rows = store.db
+      .query(
+        `SELECT id, at, day, seq, payload FROM events
+         WHERE kind = 'surfaced' AND fonds = ''
+         ORDER BY at DESC LIMIT ?`,
+      )
+      .all(limit) as { id: string; at: number; day: string; seq: number; payload: string }[];
+    const items = rows.map((r) => {
+      const p = JSON.parse(r.payload || "{}");
+      let refEvent: any = null;
+      if (p.ref) {
+        const target = store.get(p.ref);
+        if (target) {
+          refEvent = {
+            id: target.id,
+            at: target.at,
+            archiveNo: target.archiveNo,
+            kind: target.kind,
+            text: (target.payload as any)?.text || (target.payload as any)?.title || null,
+          };
+        }
+      }
+      return {
+        id: r.id,
+        at: r.at,
+        archiveNo: `${r.day}#${r.seq}`,
+        score: p.score ?? null,
+        cue: p.cue ?? null,
+        source: p.source ?? null,
+        ref: refEvent,
+      };
+    });
+    return c.json({ surfaced: items });
   });
 
   // 热写：取本段清单 + 提示词；交回情节（m1.md §二）
@@ -281,7 +384,8 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const wake = { by: body.by, ...(typeof body.note === "string" && body.note ? { note: body.note } : {}), ...(typeof body.session === "string" && body.session ? { session: body.session } : {}) };
     const session = randomUUID();
     const prompt = composePrompt(store, promptsDir);
-    store.setSituation({ harness: "sleep", session, ...(typeof body.model === "string" ? { model: body.model } : {}), selfPromptVersion: prompt.version }, "sleep");
+    const rawModel = typeof body.model === "string" ? body.model.replace(/^[a-zA-Z0-9_-]+\/(?=gemini|claude|gpt|deepseek)/, "") : undefined;
+    store.setSituation({ harness: "sleep", session, ...(rawModel ? { model: rawModel } : {}), selfPromptVersion: prompt.version }, "sleep");
     intake(store, { kind: "woke", source: "sleep", payload: { by: wake.by, ...(wake.note ? { note: wake.note } : {}), ...(wake.session ? { for: wake.session } : {}), session } });
     const lines = (wake.by === "catchup" || wake.by === "wrapup") && wake.session ? readSegment(store, wake.session).lines.length : undefined;
     const first = [await nowText(session), asleepTask(wake, lines), wake.by === "birth" ? pastBirthLines(store, past) : ""].filter(Boolean).join("\n\n");

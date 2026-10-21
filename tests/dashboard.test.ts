@@ -243,4 +243,75 @@ describe("Dashboard：记忆体检、闭环预警与书架证据链", () => {
     expect(JSON.stringify(health)).not.toContain("私人日记内容");
     expect(JSON.stringify(health)).not.toContain("隔壁住户的私信");
   });
+
+  test("GET /v1/house/feed、GET /v1/archive/:no/context、GET /v1/surfaced 与经历检索", async () => {
+    const clock = { t: T("2026-10-16T15:00:00") };
+    const { store, app } = mkResident(clock);
+    const post = (path: string, body: unknown) => app.request(path, { method: "POST", headers: JSON_H, body: JSON.stringify(body) });
+
+    // 1. 产生对话并写情节
+    store.setSituation({ harness: "soma", session: "s_feed" }, "soma");
+    const m1 = intake(store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "今天天气很好" } });
+    const m2 = intake(store, { kind: "message.out", source: "soma", payload: { text: "适合散步" } });
+    const seg = await (await app.request("/v1/hotwrite?session=s_feed")).json();
+    const hw = await (
+      await post("/v1/hotwrite", {
+        session: "s_feed",
+        upTo: seg.upTo,
+        entries: [{ text: "晴天她提起天气，我建议去散步。", felt: "舒适", cites: [m1.archiveNo, m2.archiveNo] }],
+      })
+    ).json();
+    const epNo = hw.episodes[0].archiveNo;
+
+    // 2. 模拟一条潜意识浮现 surfaced 事件
+    intake(store, {
+      kind: "surfaced",
+      source: "recall",
+      payload: {
+        ref: hw.episodes[0].id,
+        score: 0.88,
+        cue: "讨论周末去哪里玩",
+        source: "recall",
+      },
+    });
+
+    // 3. 测试 GET /v1/surfaced
+    const surfRes = await (await app.request("/v1/surfaced")).json();
+    expect(surfRes.surfaced).toHaveLength(1);
+    expect(surfRes.surfaced[0]).toMatchObject({
+      score: 0.88,
+      cue: "讨论周末去哪里玩",
+      ref: expect.objectContaining({
+        archiveNo: expect.stringContaining("10-16#4"),
+        kind: "episode",
+        text: "晴天她提起天气，我建议去散步。",
+      }),
+    });
+
+    // 4. 测试 GET /v1/archive/:no/context 展开上下文
+    const ctxRes = await (await app.request(`/v1/archive/${encodeURIComponent(epNo)}/context`)).json();
+    expect(ctxRes.event.archiveNo).toContain("10-16#4");
+    expect(ctxRes.cited).toHaveLength(2);
+    expect(ctxRes.context.length).toBeGreaterThanOrEqual(3);
+    expect(ctxRes.context.some((c: any) => c.isSelf)).toBe(true);
+
+    // 5. 测试 GET /v1/experience 增强参数（q / kind / order）
+    const expQ = await (await app.request("/v1/experience?q=散步")).json();
+    expect(expQ.lines).toHaveLength(1);
+    expect(expQ.lines[0].archiveNo).toContain(epNo);
+
+    const expEpisode = await (await app.request("/v1/experience?kind=episode")).json();
+    expect(expEpisode.lines).toHaveLength(1);
+    expect(expEpisode.lines[0].kind).toBe("episode");
+
+    // 6. 全屋动态流 GET /v1/house/feed
+    const dir = mkdtempSync(join(tmpdir(), "psyche-feed-"));
+    const viewers = [{ id: "a1", store }];
+    const house = openHouse(dir, viewers, () => clock.t);
+    const feedRes = await house.handle(new Request("http://psyche/v1/house/feed"));
+    expect(feedRes.status).toBe(200);
+    const feedData = await feedRes.json();
+    expect(feedData.feed.length).toBeGreaterThan(0);
+    expect(feedData.feed.some((item: any) => item.kind === "episode" && item.residentId === "a1")).toBe(true);
+  });
 });

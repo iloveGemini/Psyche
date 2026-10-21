@@ -123,14 +123,38 @@ export interface ExperienceLine {
 /** 按发生时间排（档号序号按入库顺序，展示按 at，events.md §五）。默认只给未被覆盖的行 + 情节 */
 export function readExperience(
   db: Database,
-  opts: { from?: number; to?: number; limit?: number; includeCovered?: boolean } = {},
+  opts: {
+    from?: number;
+    to?: number;
+    limit?: number;
+    offset?: number;
+    includeCovered?: boolean;
+    kind?: string;
+    q?: string;
+    order?: "asc" | "desc";
+  } = {},
 ): ExperienceLine[] {
-  const rows = db
-    .query(
-      `SELECT event_id, at, archive_no, kind, text FROM p_experience
-       WHERE at >= ? AND at < ? ${opts.includeCovered ? "" : "AND covered = 0"} ORDER BY at, event_id LIMIT ?`,
-    )
-    .all(opts.from ?? 0, opts.to ?? Number.MAX_SAFE_INTEGER, opts.limit ?? 500) as {
+  const conds: string[] = ["at >= ?", "at < ?"];
+  const args: any[] = [opts.from ?? 0, opts.to ?? Number.MAX_SAFE_INTEGER];
+  if (!opts.includeCovered) {
+    conds.push("covered = 0");
+  }
+  if (opts.kind) {
+    conds.push("kind = ?");
+    args.push(opts.kind);
+  }
+  if (opts.q && opts.q.trim()) {
+    const term = opts.q.trim();
+    conds.push("text LIKE ? ESCAPE '\\'");
+    args.push(`%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+  }
+  const order = opts.order === "desc" ? "DESC" : "ASC";
+  const limit = opts.limit ?? 500;
+  const offset = opts.offset ?? 0;
+  const sql = `SELECT event_id, at, archive_no, kind, text FROM p_experience
+       WHERE ${conds.join(" AND ")} ORDER BY at ${order}, event_id ${order} LIMIT ? OFFSET ?`;
+  args.push(limit, offset);
+  const rows = db.query(sql).all(...args) as {
     event_id: string;
     at: number;
     archive_no: string;
