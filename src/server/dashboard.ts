@@ -374,6 +374,42 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
       border: 1px solid var(--border);
     }
 
+    /* 进度条与常驻徽章 */
+    .progress-wrap {
+      background: var(--surface-subtle);
+      border-radius: 6px;
+      height: 7px;
+      overflow: hidden;
+      width: 100%;
+      border: 1px solid var(--border);
+    }
+    .progress-bar {
+      height: 100%;
+      background: var(--ok);
+      border-radius: 6px;
+      transition: width 0.3s ease;
+    }
+    .progress-bar.warn { background: var(--warn); }
+    .progress-bar.danger { background: var(--danger); }
+    .pinned-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #FFF7E6;
+      color: #B87D24;
+      border: 1px solid #FFE7BA;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    [data-theme="dark"] .pinned-badge {
+      background: #332414;
+      color: #E0A045;
+      border-color: #52391C;
+    }
+
     /* 住户深度座舱页头 */
     .resident-header {
       display: flex;
@@ -633,6 +669,7 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
     const STATE = {
       agent: null,
       tab: 'health', // health | shelf | exp | self | schedule
+      readingSub: 'shelf', // shelf | pinned | threads | gist
       shelfCategory: 'all',
       shelfSort: 'default',
       shelfQuery: '',
@@ -708,6 +745,7 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
       const sp = new URLSearchParams(location.search);
       STATE.agent = sp.get('agent') || null;
       STATE.tab = sp.get('tab') || 'health';
+      STATE.readingSub = sp.get('readingSub') || 'shelf';
       if (sp.has('shelfCat')) STATE.shelfCategory = sp.get('shelfCat');
       if (sp.has('expKind')) STATE.expKind = sp.get('expKind');
     }
@@ -716,6 +754,8 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
       if (STATE.agent) {
         url.searchParams.set('agent', STATE.agent);
         url.searchParams.set('tab', STATE.tab);
+        if (STATE.tab === 'shelf' && STATE.readingSub !== 'shelf') url.searchParams.set('readingSub', STATE.readingSub);
+        else url.searchParams.delete('readingSub');
         if (STATE.shelfCategory !== 'all') url.searchParams.set('shelfCat', STATE.shelfCategory);
         else url.searchParams.delete('shelfCat');
         if (STATE.expKind !== 'all') url.searchParams.set('expKind', STATE.expKind);
@@ -744,6 +784,14 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
     }
     function selectTab(tab) {
       STATE.tab = tab;
+      syncRoute(true);
+      document.querySelectorAll('.resident-header .sub-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+      });
+      renderResidentContent();
+    }
+    function setReadingSub(sub) {
+      STATE.readingSub = sub;
       syncRoute(true);
       renderResidentContent();
     }
@@ -915,11 +963,11 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
             \${rInfo.born?.at ? \`<span style="color:var(--muted); font-size:12px; margin-left:8px;">生于 \${fmtTime(rInfo.born.at)}</span>\` : ''}
           </div>
           <div class="sub-tabs">
-            <button class="sub-tab-btn \${STATE.tab === 'health' ? 'active' : ''}" onclick="selectTab('health')">记忆体检与浮现</button>
-            <button class="sub-tab-btn \${STATE.tab === 'shelf' ? 'active' : ''}" onclick="selectTab('shelf')">阅览室与书架</button>
-            <button class="sub-tab-btn \${STATE.tab === 'exp' ? 'active' : ''}" onclick="selectTab('exp')">经历时间线 (FTS)</button>
-            <button class="sub-tab-btn \${STATE.tab === 'self' ? 'active' : ''}" onclick="selectTab('self')">我是谁 (演变 Diff)</button>
-            <button class="sub-tab-btn \${STATE.tab === 'schedule' ? 'active' : ''}" onclick="selectTab('schedule')">作息与设置</button>
+            <button class="sub-tab-btn \${STATE.tab === 'health' ? 'active' : ''}" data-tab="health" onclick="selectTab('health')">记忆体检与浮现</button>
+            <button class="sub-tab-btn \${STATE.tab === 'shelf' ? 'active' : ''}" data-tab="shelf" onclick="selectTab('shelf')">阅览室与书架</button>
+            <button class="sub-tab-btn \${STATE.tab === 'exp' ? 'active' : ''}" data-tab="exp" onclick="selectTab('exp')">经历时间线 (FTS)</button>
+            <button class="sub-tab-btn \${STATE.tab === 'self' ? 'active' : ''}" data-tab="self" onclick="selectTab('self')">我是谁 (演变 Diff)</button>
+            <button class="sub-tab-btn \${STATE.tab === 'schedule' ? 'active' : ''}" data-tab="schedule" onclick="selectTab('schedule')">作息与设置</button>
           </div>
         </div>
         <div id="resident-sub-body"><div style="padding:20px; color:var(--muted);">加载中…</div></div>
@@ -933,23 +981,25 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
 
       try {
         if (STATE.tab === 'health') {
-          const [h, surfRes] = await Promise.all([
+          const [h, surfRes, pinned] = await Promise.all([
             api('/v1/health'),
             api('/v1/surfaced?limit=15').catch(() => ({ surfaced: [] })),
+            api('/v1/pinned').catch(() => ({ used: 0, budget: 1200, entries: [], history: [] })),
           ]);
-          body.innerHTML = renderHealthTabHtml(h, surfRes.surfaced || []);
+          body.innerHTML = renderHealthTabHtml(h, surfRes.surfaced || [], pinned);
         } else if (STATE.tab === 'shelf') {
           const params = new URLSearchParams();
           if (STATE.shelfCategory !== 'all') params.set('shelf', STATE.shelfCategory);
           if (STATE.shelfQuery) params.set('q', STATE.shelfQuery);
           const qs = params.toString() ? '?' + params.toString() : '';
 
-          const [shelfData, threadsData, gistData] = await Promise.all([
+          const [shelfData, pinnedData, threadsData, gistData] = await Promise.all([
             api('/v1/shelf' + qs),
+            api('/v1/pinned').catch(() => ({ used: 0, budget: 1200, entries: [], history: [] })),
             api('/v1/threads?all=1'),
             api('/v1/gist'),
           ]);
-          body.innerHTML = renderShelfTabHtml(shelfData.entries || [], threadsData, gistData.gists || []);
+          body.innerHTML = renderShelfTabHtml(shelfData.entries || [], pinnedData, threadsData, gistData.gists || []);
         } else if (STATE.tab === 'exp') {
           await renderExperienceTab(body, id);
         } else if (STATE.tab === 'self') {
@@ -969,7 +1019,8 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
     }
 
     /* ─── Tab 1: 记忆体检与潜意识浮现 ─── */
-    function renderHealthTabHtml(h, surfaced) {
+    function renderHealthTabHtml(h, surfaced, pinned) {
+      const pinPct = Math.round(((pinned?.used ?? 0) / (pinned?.budget || 1200)) * 100);
       return \`
         <div class="health-grid">
           <div class="metric-card">
@@ -983,14 +1034,17 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
             <span class="metric-sub">\${h.hotwrite.coveredLines7d} 原始行 → \${h.hotwrite.episodes7d} 条情节</span>
           </div>
           <div class="metric-card">
-            <span class="metric-title">单条字数中位数</span>
-            <span class="metric-val">\${h.hotwrite.medianChars} 字</span>
-            <span class="metric-sub">\${Math.round(h.hotwrite.withFeltRatio * 100)}% 写下感受 · 改写 \${h.hotwrite.revisionsTotal} 次</span>
-          </div>
-          <div class="metric-card">
             <span class="metric-title">连续性种子容量</span>
             <span class="metric-val">\${h.continuity.seedChars} / \${h.continuity.seedBudget}</span>
             <span class="metric-sub">梗概：天 \${h.continuity.gists.day} · 周 \${h.continuity.gists.week} · 月 \${h.continuity.gists.month}</span>
+          </div>
+          <div class="metric-card" onclick="setReadingSub('pinned'); selectTab('shelf')" style="cursor:pointer;" title="点击去常驻记忆区">
+            <span class="metric-title">常驻记忆区容量 (Pinned) ↗</span>
+            <span class="metric-val">\${pinned?.used ?? 0} / \${pinned?.budget ?? 1200}</span>
+            <div class="progress-wrap" style="margin:4px 0;">
+              <div class="progress-bar \${pinPct > 90 ? 'danger' : pinPct > 70 ? 'warn' : ''}" style="width:\${Math.min(pinPct, 100)}%;"></div>
+            </div>
+            <span class="metric-sub">已钉 \${pinned?.entries?.length ?? 0} 条条目 (\${pinPct}%) · 醒来常驻眼前</span>
           </div>
         </div>
 
@@ -1043,41 +1097,99 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
     }
 
     /* ─── Tab 2: 阅览室与书架 ─── */
-    function renderShelfTabHtml(entries, threads, gists) {
+    function renderShelfTabHtml(entries, pinned, threads, gists) {
       const names = { all: '全部', rule: '规律', mirror: '镜子', told: '明说规矩', fact: '事实', attend: '留意', relation: '关系' };
-      const currentCat = STATE.shelfCategory || 'all';
+      const sub = STATE.readingSub || 'shelf';
+      const openThreadsCount = (threads?.open || []).length;
+      const gistCount = (gists || []).length;
+      const pinnedCount = (pinned?.entries || []).length;
+      const pinPct = Math.round(((pinned?.used ?? 0) / (pinned?.budget || 1200)) * 100);
 
-      let sorted = [...entries];
-      if (STATE.shelfSort === 'for') sorted.sort((a,b) => b.for - a.for);
-      else if (STATE.shelfSort === 'against') sorted.sort((a,b) => b.against - a.against);
-      else if (STATE.shelfSort === 'warn') sorted.sort((a,b) => ((b.rule || b.mirror) && b.against === 0 ? 1 : 0) - ((a.rule || a.mirror) && a.against === 0 ? 1 : 0));
+      let subBodyHtml = '';
 
-      return \`
-        <div class="filter-bar">
-          <div class="filter-pills">
-            \${Object.entries(names).map(([k, v]) => \`
-              <span class="pill \${currentCat === k ? 'active' : ''}" onclick="setShelfCategory('\${k}')">\${v}</span>
-            \`).join('')}
+      if (sub === 'shelf') {
+        const currentCat = STATE.shelfCategory || 'all';
+        let sorted = [...entries];
+        if (STATE.shelfSort === 'for') sorted.sort((a,b) => b.for - a.for);
+        else if (STATE.shelfSort === 'against') sorted.sort((a,b) => b.against - a.against);
+        else if (STATE.shelfSort === 'warn') sorted.sort((a,b) => ((b.rule || b.mirror) && b.against === 0 ? 1 : 0) - ((a.rule || a.mirror) && a.against === 0 ? 1 : 0));
+
+        subBodyHtml = \`
+          <div class="filter-bar">
+            <div class="filter-pills">
+              \${Object.entries(names).map(([k, v]) => \`
+                <span class="pill \${currentCat === k ? 'active' : ''}" onclick="setShelfCategory('\${k}')">\${v}</span>
+              \`).join('')}
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input placeholder="搜索书架条目…" value="\${esc(STATE.shelfQuery)}" onkeydown="if(event.key==='Enter') searchShelf(this.value)" style="width:180px;">
+              <select onchange="STATE.shelfSort=this.value; renderResidentContent()">
+                <option value="default" \${STATE.shelfSort==='default'?'selected':''}>默认排序</option>
+                <option value="for" \${STATE.shelfSort==='for'?'selected':''}>印证最多</option>
+                <option value="against" \${STATE.shelfSort==='against'?'selected':''}>反例最多</option>
+                <option value="warn" \${STATE.shelfSort==='warn'?'selected':''}>预警优先</option>
+              </select>
+            </div>
           </div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input placeholder="搜索书架条目…" value="\${esc(STATE.shelfQuery)}" onkeydown="if(event.key==='Enter') searchShelf(this.value)" style="width:180px;">
-            <select onchange="STATE.shelfSort=this.value; renderResidentContent()">
-              <option value="default" \${STATE.shelfSort==='default'?'selected':''}>默认排序</option>
-              <option value="for" \${STATE.shelfSort==='for'?'selected':''}>印证最多</option>
-              <option value="against" \${STATE.shelfSort==='against'?'selected':''}>反例最多</option>
-              <option value="warn" \${STATE.shelfSort==='warn'?'selected':''}>预警优先</option>
-            </select>
-          </div>
-        </div>
 
-        <div style="margin-bottom:20px;">
-          \${sorted.map(e => {
-            const warn = (e.shelf === 'rule' || e.shelf === 'mirror') && e.for >= 3 && e.against === 0;
-            return \`
-              <div class="shelf-card \${warn ? 'flagged' : ''}">
+          <div style="margin-bottom:20px;">
+            \${sorted.map(e => {
+              const warn = (e.shelf === 'rule' || e.shelf === 'mirror') && e.for >= 3 && e.against === 0;
+              return \`
+                <div class="shelf-card \${warn ? 'flagged' : ''}">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      <span class="mono-badge">\${esc(names[e.shelf] || e.shelf)}</span>
+                      \${e.pinned ? '<span class="pinned-badge">📌 常驻中</span>' : ''}
+                      \${e.about ? \`<span class="mono-badge" style="color:var(--accent);">关于 \${esc(e.about)}</span>\` : ''}
+                    </div>
+                    <span style="font-family:var(--font-mono); font-size:12px; color:var(--muted);">
+                      印证 <strong>\${e.for}</strong> · 反例 <strong>\${e.against}</strong> · \${linkifyTags(e.archiveNo)}
+                      <button class="btn sm" style="margin-left:6px;" onclick="inspectShelf('\${esc(e.archiveNo)}')">证据链 →</button>
+                    </span>
+                  </div>
+                  <div style="font-weight:500; font-size:14px; margin:4px 0 2px;">\${esc(e.text)}</div>
+                  \${e.when ? \`<div class="shelf-row"><span class="shelf-label">当</span><span>\${esc(e.when)}</span></div>\` : ''}
+                  \${e.then ? \`<div class="shelf-row"><span class="shelf-label">则</span><span>\${esc(e.then)}</span></div>\` : ''}
+                  \${e.observe ? \`<div class="shelf-row"><span class="shelf-label">观察</span><span>\${esc(e.observe)}</span></div>\` : ''}
+                  \${e.quote ? \`<div class="shelf-row"><span class="shelf-label">原话</span><span style="font-family:var(--font-serif); font-style:italic;">“\${esc(e.quote)}”</span></div>\` : ''}
+                </div>
+              \`;
+            }).join('') || '<div style="color:var(--faint); padding:20px 0;">该分类下暂无书架条目</div>'}
+          </div>
+        \`;
+      } else if (sub === 'pinned') {
+        subBodyHtml = \`
+          <div class="panel-box" style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <div>
+                <strong style="font-size:14px;">常驻记忆容量健康 (Pinned Capacity)</strong>
+                <span style="font-size:12px; color:var(--muted); margin-left:8px;">每次唤醒或新会话必见 · 绕过检索直达眼前</span>
+              </div>
+              <span style="font-family:var(--font-mono); font-weight:600; font-size:13px; color:\${pinPct > 90 ? 'var(--danger)' : pinPct > 70 ? 'var(--warn)' : 'var(--ok)'};">
+                \${pinned?.used ?? 0} / \${pinned?.budget ?? 1200} 字 (\${pinPct}%)
+              </span>
+            </div>
+            <div class="progress-wrap" style="height:9px; margin-bottom:10px;">
+              <div class="progress-bar \${pinPct > 90 ? 'danger' : pinPct > 70 ? 'warn' : ''}" style="width:\${Math.min(pinPct, 100)}%;"></div>
+            </div>
+            <div style="font-size:12.5px; color:var(--muted); line-height:1.55;">
+              <strong>常驻机制（m1.md §五⅛）</strong>：从现行书架挑条目钉上，新会话开头在 <code>&lt;continuity&gt;</code> 顶端注入，不用 recall 检索。
+              只在 <code>hotwrite</code> 随情节记录时通过 <code>pin / unpin</code> 调整（会话中途提示词不变）。固定额度 1200 字；若条目冷写改写变长超额，载入时截掉超额并告警。
+            </div>
+          </div>
+
+          <div style="margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <strong style="font-size:14px;">📌 当前常驻条目 (\${pinnedCount} 条 · 合计 \${pinned?.used ?? 0} 字)</strong>
+              <span style="font-size:12px; color:var(--muted);">按钉上先后排序</span>
+            </div>
+            \${(pinned?.entries || []).map(e => \`
+              <div class="shelf-card" style="border-left:3px solid var(--accent);">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <div>
+                  <div style="display:flex; align-items:center; gap:6px;">
                     <span class="mono-badge">\${esc(names[e.shelf] || e.shelf)}</span>
+                    <span class="pinned-badge">📌 占 \${e.chars ?? (e.text || '').length} 字</span>
                     \${e.about ? \`<span class="mono-badge" style="color:var(--accent);">关于 \${esc(e.about)}</span>\` : ''}
                   </div>
                   <span style="font-family:var(--font-mono); font-size:12px; color:var(--muted);">
@@ -1085,43 +1197,113 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
                     <button class="btn sm" style="margin-left:6px;" onclick="inspectShelf('\${esc(e.archiveNo)}')">证据链 →</button>
                   </span>
                 </div>
-                <div style="font-weight:500; font-size:14px; margin:2px 0;">\${esc(e.text)}</div>
+                <div style="font-weight:500; font-size:14px; margin:4px 0 2px;">\${esc(e.text)}</div>
                 \${e.when ? \`<div class="shelf-row"><span class="shelf-label">当</span><span>\${esc(e.when)}</span></div>\` : ''}
                 \${e.then ? \`<div class="shelf-row"><span class="shelf-label">则</span><span>\${esc(e.then)}</span></div>\` : ''}
                 \${e.observe ? \`<div class="shelf-row"><span class="shelf-label">观察</span><span>\${esc(e.observe)}</span></div>\` : ''}
                 \${e.quote ? \`<div class="shelf-row"><span class="shelf-label">原话</span><span style="font-family:var(--font-serif); font-style:italic;">“\${esc(e.quote)}”</span></div>\` : ''}
               </div>
-            \`;
-          }).join('') || '<div style="color:var(--faint); padding:20px 0;">该分类下暂无书架条目</div>'}
-        </div>
+            \`).join('') || '<div style="color:var(--faint); padding:20px 0; text-align:center;">当前暂无常驻记忆条目。Agent 可在热写时使用 pin 钉入书架条目。</div>'}
+          </div>
 
-        <div class="panel-box">
-          <strong style="display:block; margin-bottom:10px; font-size:14px;">📌 正在开着的线索卷 (Threads)</strong>
-          <div style="display:flex; flex-direction:column; gap:8px;">
-            \${[...(threads.open || [])].map(x => \`
-              <div class="shelf-card" style="margin-bottom:0;">
-                <div style="display:flex; justify-content:space-between;">
-                  <strong>[\${x.type === 'promise' ? '答应 ' + esc(x.to) : '挂着的事'}] \${esc(x.title)}</strong>
-                  <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted);">\${linkifyTags(x.archiveNo)}</span>
-                </div>
-                \${(x.notes || []).map(n => \`<div style="font-size:12.5px; color:var(--muted);">• \${fmtTime(n.at)}：\${esc(n.text)}</div>\`).join('')}
+          <div class="panel-box">
+            <strong style="display:block; margin-bottom:10px; font-size:14px;">📜 调整历史审计 (近 30 次 pin.changed 事件)</strong>
+            \${(pinned?.history || []).length === 0 ? '<div style="color:var(--faint); font-size:12.5px;">暂无常驻调整历史</div>' : \`
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                \${(pinned.history || []).map(h => \`
+                  <div class="shelf-card" style="margin-bottom:0; background:var(--surface-subtle); padding:10px 14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--font-mono); font-size:11.5px; color:var(--muted); margin-bottom:4px;">
+                      <span>\${fmtTime(h.at)} · 归档号 \${linkifyTags(h.archiveNo)}</span>
+                    </div>
+                    \${(h.pin || []).map(p => \`
+                      <div style="font-size:12.5px; margin:2px 0;">
+                        <span style="color:var(--ok); font-weight:600;">+ 📌 钉入</span>
+                        <span class="mono-badge">\${esc(names[p.shelf] || p.shelf)}</span>
+                        <strong>\${linkifyTags(p.archiveNo)}</strong>: \${esc(p.text)}
+                      </div>
+                    \`).join('')}
+                    \${(h.unpin || []).map(u => \`
+                      <div style="font-size:12.5px; margin:2px 0;">
+                        <span style="color:var(--danger); font-weight:600;">- 📍 拔出</span>
+                        <span class="mono-badge">\${esc(names[u.shelf] || u.shelf)}</span>
+                        <strong>\${linkifyTags(u.archiveNo)}</strong>: \${esc(u.text)}
+                      </div>
+                    \`).join('')}
+                  </div>
+                \`).join('')}
               </div>
-            \`).join('') || '<div style="color:var(--faint); font-size:12.5px;">暂无开着的线索卷</div>'}
+            \`}
+          </div>
+        \`;
+      } else if (sub === 'threads') {
+        const openList = threads?.open || [];
+        const closedList = threads?.closed || [];
+        subBodyHtml = \`
+          <div class="panel-box" style="margin-bottom:16px;">
+            <strong style="display:block; margin-bottom:10px; font-size:14px;">🧶 正在开着的线索卷 (Open Threads: \${openList.length})</strong>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              \${openList.map(x => \`
+                <div class="shelf-card" style="margin-bottom:0;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong>[\${x.type === 'promise' ? '答应 ' + esc(x.to) : '挂着的事'}] \${esc(x.title)}</strong>
+                    <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted);">\${linkifyTags(x.archiveNo)}</span>
+                  </div>
+                  \${(x.notes || []).map(n => \`<div style="font-size:12.5px; color:var(--muted); margin-top:4px;">• \${fmtTime(n.at)}：\${esc(n.text)}</div>\`).join('')}
+                </div>
+              \`).join('') || '<div style="color:var(--faint); font-size:12.5px;">暂无开着的线索卷</div>'}
+            </div>
+          </div>
+
+          \${closedList.length > 0 ? \`
+            <div class="panel-box">
+              <strong style="display:block; margin-bottom:10px; font-size:14px;">📁 已合卷的历史线索卷 (\${closedList.length})</strong>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                \${closedList.slice(0, 20).map(x => \`
+                  <div class="shelf-card" style="margin-bottom:0; opacity:0.8;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                      <span style="font-size:13px; text-decoration:line-through; color:var(--muted);">[\${x.type === 'promise' ? '答应 ' + esc(x.to) : '挂着的事'}] \${esc(x.title)}</span>
+                      <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted);">\${linkifyTags(x.archiveNo)}</span>
+                    </div>
+                    \${(x.notes || []).map(n => \`<div style="font-size:12px; color:var(--muted); margin-top:2px;">• \${fmtTime(n.at)}：\${esc(n.text)}</div>\`).join('')}
+                  </div>
+                \`).join('')}
+              </div>
+            </div>
+          \` : ''}
+        \`;
+      } else if (sub === 'gist') {
+        subBodyHtml = \`
+          <div class="panel-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <strong style="font-size:14px;">📜 天 / 周 / 月梗概 (Gists: \${gistCount})</strong>
+              <span style="font-size:12px; color:var(--muted);">睡眠时由 coldwrite 提炼压缩 · 供唤醒时连续性继承</span>
+            </div>
+            \${(gists || []).slice().reverse().map(x => \`
+              <div style="border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <div>
+                    <span class="mono-badge">\${esc(x.span)}</span>
+                    <strong style="margin-left:6px; font-size:13.5px;">\${esc(x.key)}</strong>
+                  </div>
+                  <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted);">\${x.chars} 字 · \${fmtTime(x.at)}</span>
+                </div>
+                <div class="serif-body" style="font-size:13.5px; margin-top:6px; line-height:1.6;">\${esc(x.text)}</div>
+              </div>
+            \`).join('') || '<div style="color:var(--faint); font-size:12.5px;">尚未沉淀长期梗概</div>'}
+          </div>
+        \`;
+      }
+
+      return \`
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+          <div class="sub-tabs">
+            <button class="sub-tab-btn \${sub === 'shelf' ? 'active' : ''}" onclick="setReadingSub('shelf')">📚 书架条目 (\${entries.length})</button>
+            <button class="sub-tab-btn \${sub === 'pinned' ? 'active' : ''}" onclick="setReadingSub('pinned')">📌 常驻记忆区 (\${pinnedCount} · \${pinned?.used ?? 0}/\${pinned?.budget ?? 1200}字)</button>
+            <button class="sub-tab-btn \${sub === 'threads' ? 'active' : ''}" onclick="setReadingSub('threads')">🧶 线索卷 (\${openThreadsCount})</button>
+            <button class="sub-tab-btn \${sub === 'gist' ? 'active' : ''}" onclick="setReadingSub('gist')">📜 历史梗概 (\${gistCount})</button>
           </div>
         </div>
-
-        <div class="panel-box">
-          <strong style="display:block; margin-bottom:10px; font-size:14px;">📜 天 / 周 / 月梗概 (Gists)</strong>
-          \${(gists || []).slice().reverse().slice(0, 5).map(x => \`
-            <div style="border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:10px;">
-              <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                <strong>[\${esc(x.span)}] \${esc(x.key)}</strong>
-                <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted);">\${x.chars} 字 · \${fmtTime(x.at)}</span>
-              </div>
-              <div class="serif-body" style="font-size:13.5px;">\${esc(x.text)}</div>
-            </div>
-          \`).join('') || '<div style="color:var(--faint); font-size:12.5px;">尚未沉淀长期梗概</div>'}
-        </div>
+        \${subBodyHtml}
       \`;
     }
 

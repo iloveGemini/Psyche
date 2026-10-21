@@ -20,7 +20,7 @@ import { renderNow, noteSheetLine } from "../archive/now.ts";
 import { asleepPlace, asleepTask } from "../asleep.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
-import { pinnedRoots, pinStatus } from "../self/pinned.ts";
+import { pinnedRoots, pinStatus, pinnedEntries, PIN_BUDGET, cardOf } from "../self/pinned.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
 import { readShelf, renderEntry, shelfDetail } from "../reading/shelf.ts";
 import { computeHealth } from "../reading/health.ts";
@@ -295,6 +295,55 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.get("/v1/shelf/:no", (c) => {
     const detail = shelfDetail(store, decodeURIComponent(c.req.param("no")));
     return detail ? c.json(detail) : c.json({ error: "没有这条书架条目" }, 404);
+  });
+
+  // 常驻区详情与历史
+  app.get("/v1/pinned", (c) => {
+    const year = Number(localDay(store.now(), store.timeZone).slice(0, 4));
+    const { entries, used } = pinnedEntries(store);
+    const shelfMap = new Map(readShelf(store.db, { includeRetired: true }).map((e) => [e.root, e]));
+    const pinEvents = store.db
+      .query(
+        `SELECT id, at, day, seq, payload FROM events
+         WHERE kind = 'pin.changed' AND fonds = ''
+         ORDER BY at DESC LIMIT 30`,
+      )
+      .all() as { id: string; at: number; day: string; seq: number; payload: string }[];
+    const resolveRoot = (rootId: string) => {
+      const e = shelfMap.get(rootId);
+      if (e) {
+        return {
+          archiveNo: displayArchiveNo(e.archiveNo, year),
+          text: e.text,
+          shelf: e.shelf,
+        };
+      }
+      return {
+        archiveNo: rootId,
+        text: "（条目已不可寻）",
+        shelf: "unknown",
+      };
+    };
+    const history = pinEvents.map((r) => {
+      const p = JSON.parse(r.payload || "{}");
+      return {
+        id: r.id,
+        at: r.at,
+        archiveNo: `${r.day}#${r.seq}`,
+        pin: (p.pin || []).map(resolveRoot),
+        unpin: (p.unpin || []).map(resolveRoot),
+      };
+    });
+    return c.json({
+      used,
+      budget: PIN_BUDGET,
+      entries: entries.map((e) => ({
+        ...e,
+        archiveNo: displayArchiveNo(e.archiveNo, year),
+        chars: cardOf(e, year).length,
+      })),
+      history,
+    });
   });
 
   // 记忆体检（dashboard.md §4.2.2）：不读私密正文，现算健康指标与闭环预警

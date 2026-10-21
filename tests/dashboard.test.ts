@@ -313,5 +313,16 @@ describe("Dashboard：记忆体检、闭环预警与书架证据链", () => {
     const feedData = await feedRes.json();
     expect(feedData.feed.length).toBeGreaterThan(0);
     expect(feedData.feed.some((item: any) => item.kind === "episode" && item.residentId === "a1")).toBe(true);
+
+    // 7. 常驻记忆区 GET /v1/pinned
+    const pinRes = await app.request("/v1/pinned");
+    expect(pinRes.status).toBe(200);
+    const pinData = await pinRes.json();
+    expect(pinData).toMatchObject({
+      used: expect.any(Number),
+      budget: 1200,
+      entries: expect.any(Array),
+      history: expect.any(Array),
+    });
   });
 });
