@@ -180,6 +180,43 @@ function refractory(c: Ctx): Set<string> {
 }
 
 /**
+ * 这段会话开头的种子（m3.md §四，10-23）：放了哪些情节、接在后面的原话从哪一刻起——都已经在它眼前，不再"想起"。
+ * session 对得上的那条；没有（Roxy 拿种子时还不知道新会话 id）就取这段会话第一条处境之前最近的一条不带 session 的，
+ * 中间没有别的会话开头才算。
+ */
+function seedOf(c: Ctx): { episodes: Set<string>; since?: number } | null {
+  if (!c.session) return null;
+  const parse = (r: { payload: string } | null) => {
+    if (!r) return null;
+    const p = JSON.parse(r.payload) as { episodes?: string[]; since?: number };
+    return { episodes: new Set(p.episodes ?? []), ...(typeof p.since === "number" ? { since: p.since } : {}) };
+  };
+  const own = c.db
+    .query(`SELECT payload FROM events WHERE kind = 'continuity.seeded' AND fonds = '' AND json_extract(payload, '$.session') = ? ORDER BY id DESC LIMIT 1`)
+    .get(c.session) as { payload: string } | null;
+  if (own) return parse(own);
+  const start = (c.db
+    .query(`SELECT MIN(at) AS at FROM events WHERE class = 'situation' AND fonds = '' AND json_extract(payload, '$.session') = ?`)
+    .get(c.session) as { at: number | null }).at;
+  if (start === null) return null;
+  const seed = c.db
+    .query(`SELECT at, payload FROM events WHERE kind = 'continuity.seeded' AND fonds = '' AND json_extract(payload, '$.session') IS NULL AND at <= ? ORDER BY at DESC, id DESC LIMIT 1`)
+    .get(start) as { at: number; payload: string } | null;
+  if (!seed) return null;
+  // 种子之后、这段会话之前另有会话开了头：种子是它的
+  const other = c.db
+    .query(
+      `SELECT 1 FROM events s WHERE s.class = 'situation' AND s.fonds = '' AND s.at >= ? AND s.at < ?
+         AND json_extract(s.payload, '$.session') IS NOT NULL AND json_extract(s.payload, '$.session') <> ?
+         AND NOT EXISTS (SELECT 1 FROM events t WHERE t.class = 'situation' AND t.fonds = ''
+                         AND json_extract(t.payload, '$.session') = json_extract(s.payload, '$.session') AND t.at < s.at)
+       LIMIT 1`,
+    )
+    .get(seed.at, start, c.session);
+  return other ? null : parse(seed);
+}
+
+/**
  * 回忆的候选：只取它写的情节（借 ASCM：浮现只给情节，不给原话）。原话一行一行没有前因后果，
  * "嗯 我想加个按周看的"单独浮上来只是噪声；还没写成情节的段，原话仍然 recall 得到。
  */
@@ -307,9 +344,11 @@ export async function surface(
   const here = (store.situation?.payload as { harness?: string } | undefined)?.harness ?? null;
   const year = Number(localDay(c.now, store.timeZone).slice(0, 4));
 
+  // 种子里已经有的（情节、末尾原话）不再想起
+  const seeded = seedOf(c);
   // 刚回来：上次怎么散的（另一个会话里和她的最后几行）先想起来，不和别的比分
   const lastTime: Surfaced[] = [];
-  const tail = fromLastTime.filter((r) => r.session !== c.session);
+  const tail = fromLastTime.filter((r) => r.session !== c.session && !(seeded?.since !== undefined && r.at >= seeded.since) && !seeded?.episodes.has(r.event_id));
   if (tail.length && !block.has(tail.at(-1)!.event_id))
     lastTime.push({
       source: "recall",
@@ -318,7 +357,7 @@ export async function surface(
       score: 1,
       parts: { lastTime: 1 },
     });
-  const skip = new Set(tail.map((r) => r.event_id));
+  const skip = new Set([...tail.map((r) => r.event_id), ...(seeded?.episodes ?? [])]);
 
   const scored: Surfaced[] = [];
   // 此刻的环境（m8.md §4.1）：放着什么、谁在。没在放歌就不比（屋里天天是那几个人，单靠人不浮现）

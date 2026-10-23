@@ -10,7 +10,7 @@ import { shelfProjector } from "../src/reading/shelf.ts";
 import { intake } from "../src/archive/intake.ts";
 import { createApp } from "../src/server/app.ts";
 import { pendingGists, weekOf, writeGist, GistError } from "../src/catalog/gist.ts";
-import { renderContinuity } from "../src/archive/continuity.ts";
+import { renderContinuity, seedContinuity } from "../src/archive/continuity.ts";
 import { tick } from "../src/heartbeat/scheduler.ts";
 
 const T = (s: string) => Date.parse(`${s}+08:00`);
@@ -127,7 +127,9 @@ describe("接着往下过", () => {
         "11-10：十号",
         "",
         "【最近的情节】",
+        "11-11",
         "十一号的情节",
+        "11-12（今天）",
         "今天的情节",
       ].join("\n"),
     );
@@ -144,10 +146,28 @@ describe("接着往下过", () => {
         "",
         "【最近的情节】",
         "（更早的 3 条没放进来，要找用 recall）",
+        "10-16（今天）",
         "3".repeat(10),
         "4".repeat(10),
       ].join("\n"),
     );
+  });
+
+  test("since 去重（10-23）：开头不早于原话第一行的情节不放；带 session 才记下种子放了哪些", async () => {
+    const h = setup();
+    const a = h.episode("2026-10-16T06:00:00", "早上的事");
+    const b = h.episode("2026-10-16T08:00:00", "原话里那段");
+    const seed = seedContinuity(h.store, undefined, { since: T("2026-10-16T07:30:00") });
+    expect(seed.text).toContain("早上的事");
+    expect(seed.text).not.toContain("原话里那段");
+    expect(seed.episodes.sort()).toEqual([a.id, b.id].sort());
+    const seededCount = () => (h.store.db.query(`SELECT COUNT(*) AS n FROM events WHERE kind = 'continuity.seeded'`).get() as { n: number }).n;
+    await h.get("/v1/continuity");
+    expect(seededCount()).toBe(0);
+    const r = await h.get(`/v1/continuity?since=${encodeURIComponent("2026-10-16T07:30:00+08:00")}&session=new`);
+    expect(r.text).not.toContain("原话里那段");
+    const row = h.store.db.query(`SELECT payload FROM events WHERE kind = 'continuity.seeded'`).get() as { payload: string };
+    expect(JSON.parse(row.payload)).toEqual({ episodes: seed.episodes, since: T("2026-10-16T07:30:00"), session: "new" });
   });
 
   test("什么都没有：null", () => expect(renderContinuity(setup().store)).toBeNull());

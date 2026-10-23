@@ -102,7 +102,7 @@ async function sessionStart(input: HookInput) {
   // resume：原文还在上下文里，不再给接续
   const [prompt, cont] = await Promise.all([
     api<{ text: string }>("GET", "/v1/prompt", undefined, 3000),
-    input.source === "resume" ? Promise.resolve(null) : api<{ text: string | null }>("GET", "/v1/continuity", undefined, 5000),
+    input.source === "resume" ? Promise.resolve(null) : api<{ text: string | null }>("GET", `/v1/continuity?session=${encodeURIComponent(session)}`, undefined, 5000),
   ]);
   const parts = [PLACE, prompt?.text?.trim(), cont?.text?.trim() ? `<continuity>\n${cont.text.trim()}\n</continuity>` : ""].filter(Boolean);
   out("SessionStart", parts.join("\n\n"));

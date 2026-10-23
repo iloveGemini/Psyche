@@ -123,6 +123,40 @@ describe("浮现", () => {
     expect(withVec.items.some((i) => i.text.includes("今天想聊聊"))).toBe(false);
   });
 
+  test("种子里有的不浮（10-23）：放进 <continuity> 的情节、末尾原话那段都不再想起；没认领的种子归下一段会话", async () => {
+    const t = setup();
+    t.evenings();
+    const refund = (t.store.db.query(`SELECT id FROM events WHERE kind = 'episode' AND json_extract(payload, '$.text') LIKE '%耳机%'`).get() as { id: string }).id;
+    const seeded = (payload: Record<string, unknown>, at: number) => t.store.append({ kind: "continuity.seeded", class: "self", source: "psyche", situation: null, at, payload });
+    const ask = async (session: string) => {
+      t.set(T("2026-09-15T21:20:00"));
+      t.sit(session, T("2026-09-15T21:00:00"));
+      t.her("后来那个退款到账了", T("2026-09-15T21:20:00"));
+      return surface(t.store, fake, { session, dry: true, seed: 1 });
+    };
+    // 带 session 的种子
+    seeded({ episodes: [refund], since: T("2026-09-14T20:00:00"), session: "a" }, T("2026-09-15T20:59:00"));
+    const a = await ask("a");
+    expect(a.items.some((i) => i.text.includes("耳机"))).toBe(false);
+    expect(a.items.some((i) => i.parts.lastTime === 1)).toBe(false);
+    // 不带 session（Roxy）：这段会话之前最近的一条归它
+    const t2 = setup();
+    t2.evenings();
+    const refund2 = (t2.store.db.query(`SELECT id FROM events WHERE kind = 'episode' AND json_extract(payload, '$.text') LIKE '%耳机%'`).get() as { id: string }).id;
+    t2.store.append({ kind: "continuity.seeded", class: "self", source: "psyche", situation: null, at: T("2026-09-15T20:59:00"), payload: { episodes: [refund2] } });
+    t2.set(T("2026-09-15T21:20:00"));
+    t2.sit("b", T("2026-09-15T21:00:00"));
+    t2.her("后来那个退款到账了", T("2026-09-15T21:20:00"));
+    const b = await surface(t2.store, fake, { session: "b", dry: true, seed: 1 });
+    expect(b.items.some((i) => i.text.includes("耳机"))).toBe(false);
+    // 中间另有会话开了头：种子不是这段的
+    t2.set(T("2026-09-15T22:20:00"));
+    t2.sit("c", T("2026-09-15T22:00:00"));
+    t2.her("后来那个退款到账了", T("2026-09-15T22:20:00"));
+    const c = await surface(t2.store, fake, { session: "c", dry: true, seed: 1 });
+    expect(c.items.some((i) => i.text.includes("耳机"))).toBe(true);
+  });
+
   test("空档输入不拿内容去匹配：她回「嗯」，不浮回忆", async () => {
     const t = setup();
     t.evenings();

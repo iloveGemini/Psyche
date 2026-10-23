@@ -1,13 +1,14 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-20
+> 最后更新：2026-10-23
 
 ## 1. 当前阶段
 
 **P3a 房间（10-19，Joy 在 Soma 101 定，Claude 在 Soma 里做；交接 `notes/plan/p3-p4-handoff.md`）**：群 → 房间。私人房间 = 住户的 home，永不对任何人开放（沙箱管）；公共房间是住户 / Joy 用工具开的（要写 why，记谁开的），进房间只是在那里听得到、说得上话，不带文件权利；住户同一时刻在一间公共房间或自己房间，Joy 没有位置。Soma：`rooms.ts`（`openRoom` / `moveTo` / `whereIs` / `archiveRoom`，公共房间的记录谁说的都收）、`rooms-round.ts`（Joy 说话只问醒着的，`@` 照问，`urgent` 叫醒房间里所有人）、`rooms-flow.ts`（醒没醒问 Psyche `/v1/house`，问不到当醒着）、议题（Joy 也能开、need 只数住户、不问她收尾；谁都能报名）、MCP `rooms` 合成 list / read / go / open，`say_in_room` 只能说进自己在的那间；`<now>` 带 `room`（在哪、谁也在、几条没读）。Psyche：`room.entered`（`POST /v1/room`，presence 带 `room`，「屋里」显示在哪间）、住户之间的信能标 `urgent`（勿扰例外 `from` 写住户 id）。迁移 `Soma/scripts/rooms-p3.mjs`（先看、`--apply --archive <id>` 照做，沙箱外跑）：Soma 101 → 客厅，历史接着用。考卷 Psyche +3、Soma +5。**改名没做**：Soma 的 `rooms` 现在就是房间，群聊那套不另起名。**还没做**：P3b share 工具、P4 感知设置。P0–P2（10-19）的事还没写进这里。
 
 - **系统提示词顺序（10-20 Joy 定）**：自述在前、机制段在后（`composePrompt` / `filePrompt`）；机制段 v2 改成第一人称（「# 我的记忆」，加一句「是系统的，我改不了」），自述和机制两段都是「我」。没出考卷（Joy：小调整不用）。所有住户下一段起生效（机制现读；顺序要重启 Psyche）。
+- **种子去重（10-23 Joy 定，m1.md §五 / m3.md §四）**：`/v1/continuity?since=` 不放开头不早于末尾原话第一行的情节（留 10 秒余量），【最近的情节】按天标日期；带 `session`（Soma、Claude Code hook）或 `seed=1`（Roxy，归下一段开头的会话）记 `continuity.seeded`，浮现跳过种子里的情节和「上次」里已在原话中的几行。三个仓库测试过；还没在测试库实跑看一次换段。
 - **会话里的收尾只给索引行（10-20 Joy 定）**：`GET /v1/hotwrite?brief=1` 每行只留开头 30 字（原文就在上下文里，不再付两次 token）；Soma / Roxy 的收尾轮都带它，睡着补写、`hotwrite_segment` 照旧全文。收尾标签改 `<psyche-hotwrite>`（不带 harness 名，Soma 照认旧的 `<soma-hotwrite`）。提示词 v4 加一句「清单有时只列开头」。考卷 a3 全文 / 索引各 3 遍质量一样（`evals/hot-write/README.md` §五）。10-20 Roxy 实跑一轮看到三处，同日改：MCP `hotwrite_segment` 写眼前这个会话也给索引行（`full: true` / 带 `session` 才全文；他在 80k 上下文时自调拿了 1.2 万字全文）；他自己 `hotwrite` 成功后同一轮说的话标 `wrapUp`（线要换段时），不再为这一两句单推一轮（Soma / Roxy 都改）；Roxy 把整条 `<keep_silence/>` 报成 `speech.silent`（新 kind，经历里「我没出声」，在场算一轮完了、冷写当他的回应；收尾那轮的不报），不进末尾原话。顺带修 Soma 回合开始没清 `state.tools`（`b6dbf2a` 误删，自己热写过一次之后每轮 ≥4 万都会换段）。
 
 **M4「我是谁」✅（10-15）**，契约 `notes/plan/m4.md`：机制 `prompts/mechanism.md`（它改不了）+ 自述 `self-v0.md`（初我 v2）；`src/self/self.ts`、`src/birth.ts`（只能一次）。端到端通过；测试库已出生（备份 `~/.psyche/test.bak-1015-prebirth.db`），之后改 `self-v0.md` 不影响测试库。机制段还没提「自述你可以改」，要写先有考卷。
@@ -156,4 +157,4 @@
 
 ## 6. 验证
 
-2026-10-18：`bun test` 325 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `tsc` 0 错误。
+2026-10-23：`bun test` 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。

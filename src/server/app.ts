@@ -34,7 +34,7 @@ import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../
 import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
 import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, readGists, writeGist } from "../catalog/gist.ts";
-import { renderContinuity } from "../archive/continuity.ts";
+import { renderContinuity, seedContinuity } from "../archive/continuity.ts";
 import { deliverPresence, lookPresence, MoodError, setMood, enterRoom } from "../house/presence.ts";
 import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, readPlaylists, SoundError, stop, type SoundDeps } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
@@ -281,8 +281,23 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     return c.json(writeGist(store, body, typeof body.promptVersion === "number" ? body.promptVersion : readPrompt("gist.md", promptsDir).version));
   });
 
-  // 接着往下过：Soma 换会话时新会话的开头（梗概 + 最近的情节）
-  app.get("/v1/continuity", (c) => c.json({ text: renderContinuity(store) }));
+  // 接着往下过：Soma 换会话时新会话的开头（梗概 + 最近的情节）。since = 接在后面的原话从哪一刻起；
+  // 带 session / seed=1 才记下这段种子放了哪些情节（浮现跳过它们，m1.md §五）
+  app.get("/v1/continuity", (c) => {
+    const raw = c.req.query("since");
+    const since = raw ? (/^\d+$/.test(raw) ? Number(raw) : Date.parse(raw)) : undefined;
+    const seed = seedContinuity(store, undefined, { since: since !== undefined && Number.isFinite(since) ? since : undefined });
+    const session = c.req.query("session") || undefined;
+    if (session || c.req.query("seed") === "1")
+      store.append({
+        kind: "continuity.seeded",
+        class: "self",
+        source: "psyche",
+        situation: null,
+        payload: { episodes: seed.episodes, ...(since !== undefined && Number.isFinite(since) ? { since } : {}), ...(session ? { session } : {}) },
+      });
+    return c.json(seed);
+  });
 
   // 书架：现行条目 + 证据计数；单条详情与证据链
   app.get("/v1/shelf", (c) => {

@@ -85,6 +85,8 @@ export const KINDS: Record<string, KindSpec> = {
   "coldwrite.done": { class: "self", required: { upTo: "string", unjudged: "array" } },
   // 常驻区（self/pinned.ts）：跟 hotwrite 一起写，pin / unpin 是书架条目的 root
   "pin.changed": { class: "self", required: { pin: "array", unpin: "array" } },
+  // 新会话的种子放了哪些情节（m1.md §五，10-23）：浮现在这段会话里跳过它们；经历里不渲染
+  "continuity.seeded": { class: "self", required: { episodes: "array" } }, // + since?, session?
 
   // ── 处境 ──
   situation: { class: "situation", required: { harness: "string" } }, // + model?, harnessPrompt?: hash, selfPromptVersion?

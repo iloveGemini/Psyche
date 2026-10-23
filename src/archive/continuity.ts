@@ -4,6 +4,7 @@
  *
  * 次序：月 → 周 → 天的梗概（越远越粗）→ 最近还没写进天梗概的情节 → 还开着的事（m7.md §二，全列）。自我（about_me / about_user）在系统提示词里，不在这。
  * 刚才的原话由 Soma 接在后面（它手里有原文）。长度在挑的时候管：梗概定长、条数有上限；情节从新往旧取到预算为止。
+ * 去重（10-23，m1.md §五）：开头不早于 `since`（原话第一行）的情节整条在原话里，不再放；情节按天标日期。
  */
 import type { EventStore } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
@@ -13,6 +14,7 @@ import { renderOpenThreads } from "../self/threads.ts";
 import { renderPinned } from "../self/pinned.ts";
 
 export const CONTINUITY = { days: 7, weeks: 4, months: 12, episodeChars: 6000 };
+const SINCE_SLACK_MS = 10_000;
 
 /**
  * 馆藏与书架概览（两级目录的第一级，常驻在 <continuity> 开头）：
@@ -62,7 +64,12 @@ export function renderCatalog(store: EventStore): string | null {
   return ["【馆藏与书架】", archiveLine, shelfLine].join("\n");
 }
 
-export function renderContinuity(store: EventStore, limits = CONTINUITY): string | null {
+export function renderContinuity(store: EventStore, limits = CONTINUITY, opts: { since?: number } = {}): string | null {
+  return seedContinuity(store, limits, opts).text;
+}
+
+/** 种子正文 + 它让这段会话已经看见的情节（放了的 + 因 since 在原话里的），浮现据此跳过 */
+export function seedContinuity(store: EventStore, limits = CONTINUITY, opts: { since?: number } = {}): { text: string | null; episodes: string[] } {
   const gists = readGists(store);
   const days = gists.filter((g) => g.span === "day").slice(-limits.days);
   const oldestDay = days[0]?.key;
@@ -72,35 +79,41 @@ export function renderContinuity(store: EventStore, limits = CONTINUITY): string
 
   // 最近的情节：最后一条天梗概之后的天（今天、还没写梗概的昨天……），从新往旧取到预算
   const lastGistDay = gists.filter((g) => g.span === "day").at(-1)?.key;
-  const recent = currentEpisodes(store).filter((e) => !lastGistDay || e.day > lastGistDay);
-  const kept: string[] = [];
+  const after = currentEpisodes(store).filter((e) => !lastGistDay || e.day > lastGistDay);
+  // 上报的时刻和 transcript 里的差几秒（先报再发）：原话第一行引的那条情节也算在原话里
+  const inTail = opts.since === undefined ? [] : after.filter((e) => e.at >= opts.since! - SINCE_SLACK_MS);
+  const recent = after.filter((e) => !inTail.includes(e));
+  const kept: typeof recent = [];
   let used = 0;
   for (const e of [...recent].reverse()) {
     const n = Array.from(e.text).length;
     if (kept.length && used + n > limits.episodeChars) break;
-    kept.unshift(e.text);
+    kept.unshift(e);
     used += n;
   }
   const dropped = recent.length - kept.length;
+  const episodes = [...kept, ...inTail].map((e) => e.id);
 
   const catalog = renderCatalog(store);
   const threads = renderOpenThreads(store);
   // 常驻区（self/pinned.ts）：它自己钉上的书架条目，每次醒来都在
   const pinned = renderPinned(store);
-  if (!catalog && !months.length && !weeks.length && !days.length && !kept.length && !threads && !pinned) return null;
+  if (!catalog && !months.length && !weeks.length && !days.length && !kept.length && !threads && !pinned) return { text: null, episodes };
   const today = localDay(store.now(), store.timeZone);
   const short = (key: string) => (key.startsWith(today.slice(0, 5)) ? key.slice(5) : key);
-  return [
+  const byDay = kept.flatMap((e, i) => [...(e.day !== kept[i - 1]?.day ? [`${short(e.day)}${e.day === today ? "（今天）" : ""}`] : []), e.text]);
+  const text = [
     ...(pinned ? [pinned, ""] : []),
     ...(catalog ? [catalog, ""] : []),
     ...(months.length ? ["【月】", ...months.map((g) => `${g.key}：${g.text}`), ""] : []),
     ...(weeks.length ? ["【周】", ...weeks.map((g) => `${g.key}：${g.text}`), ""] : []),
     ...(days.length ? ["【天】", ...days.map((g) => `${short(g.key)}：${g.text}`), ""] : []),
-    ...(kept.length ? ["【最近的情节】", ...(dropped ? [`（更早的 ${dropped} 条没放进来，要找用 recall）`] : []), ...kept, ""] : []),
+    ...(kept.length ? ["【最近的情节】", ...(dropped ? [`（更早的 ${dropped} 条没放进来，要找用 recall）`] : []), ...byDay, ""] : []),
     ...(threads ? [threads, ""] : []),
   ]
     .join("\n")
     .trim();
+  return { text, episodes };
 }
 
 /** 周归到它周四所在的月（ISO 周的年月） */
