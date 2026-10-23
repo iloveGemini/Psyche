@@ -10,6 +10,7 @@
 1. **去掉「自己的房间（`own-<id>`）」作为物理聊天室 + 去掉房间门锁与敲门/应门（`door` / `knock` / `answer`）**：`go home`（回自己房间）恢复为纯粹的位置状态（不在任何公共房间里接话），不建 `own-<id>` 聊天室文件夹，不设日常房间门锁与敲门流程；`invite / uninvite` 只保留给 `private` 房子。
 2. **去掉住户之间的即时私聊工具 `dm`，保留 Psyche 的 `mail`**：住户之间公开交流在公共房间，私下异步交流照旧用 `send_mail`；单聊只保留 Joy ↔ 住户的主线单聊。
 3. **日常公共房间改为「留言板模式」，去掉 `present` 在场过滤**：能进那座房子的人都能看到公共房间的完整聊天记录（进出门不断上下文）；位置只决定「全屋感知」与「Joy 在房间说话时谁当场接话」。只有后续第 3 步的「包间」才按参与人隔离记录。
+- ✅ **契约先改（10-23）**：`houses-p1.md` 按减法改（没有门、没有 `own-` 文件夹、留言板），§四定「回自己屋」报 `{ house: 住址, id: "own-<住户 id>", room: "<名字>的房间" }`——每人一个、别人不会在的位置，两人都在自己屋不算同一间；Psyche 不用改代码（测试 `presence.test.ts`「回自己屋」锁住）。`houses-p2.md` 标明敲门、住户私聊撤掉，只留 `private` 房子的邀请；**待 Joy 定**：私聊撤了以后，被邀请的人要不要另外通知（现在只在 `rooms` list 里看得到）。
 4. **顺手修 Soma 现存的 2 个 Bug**：① ✅ 游标吞未读（10-23 已修，Soma 分支 `claude/stoic-knuth-vzh7om`，未合并）：规则收进 `append()` 一处，说话前没有未读才推游标，进出门也不吞；同时 room.json / house.json 多进程改加了锁（原来 Soma 服务和住户 `mcp.ts` 会互相覆盖）；② `agenda` 列表与报名按 `canEnterHouse` / `canEnterRoom` 过滤（待做）。
 
 **房子第 1、2 步已上线（10-23，待按上方减法收敛）**：房子 / 房间的门 / 自己的房间与住址、每人（含 Joy）只在一处、消息按在场可见、感知按位置过滤、敲门 / 邀请 / 住户私聊（契约 `notes/plan/houses-p1.md`、`houses-p2.md`）。正式 `~/.soma` 已迁（备份 `~/.soma.bak-houses-p1-1023`）。下一步：先完成上方 P1/P2 减法瘦身，再做第 3 步包间 + 功能楼（活动记录从 commons 改进包间文件夹）；「走神」等 Soma 报得出「这一轮在忙别处」。10-23 16:54–16:55 测试 Psyche 误连正式库已核实：每个住户库里只多了 10 条新格式的在场 percept（和正式进程的旧格式交替），没有收邮件、没有别的事件、没写向量；留着不删（事件只追加）。
@@ -75,5 +76,7 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-23（`claude/stoic-knuth-vzh7om`）：`bun test` 346 pass / 0 fail；`tsc --noEmit` 0 错误（`scripts/rename-resident.ts` 要 Soma 在 `../Soma`）。
 
 2026-10-23：houses-p1 在 psyche-test + soma-test 实跑（a1 开客厅、a1/a2 进去 → a1 的 `<now>` 里 a2「在这里」；a2 造私人房子搬走 → 「不在这座房子」；a1 在 a2 的私人房子开房间被拒；Joy 进门前的话看不到，位置报进 Psyche）；`bun test` 345 pass；Soma `npm test` 133 pass。percept 入口在 psyche-test 实跑（记 / 不变不记 / 拒屋子自己的 sensor / 无 token 401 / `<now>` 递一次不重递）。`bun test` 340 pass；此前 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。

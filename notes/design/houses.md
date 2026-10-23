@@ -113,7 +113,7 @@ SOMA_HOME/dm/Joy+<resident>.jsonl              Joy ↔ 住户的单聊（不做�
 - 迁移：现在 `~/.soma/houses/soma-101/` 下的公共房间保留，清理掉自动生成的 `own-<id>` 物理房间。
 
 **Psyche**
-- `room.entered` 加 `house` / `parent`（回自己屋时 `room: ""` 或 `"自己的房间"`，照旧表示在自己屋）；presence 渲染带房子名。
+- `room.entered` 加 `house` / `parent`；回自己屋时报 `{ house: 住址, id: "own-<他的 id>", room: "<名字>的房间" }`（每人一个、别人不会在的位置，契约 `notes/plan/houses-p1.md` §四）；presence 渲染带房子名。
 - **改名**：Psyche 里叫「屋子」的概念（`src/house/`，指这个 Psyche 里住着的所有人）和「房子」重名了，改叫「全屋」。只改文档和显示的字；`/v1/house/*` 这些接口路径先不动，免得两边一起改。
 
 ## 八、Roy 搬过来

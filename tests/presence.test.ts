@@ -201,6 +201,23 @@ describe("感知按位置（houses-p1.md §五）", () => {
     expect(h.percepts(h.a1).at(-1).value).toEqual({ here: true, state: "idle", where: "pi", mood: "在造房子" });
   });
 
+  test("回自己屋（houses-p1.md §四，减法）：每人一个 own-<id>，两人都在自己屋不算同一间；Joy 在客厅也只看得到在谁的房间", () => {
+    const h = setup();
+    enterRoom(h.a1, { house: "soma-101", houseName: "Soma 101", id: "own-a1", room: "a1的房间" });
+    enterRoom(h.a2, { house: "soma-101", houseName: "Soma 101", id: "own-a2", room: "a2的房间" });
+    h.joy.place = { house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" };
+    h.joy.lastSeen = h.clock.t;
+    h.sit(h.a1, "s1");
+    h.tick();
+    expect(deliverPresence(h.a1, "s1")!.split("\n")).toEqual(["全屋：", "- a2：在 Soma 101 · a2的房间", "- Joy：在 Soma 101 · 客厅"]);
+    // 老记录：room 空串照 own-<他> 解读，和新报法是同一个位置，不算变化
+    enterRoom(h.a2, { room: "" });
+    h.tick();
+    const seen = h.percepts(h.a1).filter((p) => p.subject === "a2");
+    expect(seen).toHaveLength(1);
+    expect(seen[0].value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "own-a2", room: "a2的房间" } });
+  });
+
   test("<now> 和 look 只递看得到的；递过不重递", () => {
     const h = setup();
     enterRoom(h.a1, { house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" });
