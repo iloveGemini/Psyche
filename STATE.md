@@ -53,7 +53,7 @@
 
 1. **P3b 工具支持**：房间内 `share` 工具及文件共享交互。
 2. **Mac 感知上线**（`mcp/mac/`，m8.md §6.5，代码与考卷已做）：开放按住户各自一份（Psyche 设置 `mac`，缺省全关），Joy 要在 dashboard 上做开关；天气 `~/.psyche/mac.json` 已写重庆大渡口；装 launchd 常驻 `feed.ts` 连正式库（Joy 决定）；`look_at_screen` 先关，且等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
-3. **没说出口的话上线**（m1.md §3.1，Psyche 已提交、Soma 在分支 `claude/unsaid`，worktree `../Soma-unsaid`）：合进 Soma master、`npm run build` 重启后生效；要不要先在 soma-test 跑一轮真模型看它用不用，Joy 定。Joy 定不出考卷。
+3. **没说出口的话**（m1.md §3.1）：✅ 10-23 上线（正式 Psyche 先重启，Soma master `152e59d` build 重启）。下一步看他们用不用、怎么用，不教。
 4. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 5. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
 6. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：第一个服务（候选影音室）、percept 的 `block` 递法、Soma / Roxy 读 manifest 挂服务；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
@@ -76,6 +76,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-23（上线）：正式 Psyche 重启后 `/v1/house/mac` 有（新代码在跑）；Soma 合并后 `npm test` 146 pass、build、launchd 重启，30151 回 200。
 
 2026-10-23（没说出口的话）：Psyche `bun test` 365 pass、`tsc` 0 错误（`tests/speech.test.ts`：拆、幂等、经历与热写段都有）；Soma 分支 `npm test` 146 pass、`tsc` 0 错误（`lib/lifecycle/speech.test.mjs`）。没跑真模型。
 
