@@ -46,6 +46,10 @@ describe("Dashboard：全屋总览与住户出生", () => {
     expect(htmlRes.status).toBe(200);
     expect(htmlRes.headers.get("content-type")).toContain("text/html");
     expect(await htmlRes.text()).toContain("Psyche 档案馆与阅览室");
+    const htmlText = await (await server(new Request("http://psyche/dashboard"))).text();
+    expect(htmlText).toContain("set-mac-desk");
+    expect(htmlText).toContain("set-mac-app");
+    expect(htmlText).toContain("set-mac-screen");
 
     // 未出生时的脉搏与状态
     a1.store.setSituation({ harness: "soma", session: "s1" }, "soma");

@@ -1457,15 +1457,31 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
 
     /* ─── Tab 5: 作息、账本与边界设置 ─── */
     function renderScheduleTabHtml(id, sched, wakes) {
-      const st = sched.settings || { paused: false, wakeBudget: 3, heartbeat: false };
+      const st = sched.settings || { paused: false, wakeBudget: 3, heartbeat: false, mac: { desk: false, app: false, screen: false } };
+      const mac = st.mac || { desk: false, app: false, screen: false };
       return \`
         <div class="panel-box">
           <strong style="display:block; margin-bottom:10px; font-size:14px;">管理员边界设置（权限与配额控制）</strong>
-          <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
-            <label><input type="checkbox" id="set-paused" \${st.paused ? 'checked' : ''}> 暂停所有唤醒 (paused)</label>
-            <label><input type="checkbox" id="set-hb" \${st.heartbeat ? 'checked' : ''}> 允许心跳 (heartbeat)</label>
-            <label>每日唤醒上限：<input type="number" id="set-budget" value="\${st.wakeBudget}" style="width:60px;" min="0" max="20"></label>
-            <button class="btn primary sm" onclick="saveResidentSettings('\${esc(id)}')">保存边界设置</button>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div>
+              <div style="font-size:12px; color:var(--muted); margin-bottom:6px; font-weight:600;">基础唤醒与额度</div>
+              <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                <label><input type="checkbox" id="set-paused" \${st.paused ? 'checked' : ''}> 暂停所有唤醒 (paused)</label>
+                <label><input type="checkbox" id="set-hb" \${st.heartbeat ? 'checked' : ''}> 允许心跳 (heartbeat)</label>
+                <label>每日唤醒上限：<input type="number" id="set-budget" value="\${st.wakeBudget}" style="width:60px;" min="0" max="48"></label>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:12px; color:var(--muted); margin-bottom:6px; font-weight:600;">本机授权 (Joy 开放给该住户，缺省全关)</div>
+              <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                <label title="键鼠与锁屏状态（locked/active/idle）"><input type="checkbox" id="set-mac-desk" \${mac.desk ? 'checked' : ''}> 键鼠与锁屏 (desk)</label>
+                <label title="当前前台活跃应用"><input type="checkbox" id="set-mac-app" \${mac.app ? 'checked' : ''}> 前台应用 (app)</label>
+                <label title="看一眼屏幕截屏"><input type="checkbox" id="set-mac-screen" \${mac.screen ? 'checked' : ''}> 看一眼屏幕 (screen)</label>
+              </div>
+            </div>
+            <div style="padding-top:4px;">
+              <button class="btn primary sm" onclick="saveResidentSettings('\${esc(id)}')">保存边界设置</button>
+            </div>
           </div>
         </div>
 
@@ -1502,7 +1518,18 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
         const paused = document.getElementById('set-paused').checked;
         const heartbeat = document.getElementById('set-hb').checked;
         const wakeBudget = Number(document.getElementById('set-budget').value);
-        await api('/v1/settings', { method: 'POST', body: { paused, heartbeat, wakeBudget } });
+        const desk = document.getElementById('set-mac-desk').checked;
+        const app = document.getElementById('set-mac-app').checked;
+        const screen = document.getElementById('set-mac-screen').checked;
+        await api('/v1/settings', {
+          method: 'POST',
+          body: {
+            paused,
+            heartbeat,
+            wakeBudget,
+            mac: { desk, app, screen }
+          }
+        });
         await refreshHouseData();
         renderResidentContent();
       } catch (e) { showError(e.message); }
