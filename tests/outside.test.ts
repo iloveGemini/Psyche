@@ -31,7 +31,7 @@ function setup() {
     return { status: res.status, json: (await res.json()) as any };
   };
   const percepts = (s: EventStore) => s.list({ kinds: ["percept"], fonds: "", limit: 100 }).map((e) => e.payload as any);
-  return { clock, a1, a2, post, percepts };
+  return { clock, a1, a2, house, post, percepts };
 }
 
 test("收：缺省记进全屋；读数没变不记；to 只记给点名的", async () => {
@@ -93,4 +93,17 @@ test("递：从没递过只报最近 6 小时的；全屋自己的感知不混�
   expect(deliverOutside(h.a1, "s1")).toBeNull();
   await h.post({ sensor: "weather", value: "clear", text: "晴" });
   expect(deliverOutside(h.a1, "s1")).toBe("这段时间感知到的：\n- 晴（04:00）");
+});
+
+test("Joy 那边（joy.mac）：她给谁开放了才记给谁；GET /v1/house/mac 报每人的开放", async () => {
+  const h = setup();
+  const { setSettings } = await import("../src/heartbeat/schedule.ts");
+  setSettings(h.a2, { mac: { app: true } });
+  const r = await h.post({ sensor: "joy.mac", subject: "app", value: "微信", text: "Joy 前台在用 微信" });
+  expect(r.json).toEqual({ written: ["a2"], unchanged: [], ungranted: ["a1"] });
+  expect((await h.post({ sensor: "joy.mac", subject: "desk", value: "active", text: "Joy 在用电脑" })).json).toEqual({ written: [], unchanged: [], ungranted: ["a1", "a2"] });
+  expect(() => setSettings(h.a2, { mac: { screens: true } })).toThrow();
+  expect(() => setSettings(h.a2, { mac: { desk: "yes" } })).toThrow();
+  const res = await h.house.handle(new Request("http://x/v1/house/mac"));
+  expect(await res.json()).toEqual({ grants: { a1: { desk: false, app: false, screen: false }, a2: { desk: false, app: true, screen: false } } });
 });

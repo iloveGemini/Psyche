@@ -4,10 +4,12 @@
  * - 记：`POST /v1/house/percept`，每个收件人库里一条 `percept`（source = place）；同一样和上一条读数相同就不记。
  * - 递：<now>「这段时间感知到的」，本会话上次递到之后的，同一样压成一行；递一次写 percept.noticed（sensor = outside）。
  * - 全屋自己的几路（presence / files / body / sound）不从这里进，免得被冒充。
+ * - Joy 那边的（joy.mac）要她给这个人开放了才记（设置 mac，m8.md §6.5）；没开放的报 ungranted。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { clockOf } from "../core/time.ts";
 import { delivers, records } from "./senses.ts";
+import { getSettings } from "../heartbeat/schedule.ts";
 
 export class PerceptError extends Error {}
 
@@ -25,6 +27,13 @@ interface Outside {
 
 const outsideOf = (store: EventStore) =>
   store.list({ kinds: ["percept"], fonds: "", limit: 100_000 }).filter((e) => !OWN.has((e.payload as { sensor: string }).sensor));
+
+/** Joy 那边的读数，她给这个人开放了没有：joy.mac 的 desk / app 看设置；别的不归她管 */
+function granted(store: EventStore, sensor: string, subject: string): boolean {
+  if (sensor !== "joy.mac") return true;
+  const mac = getSettings(store).mac;
+  return subject === "desk" || subject === "app" ? mac[subject] : false;
+}
 
 /** 记一条外头的读数进 to（缺省全屋）每个人的库；和那人库里这一样上一条相同的跳过 */
 export function recordPercept(residents: { id: string; store: EventStore }[], body: Record<string, unknown>, now: number) {
@@ -46,7 +55,12 @@ export function recordPercept(residents: { id: string; store: EventStore }[], bo
   const written: string[] = [];
   const unchanged: string[] = [];
   const muted: string[] = [];
+  const ungranted: string[] = [];
   for (const r of targets as { id: string; store: EventStore }[]) {
+    if (!granted(r.store, sensor, subject)) {
+      ungranted.push(r.id);
+      continue;
+    }
     if (!records(r.store, sensor, subject)) {
       muted.push(r.id); // 他设了不看这一路（m8.md §6.4）
       continue;
@@ -64,7 +78,7 @@ export function recordPercept(residents: { id: string; store: EventStore }[], bo
     r.store.append({ kind: "percept", class: "experience", source: "place", at: (at as number | undefined) ?? now, situation: null, payload: { ...payload } });
     written.push(r.id);
   }
-  return { written, unchanged, ...(muted.length ? { muted } : {}) };
+  return { written, unchanged, ...(muted.length ? { muted } : {}), ...(ungranted.length ? { ungranted } : {}) };
 }
 
 /** <now> 的「这段时间感知到的」：本会话上次递到之后的，同一样压成一行（最后的样子 + 次数）；最多 10 行 */

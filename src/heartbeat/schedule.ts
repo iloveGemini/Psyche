@@ -3,7 +3,7 @@
  *
  * - 作息是它写的：`schedule.changed` 全量替换，带 why；口子上校验，写错直接拒。
  *   闹钟响过（有了对应的 `due`）就不在现行作息里，事件不改。出生前的作息不带过去。
- * - 设置是 Joy 的（每个 Agent 一份）：暂停、唤醒额度、心跳开关。改一次记一条系统日志 `param.changed`；它看得到、改不了。
+ * - 设置是 Joy 的（每个 Agent 一份）：暂停、唤醒额度、心跳开关、这台 Mac 给他开放哪几样（m8.md §6.5）。改一次记一条系统日志 `param.changed`；它看得到、改不了。
  * - 日记：全文进资料库，事件里只放哈希。
  * - 来信能不能叫醒、勿扰（m6.md §三）也是作息的一部分：它自己写；缺省来信能叫醒、没有勿扰。
  */
@@ -37,13 +37,21 @@ export interface Schedule {
   dnd: DndRule[];
 }
 export const DEFAULT_WAKE_ON = { mail: true };
+/** 这台 Mac 上 Joy 那边，给他开放哪几样（m8.md §6.5）：键鼠与锁屏、前台应用、看一眼屏幕；缺省全关 */
+export interface MacGrant {
+  desk: boolean;
+  app: boolean;
+  screen: boolean;
+}
 export interface Settings {
   paused: boolean;
   wakeBudget: number;
   heartbeat: boolean;
+  mac: MacGrant;
 }
 
-export const DEFAULT_SETTINGS: Settings = { paused: false, wakeBudget: 3, heartbeat: false };
+export const DEFAULT_MAC: MacGrant = { desk: false, app: false, screen: false };
+export const DEFAULT_SETTINGS: Settings = { paused: false, wakeBudget: 3, heartbeat: false, mac: DEFAULT_MAC };
 export const MIN_HEARTBEAT_MIN = 15;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
@@ -55,7 +63,9 @@ export function getSettings(store: EventStore): Settings {
   const r = store.db
     .query(`SELECT detail FROM system_log WHERE kind = 'param.changed' AND json_extract(detail, '$.name') = 'settings' ORDER BY id DESC LIMIT 1`)
     .get() as { detail: string } | null;
-  return r ? { ...DEFAULT_SETTINGS, ...(JSON.parse(r.detail).value as Partial<Settings>) } : { ...DEFAULT_SETTINGS };
+  if (!r) return { ...DEFAULT_SETTINGS };
+  const v = JSON.parse(r.detail).value as Partial<Settings>;
+  return { ...DEFAULT_SETTINGS, ...v, mac: { ...DEFAULT_MAC, ...v.mac } };
 }
 
 export function setSettings(store: EventStore, patch: Record<string, unknown>, by = "user"): Settings {
@@ -68,6 +78,15 @@ export function setSettings(store: EventStore, patch: Record<string, unknown>, b
     } else if (k === "wakeBudget") {
       if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 48) throw new ScheduleError("wakeBudget 应为 0–48 的整数");
       next.wakeBudget = v as number;
+    } else if (k === "mac") {
+      if (!v || typeof v !== "object" || Array.isArray(v)) throw new ScheduleError("mac 应为 { desk?, app?, screen? }");
+      const mac = { ...old.mac };
+      for (const [mk, mv] of Object.entries(v)) {
+        if (!(mk in DEFAULT_MAC)) throw new ScheduleError(`mac 里没有 ${mk}：只有 desk、app、screen`);
+        if (typeof mv !== "boolean") throw new ScheduleError(`mac.${mk} 应为 true / false`);
+        mac[mk as keyof MacGrant] = mv;
+      }
+      next.mac = mac;
     } else throw new ScheduleError(`没有这项设置：${k}`);
   }
   store.syslog("param.changed", { name: "settings", by, old, value: next });

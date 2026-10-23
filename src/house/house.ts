@@ -248,6 +248,10 @@ export function openHouse(
         throw e;
       }
     }
+    // 这台 Mac 给谁开放了哪几样（m8.md §6.5）：mcp/mac/feed.ts 照这个决定读不读
+    if (req.method === "GET" && path === "/v1/house/mac") {
+      return Response.json({ grants: Object.fromEntries(residents.map((r) => [r.id, getSettings(r.store).mac])) });
+    }
     if (req.method === "POST" && path === "/v1/house/joy/seen") {
       joy.lastSeen = now();
       return Response.json({ ok: true });

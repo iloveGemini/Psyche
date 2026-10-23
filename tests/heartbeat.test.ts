@@ -106,7 +106,7 @@ describe("作息的闸", () => {
     const s = await h.get("/v1/schedule");
     expect(s.next).toMatchObject({ by: "alarm", note: "早" });
     expect(s.budget).toEqual({ used: 0, of: 3 });
-    expect(s.settings).toEqual({ paused: false, wakeBudget: 3, heartbeat: false });
+    expect(s.settings).toEqual({ paused: false, wakeBudget: 3, heartbeat: false, mac: { desk: false, app: false, screen: false } });
   });
 
   test("schedule.changed / diary / due 不走上报口", () => {
@@ -227,11 +227,11 @@ describe("暂停与额度", () => {
 
   test("设置：缺省、改了记系统日志、乱填拒", async () => {
     const h = setup();
-    expect(await h.get("/v1/settings")).toEqual({ paused: false, wakeBudget: 3, heartbeat: false });
+    expect(await h.get("/v1/settings")).toEqual({ paused: false, wakeBudget: 3, heartbeat: false, mac: { desk: false, app: false, screen: false } });
     await h.ok("/v1/settings", { wakeBudget: 5 });
-    expect(await h.get("/v1/settings")).toEqual({ paused: false, wakeBudget: 5, heartbeat: false });
+    expect(await h.get("/v1/settings")).toEqual({ paused: false, wakeBudget: 5, heartbeat: false, mac: { desk: false, app: false, screen: false } });
     expect(h.store.readSyslog({ kind: "param.changed" })[0].detail).toMatchObject({ name: "settings", old: { wakeBudget: 3 }, value: { wakeBudget: 5 } });
-    for (const b of [{ wakeBudget: -1 }, { wakeBudget: 1.5 }, { paused: "yes" }, { mood: 1 }]) expect((await h.post("/v1/settings", b)).status).toBe(400);
+    for (const b of [{ wakeBudget: -1 }, { wakeBudget: 1.5 }, { paused: "yes" }, { mood: 1 }, { mac: { screens: true } }, { mac: { app: 1 } }]) expect((await h.post("/v1/settings", b)).status).toBe(400);
   });
 });
 

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { deskOf, step, weatherStep, type FeedState, type WeatherState } from "../mcp/mac/sense.ts";
-import { readConfig } from "../mcp/mac/config.ts";
+import { anyGranted, readConfig } from "../mcp/mac/config.ts";
 import { createServer } from "../mcp/mac/screen.ts";
 
 describe("键鼠与锁屏", () => {
@@ -57,11 +57,17 @@ describe("天气", () => {
 });
 
 describe("Joy 开放哪些", () => {
-  test("没有文件 = 全关；坐标不全不报天气", () => {
+  test("有一个人被开放了才读", () => {
+    const off = { desk: false, app: false, screen: false };
+    expect(anyGranted({ a1: off, a2: { ...off, app: true } })).toEqual({ desk: false, app: true });
+    expect(anyGranted({})).toEqual({ desk: false, app: false });
+  });
+
+  test("天气：没有文件不报；坐标不全不报", () => {
     const dir = mkdtempSync(join(tmpdir(), "mac-"));
-    expect(readConfig(join(dir, "nope.json"))).toEqual({ desk: false, app: false, screen: false });
-    writeFileSync(join(dir, "a.json"), JSON.stringify({ desk: true, app: "yes", weather: { latitude: 31 } }));
-    expect(readConfig(join(dir, "a.json"))).toEqual({ desk: true, app: false, screen: false });
+    expect(readConfig(join(dir, "nope.json"))).toEqual({});
+    writeFileSync(join(dir, "a.json"), JSON.stringify({ weather: { latitude: 31 } }));
+    expect(readConfig(join(dir, "a.json"))).toEqual({});
     writeFileSync(join(dir, "b.json"), JSON.stringify({ weather: { latitude: 31.2, longitude: 121.5 } }));
     expect(readConfig(join(dir, "b.json")).weather).toEqual({ latitude: 31.2, longitude: 121.5, place: "外面" });
   });
@@ -69,7 +75,7 @@ describe("Joy 开放哪些", () => {
 
 describe("看屏幕", () => {
   async function connect(screen: boolean, ledger: string) {
-    const server = createServer({ config: () => ({ screen }), ledger, capture: async () => ({ data: "aGk=", mimeType: "image/jpeg" }) });
+    const server = createServer({ granted: async () => screen, ledger, capture: async () => ({ data: "aGk=", mimeType: "image/jpeg" }) });
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const client = new Client({ name: "t", version: "0" });
@@ -80,7 +86,7 @@ describe("看屏幕", () => {
   test("没开放：不截、不记账", async () => {
     const ledger = join(mkdtempSync(join(tmpdir(), "mac-")), "l.jsonl");
     const r = (await (await connect(false, ledger)).callTool({ name: "look_at_screen", arguments: {} })) as { content: { type: string; text?: string }[] };
-    expect(r.content).toEqual([{ type: "text", text: expect.stringContaining("没有开放") }]);
+    expect(r.content).toEqual([{ type: "text", text: expect.stringContaining("没有给你开放") }]);
     expect(() => readFileSync(ledger)).toThrow();
   });
 

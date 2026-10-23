@@ -52,7 +52,7 @@
 ## 3. 未完成与下一步
 
 1. **P3b 工具支持**：房间内 `share` 工具及文件共享交互。
-2. **Mac 感知上线**（`mcp/mac/`，m8.md §6.5，代码与考卷已做）：Joy 写 `~/.psyche/mac.json` 开放哪几样、装 launchd 常驻 `feed.ts`（正式库，Joy 决定）；`look_at_screen` 等 Soma 读 manifest 才挂得上，还要她开「屏幕录制」。健康数据（小米 / HealthKit）未定。
+2. **Mac 感知上线**（`mcp/mac/`，m8.md §6.5，代码与考卷已做）：开放按住户各自一份（Psyche 设置 `mac`，缺省全关），Joy 要在 dashboard 上做开关；天气 `~/.psyche/mac.json` 已写重庆大渡口；装 launchd 常驻 `feed.ts` 连正式库（Joy 决定）；`look_at_screen` 先关，且等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
 3. **没说出口的话**（Joy 10-23 提，未设计）：和说出口的话地位一样、都进它的记忆，只是没对人说（表面夸、心里嫌红配绿）——让它延续自己时不只剩场面话。和 `notice`（外头的观察，挂环境证据）分开；先出考卷再定工具和渲染。
 4. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 5. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
@@ -76,6 +76,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-23（Mac 开放按住户）：`bun test` 363 pass；`tsc` 0 错误。test 库副本只给 a2 开 desk / app → `feed.ts --once` 键鼠、应用只记给 a2（其余 `ungranted`），天气（重庆大渡口：晴，18°C）记给全屋。
 
 2026-10-23（Mac 感知）：`bun test` 361 pass；`tsc` 0 错误。本机实读（键鼠 53 秒、没锁、前台哔哩哔哩）→ `feed.ts --once` 报给 test 库副本（7460），四人都记；a2 设 `joy.mac:app` 只记着后 `<now>` 只剩键鼠和天气，a1 三行都有。
 

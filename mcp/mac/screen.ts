@@ -1,12 +1,12 @@
 /**
  * MCP 服务 mac（stdio）：look_at_screen，看一眼 Joy 的屏幕（从 Roxy `screen-extension.ts` 搬来）。
  *
- * - 能力归她：`~/.psyche/mac.json` 的 screen 没开，就是一句事实「她没开放」，不截。开了之后什么时候看归他。
+ * - 能力归她：她给这个住户开放了才截（Psyche 设置 `mac.screen`，`GET /v1/settings`）；没开就是一句事实，不截。开了之后什么时候看归他。
  * - 截屏 → sips 压到长边 2000 的 JPEG → 图直接进这一轮；原图用完即删，不留存。
  * - 每看一次记一行账（`~/.psyche/mac-screen.jsonl`：时间、谁、为什么），她翻得到。
  * - 系统要给跑这个进程的程序「屏幕录制」权限，没给时截出来的只有桌面或报错，照实说。
  *
- * 环境变量：PSYCHE_AGENT（他是谁，记账用）、PSYCHE_MAC_CONFIG。
+ * 环境变量：PSYCHE_URL、PSYCHE_AGENT（他是谁）、PSYCHE_TOKEN_FILE / PSYCHE_TOKEN（同 psyche 服务）。
  */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -17,7 +17,7 @@ import { promisify } from "node:util";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { readConfig } from "./config.ts";
+import { token } from "./config.ts";
 
 const run = promisify(execFile);
 export const LEDGER = process.env.PSYCHE_MAC_LEDGER || join(homedir(), ".psyche", "mac-screen.jsonl");
@@ -43,7 +43,22 @@ export function record(who: string, reason?: string, ledger = LEDGER) {
   appendFileSync(ledger, `${JSON.stringify({ at: new Date().toISOString(), who, ...(reason ? { reason } : {}) })}\n`, { mode: 0o600 });
 }
 
-export function createServer(opts: { capture?: typeof captureScreen; ledger?: string; config?: () => { screen: boolean } } = {}) {
+/** 她给我开放了看屏幕没有：问 Psyche 我的设置；问不到当没开 */
+async function screenGranted(): Promise<boolean> {
+  const t = token();
+  const agent = process.env.PSYCHE_AGENT;
+  try {
+    const res = await fetch(`${process.env.PSYCHE_URL || "http://127.0.0.1:7450"}/v1/settings`, {
+      headers: { ...(t ? { authorization: `Bearer ${t}` } : {}), ...(agent ? { "x-psyche-agent": agent } : {}) },
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok && ((await res.json()) as { mac?: { screen?: boolean } }).mac?.screen === true;
+  } catch {
+    return false;
+  }
+}
+
+export function createServer(opts: { capture?: typeof captureScreen; ledger?: string; granted?: () => Promise<boolean> } = {}) {
   const server = new McpServer({ name: "mac", version: "0.1.0" });
   server.registerTool(
     "look_at_screen",
@@ -53,7 +68,7 @@ export function createServer(opts: { capture?: typeof captureScreen; ledger?: st
       inputSchema: { reason: z.string().optional().describe("为什么想看，一句就够；记进她翻得到的账") },
     },
     async ({ reason }) => {
-      if (!(opts.config ?? readConfig)().screen) return { content: [{ type: "text", text: "Joy 没有开放看屏幕（~/.psyche/mac.json 里 screen 没开），没截。" }] };
+      if (!(await (opts.granted ?? screenGranted)())) return { content: [{ type: "text", text: "Joy 没有给你开放看屏幕，没截。" }] };
       try {
         const { data, mimeType } = await (opts.capture ?? captureScreen)();
         record(process.env.PSYCHE_AGENT || "?", reason, opts.ledger);

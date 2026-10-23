@@ -1,23 +1,22 @@
 /**
- * Joy 开放了哪些（她定的，住户改不了）：`~/.psyche/mac.json`，每次读都现读，改了下一圈生效。
- * 没有这个文件 / 没写的项 = 关。关了的不读——不是读了再藏。
+ * 这一路的配置。
  *
- *   {
- *     "desk": true,        // 键鼠多久没动、屏幕锁没锁
- *     "app": true,         // 前台是哪个应用（只在没锁屏、键鼠刚动过时读；只读名字，不读窗口标题）
- *     "screen": false,     // 看一眼屏幕（住户调 look_at_screen 时截一张）
- *     "weather": { "latitude": 31.23, "longitude": 121.47, "place": "上海" }   // 不写 = 不报天气
- *   }
+ * - 给谁开放哪几样（键鼠与锁屏 desk、前台应用 app、看屏幕 screen）是 Joy 给**每个住户各自**的，存在 Psyche 那个人的设置里
+ *   （`mac`，m8.md §6.5；她在 dashboard 上改），这里不管。
+ * - 这里只有全屋共用的：天气看哪儿。`~/.psyche/mac.json`，每次现读：
+ *     { "weather": { "latitude": 29.48, "longitude": 106.48, "place": "重庆大渡口" } }   // 不写 = 不报天气
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export interface MacConfig {
+  weather?: { latitude: number; longitude: number; place: string };
+}
+export interface Grant {
   desk: boolean;
   app: boolean;
   screen: boolean;
-  weather?: { latitude: number; longitude: number; place: string };
 }
 
 export const CONFIG_FILE = process.env.PSYCHE_MAC_CONFIG || join(homedir(), ".psyche", "mac.json");
@@ -27,12 +26,28 @@ export function readConfig(file = CONFIG_FILE): MacConfig {
   try {
     raw = JSON.parse(readFileSync(file, "utf8"));
   } catch {
-    // 没有文件或写坏了：全关
+    // 没有文件或写坏了：不报天气
   }
   const w = raw.weather as { latitude?: unknown; longitude?: unknown; place?: unknown } | undefined;
-  const weather =
-    w && typeof w.latitude === "number" && typeof w.longitude === "number"
-      ? { latitude: w.latitude, longitude: w.longitude, place: typeof w.place === "string" && w.place.trim() ? w.place.trim() : "外面" }
-      : undefined;
-  return { desk: raw.desk === true, app: raw.app === true, screen: raw.screen === true, ...(weather ? { weather } : {}) };
+  return w && typeof w.latitude === "number" && typeof w.longitude === "number"
+    ? { weather: { latitude: w.latitude, longitude: w.longitude, place: typeof w.place === "string" && w.place.trim() ? w.place.trim() : "外面" } }
+    : {};
+}
+
+/** 全屋有没有人被开放了这一样：有一个就读，一个都没有就不读（关了的不读，不是读了再藏） */
+export function anyGranted(grants: Record<string, Grant>): { desk: boolean; app: boolean } {
+  const all = Object.values(grants);
+  return { desk: all.some((g) => g.desk), app: all.some((g) => g.app) };
+}
+
+/** 读 token：PSYCHE_TOKEN_FILE 优先，再 PSYCHE_TOKEN */
+export function token(): string | undefined {
+  const file = process.env.PSYCHE_TOKEN_FILE;
+  if (file)
+    try {
+      return readFileSync(file, "utf8").trim() || undefined;
+    } catch {
+      return undefined;
+    }
+  return process.env.PSYCHE_TOKEN || undefined;
 }
