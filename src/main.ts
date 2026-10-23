@@ -8,7 +8,7 @@
  *   PSYCHE_PORT      端口（缺省 7450）
  *   PSYCHE_EMBED_*   嵌入服务（archive/vectors.ts）；不设 = 只用字面检索。大家共用
  *   PSYCHE_SCHEDULER 设成 1 才开调度器（m5.md §六：缺省关，开着才会醒）；每人一个
- *   PSYCHE_COMMONS   公共文件夹（Soma 的 commons）：屋里人人看得到它的文件变化（m8.md §6.2）；每人的 home 写在 agents.json
+ *   PSYCHE_COMMONS   公共文件夹（Soma 的 commons）：全屋人人看得到它的文件变化（m8.md §6.2）；每人的 home 写在 agents.json
  *   SOMA_KEY_FILE    Soma 的钥匙文件（Soma web-auth.ts）：调度器推醒来 / 睡着时带上
  *   PSYCHE_NCM_COOKIE 网易云登录（cookies.json 的路径，Roxy 那份的格式）：全屋共用一个账号放歌（m8.md §三）
  *   只住一个人时给他当缺省（住几个人就写进 agents.json）：
@@ -48,7 +48,7 @@ if (new Set(tokens).size < tokens.length) console.error("有人共用一个 toke
 const apps = new Map<string, (req: Request) => Response | Promise<Response>>();
 const residentTimers = new Map<string, () => void>();
 const viewers: { id: string; store: EventStore }[] = [];
-// 屋里别人的库：一起听要跨住户读播放器、记 ear.*（openResident 时还没全开，用到时才查）
+// 全屋别人的库：一起听要跨住户读播放器、记 ear.*（openResident 时还没全开，用到时才查）
 const storeOf = (id: string) => viewers.find((v) => v.id === id)?.store;
 for (const r of residents) {
   const { app, store, stopTimers } = openResident(r);
@@ -56,7 +56,7 @@ for (const r of residents) {
   residentTimers.set(r.id, stopTimers);
   viewers.push({ id: r.id, store });
 }
-// 屋子：每 30 秒看一圈谁变了，记进其他人的库（m8.md §二）
+// 全屋：每 30 秒看一圈谁变了，记进其他人的库（m8.md §二）
 const expand = (p: string) => p.replace(/^~(?=\/)/, homedir());
 const places = [
   ...residents.filter((r) => r.config.home).map((r) => ({ label: "home", dir: expand(r.config.home!), owner: r.id })),
@@ -118,9 +118,9 @@ setInterval(() => {
     const t0 = performance.now();
     house.tick();
     const ms = performance.now() - t0;
-    if (ms > 300) console.warn(`[卡] 屋子看一圈 ${Math.round(ms)}ms`);
+    if (ms > 300) console.warn(`[卡] 全屋看一圈 ${Math.round(ms)}ms`);
   } catch (e) {
-    console.error(`屋子看一圈出错：${e instanceof Error ? e.message : e}`);
+    console.error(`全屋看一圈出错：${e instanceof Error ? e.message : e}`);
   }
 }, TICK_MS);
 const houseFetch = createHouse(apps, { tokens: houseTokens, handle: house.handle, agentTokens });
@@ -134,7 +134,16 @@ Bun.serve({
   async fetch(req) {
     const t0 = performance.now();
     try {
-      return await houseFetch(req);
+      const res = await houseFetch(req);
+      // 有人换了位置马上看一圈：别人眼里他在哪、他眼里别人能看到多少都跟着变（houses-p1.md §五）
+      if (req.method === "POST" && res.ok && new URL(req.url).pathname === "/v1/room") {
+        try {
+          house.tick();
+        } catch (e) {
+          console.error(`全屋看一圈出错：${e instanceof Error ? e.message : e}`);
+        }
+      }
+      return res;
     } finally {
       const ms = performance.now() - t0;
       if (ms > SLOW_MS) {

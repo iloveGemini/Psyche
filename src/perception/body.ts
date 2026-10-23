@@ -5,7 +5,7 @@
  * - 换了模型：这段会话的模型和上一段不一样，首轮说一次。
  * - 工具老出错：本会话最近 30 分钟里出错 ≥ 3 次才说，出错次数跨档（3 / 6 / 10）再说。
  * - 订阅额度（10-17）：Soma 带来 claude.ai 登录的 5 小时 / 7 天窗口用了多少（只有走订阅的身体有）。50 / 75 / 90% 跨档才说；
- *   跟会话无关、跟窗口走：同一个窗口（重置时刻相同）说过的档不再说，换了窗口从头算。屋里同一个登录的人共用。
+ *   跟会话无关、跟窗口走：同一个窗口（重置时刻相同）说过的档不再说，换了窗口从头算。全屋同一个登录的人共用。
  * 唤醒额度、还没写进记忆的条数，<now> 别处已有，不重复。
  * 递一次写 percept.noticed（sensor = body），它的经历就是那几行；档位记在 payload 里，下一轮按它判跨没跨档。
  */
@@ -128,7 +128,7 @@ export function deliverBody(store: EventStore, session: string | undefined, inpu
     quota[k] = { band: b, resetsAt: w.resetsAt };
     if (b !== (prevW?.band ?? 0) || w.resetsAt !== prevW?.resetsAt) quotaUp = true;
     if (b > before)
-      lines.push(`订阅额度（屋里用同一个登录的共用）：${QUOTA_NAME[k]}用了 ${Math.round(w.pct)}%${resetLabel(w.resetsAt, store.timeZone)}`);
+      lines.push(`订阅额度（全屋用同一个登录的共用）：${QUOTA_NAME[k]}用了 ${Math.round(w.pct)}%${resetLabel(w.resetsAt, store.timeZone)}`);
   }
 
   const levels: Levels = { ctx: ctxBand, tools: toolBand, ...(m.here ? { model: m.here } : {}), ...(Object.keys(quota).length ? { quota } : {}) };

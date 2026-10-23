@@ -3,7 +3,7 @@
  *
  * - 记：`POST /v1/house/percept`，每个收件人库里一条 `percept`（source = place）；同一样和上一条读数相同就不记。
  * - 递：<now>「这段时间感知到的」，本会话上次递到之后的，同一样压成一行；递一次写 percept.noticed（sensor = outside）。
- * - 屋子自己的几路（presence / files / body / sound）不从这里进，免得被冒充。
+ * - 全屋自己的几路（presence / files / body / sound）不从这里进，免得被冒充。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { clockOf } from "../core/time.ts";
@@ -29,7 +29,7 @@ const outsideOf = (store: EventStore) =>
 export function recordPercept(residents: { id: string; store: EventStore }[], body: Record<string, unknown>, now: number) {
   const { sensor, value, text, to, at } = body;
   if (typeof sensor !== "string" || !SENSOR.test(sensor)) throw new PerceptError("sensor 应为小写 id（字母开头，最多 32 位）");
-  if (OWN.has(sensor)) throw new PerceptError(`${sensor} 是屋子自己的感知，不从这里报`);
+  if (OWN.has(sensor)) throw new PerceptError(`${sensor} 是全屋自己的感知，不从这里报`);
   if (body.subject !== undefined && (typeof body.subject !== "string" || !body.subject.trim())) throw new PerceptError("subject 应为非空字符串");
   if (value === undefined) throw new PerceptError("缺 value");
   if (typeof text !== "string" || !text.trim()) throw new PerceptError("缺 text（一行事实）");
@@ -38,7 +38,7 @@ export function recordPercept(residents: { id: string; store: EventStore }[], bo
   if (to !== undefined && (!Array.isArray(to) || !to.length || to.some((x) => typeof x !== "string"))) throw new PerceptError("to 应为住户 id 数组");
   const targets = to ? (to as string[]).map((id) => residents.find((r) => r.id === id) ?? id) : residents;
   const missing = targets.filter((t): t is string => typeof t === "string");
-  if (missing.length) throw new PerceptError(`屋里没有 ${missing.join("、")}`);
+  if (missing.length) throw new PerceptError(`全屋没有 ${missing.join("、")}`);
 
   const subject = typeof body.subject === "string" ? body.subject.trim() : sensor;
   const payload: Outside = { sensor, subject, value, text: text.trim() };
@@ -66,7 +66,7 @@ export function deliverOutside(store: EventStore, session: string | undefined): 
   const last = (sql: string, ...args: string[]) => store.db.query(sql).get(...args) as { id: string } | null;
   const base = `SELECT id FROM events WHERE kind = 'percept.noticed' AND fonds = '' AND json_extract(payload, '$.sensor') = 'outside'`;
   const lastRow = (session ? last(`${base} AND json_extract(payload, '$.session') = ? ORDER BY id DESC LIMIT 1`, session) : null) ?? last(`${base} ORDER BY id DESC LIMIT 1`);
-  // 同屋里的东西（§6.2）：本会话递过就从那次算；新会话接最后递到的那次；从没递过只报最近 6 小时的
+  // 同全屋的东西（§6.2）：本会话递过就从那次算；新会话接最后递到的那次；从没递过只报最近 6 小时的
   const floor = lastRow ? 0 : store.now() - 6 * 3_600_000;
   const fresh = outsideOf(store).filter((e) => (lastRow ? e.id > lastRow.id : e.at >= floor) && e.at <= store.now());
   if (!fresh.length) return null;

@@ -139,7 +139,7 @@ export function routeEmail(residents: MailResident[], m: MailMessage, fallback: 
   return [fallback];
 }
 
-/** 收一封进房子：分给谁，再按那人的通道设置认发信人（不认识就看屋里别人登记的） */
+/** 收一封进房子：分给谁，再按那人的通道设置认发信人（不认识就看全屋别人登记的） */
 export function takeHouseEmail(residents: MailResident[], m: MailMessage, fallback: string): { to: string; result: "taken" | "ignored" | "empty" }[] {
   const addr = (m.from?.email ?? "").trim().toLowerCase();
   const nameIn = (store: EventStore) => Object.entries(getChannels(store).addresses).find(([, a]) => a.email?.trim().toLowerCase() === addr)?.[0];

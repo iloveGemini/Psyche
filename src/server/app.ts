@@ -59,11 +59,11 @@ export interface AppDeps {
   outbox?: (ev: PsycheEvent) => void;
   /** 放歌的源（缺省网易云）；考卷换成假的 */
   music?: MusicSource;
-  /** 屋里别人的库（一起听：跟着对方的播放器听、在对方库里记 ear.*）；只住一个人时没有 */
+  /** 全屋别人的库（一起听：跟着对方的播放器听、在对方库里记 ear.*）；只住一个人时没有 */
   storeOf?: (id: string) => EventStore | undefined;
-  /** 我是谁（屋里的 id）：去别人库里记"谁戴上了耳机"用 */
+  /** 我是谁（全屋的 id）：去别人库里记"谁戴上了耳机"用 */
   selfId?: string;
-  /** 屋里所有住户的 id（含自己）：写信给住户用（m6.md §八） */
+  /** 全屋所有住户的 id（含自己）：写信给住户用（m6.md §八） */
   residentIds?: () => string[];
   /** 他登记的前世卷宗（agents.json 的 past，archive/past.ts） */
   past?: PastConfig[];
@@ -421,7 +421,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
       .join("\n");
     let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, () => `\n${extra}\n</now>`) : renderNow(store, session);
     const s = renderSurfaced(await surface(store, embedder, { session, storeOf }));
-    // 屋里有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
+    // 全屋有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
     const house = deliverPresence(store, session);
     const heard = await deliverSound(store, sound, session).catch(() => null);
     // 内感受（m8.md §六.1）：上下文多满由 Soma 带来
@@ -529,7 +529,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.post("/v1/threads/note", async (c) => c.json(noteThread(store, await obj(c))));
   app.post("/v1/threads/close", async (c) => c.json(closeThread(store, await obj(c))));
 
-  // 感知：看一眼屋里、挂个签（m8.md §二 §五）
+  // 感知：看一眼全屋、挂个签（m8.md §二 §五）
   // 前世今生（archive.md §四）：翻（不认领也能）、认领（导进单独的全宗）、编目
   app.get("/v1/past", (c) => {
     const q = c.req.query();
@@ -580,7 +580,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const host = b.host === null || b.host === "" ? null : typeof b.host === "string" ? b.host.trim() : undefined;
     if (host === undefined) throw new SoundError("host 应为住户 id（摘下给 null）");
     if (host === selfId) throw new SoundError("那是你自己的播放器");
-    if (host !== null && !storeOf?.(host)) throw new SoundError(`屋里没有 ${host}`);
+    if (host !== null && !storeOf?.(host)) throw new SoundError(`全屋没有 ${host}`);
     const r: { joined?: string; left?: string } = listenWith(store, host);
     const me = selfId ?? "?";
     if (r.left) storeOf?.(r.left)?.append({ kind: "ear.left", class: "experience", source: "house", situation: null, payload: { who: me } });
@@ -608,7 +608,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const { ev, ...r } = sendMail(store, await body(c), housemates);
     const p = ev.payload as { to: string; text: string; subject?: string; urgent?: boolean };
     if (housemates.includes(p.to)) {
-      // 屋里的信：直接进对方的库，之后跟 Joy 来信一样（报有信、叫醒、翻开、回信）
+      // 全屋的信：直接进对方的库，之后跟 Joy 来信一样（报有信、叫醒、翻开、回信）
       try {
         receiveMail(storeOf!(p.to)!, { from: selfId, text: p.text, via: "house", ...(p.subject ? { subject: p.subject } : {}), ...(p.urgent ? { urgent: true } : {}), ext: ev.id });
         store.syslog("mail.sent", { ref: ev.id, via: "house", ok: true });

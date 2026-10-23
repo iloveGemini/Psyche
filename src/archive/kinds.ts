@@ -28,7 +28,7 @@ export const KINDS: Record<string, KindSpec> = {
   "speech.silent": { class: "experience", required: {} }, // + to?, session?
   "tool.call": { class: "experience", required: { name: "string", callId: "string" } }, // + args?
   "tool.result": { class: "experience", required: { callId: "string", name: "string", ok: "boolean" } }, // + text? | result?: MaterialRef
-  percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + subject?, name?, prev?（m8.md：屋子记下的变化；不进经历，递到才算）
+  percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + subject?, name?, prev?（m8.md：全屋记下的变化；不进经历，递到才算）
   // 递到它眼前的感知（m8.md §五）：text 是递出去的原文，它的经历就是这几行；looked = 它自己 look 的
   "percept.noticed": { class: "experience", required: { refs: "array", text: "string" } }, // + session?, looked?
   // 来信（m6.md §一）：经通道口子写，不挂处境；没翻开前经历里不给正文
@@ -53,8 +53,8 @@ export const KINDS: Record<string, KindSpec> = {
   "thread.closed": { class: "self", required: { target: "string", title: "string", how: "string", why: "string" }, rels: ["evidence"] },
   // 心情个签（m8.md §二）：本人挂，空串 = 清空
   "mood.set": { class: "self", required: { text: "string" } },
-  // 换房间（P3，10-19）：在哪间由 Soma 管，这里记他走的这一步；room 空串 = 回了自己房间
-  "room.entered": { class: "self", required: { room: "string" } }, // + id?, from?
+  // 换房间（P3，10-19；houses-p1.md §四）：在哪间由 Soma 管，这里记他走的这一步。老记录 room 空串 = 回了自己房间
+  "room.entered": { class: "self", required: { room: "string" } }, // + house, houseName, id, from?, fromHouse?, parent?
   // 自己的声音（m8.md §三）：放、停、歌单、跟着谁听——它的动作；别人来戴 / 摘它的耳机是它经历到的
   played: { class: "self", required: { tracks: "array", startAt: "number" } }, // + playlist?
   stopped: { class: "self", required: {} },

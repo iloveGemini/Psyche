@@ -31,7 +31,7 @@ function mkResident(clock: { t: number }, token?: string) {
   return { store, projections, app };
 }
 
-describe("Dashboard：屋子总览与住户出生", () => {
+describe("Dashboard：全屋总览与住户出生", () => {
   test("GET /dashboard 免鉴权返回静态面板；GET /v1/house 带 born / wake / pulse", async () => {
     const clock = { t: T("2026-10-16T10:00:00") };
     const dir = mkdtempSync(join(tmpdir(), "psyche-dash-"));

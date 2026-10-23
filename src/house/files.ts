@@ -1,13 +1,13 @@
 /**
- * 屋里的东西（m8.md §6.2）：它自己的 home、公共的 commons 里，文件多了、改了、没了。
+ * 全屋的东西（m8.md §6.2）：它自己的 home、公共的 commons 里，文件多了、改了、没了。
  *
- * - 屋子每圈（30 秒）扫一遍，和上次的快照比（路径 → 大小 + 修改时间），只记变化。快照存 <数据目录>/files.json，重启不丢。
+ * - 全屋每圈（30 秒）扫一遍，和上次的快照比（路径 → 大小 + 修改时间），只记变化。快照存 <数据目录>/files.json，重启不丢。
  * - **谁动的**：只在说得准的时候说——某个住户在前后 2 分钟里用工具碰过这个路径（tool.call 的参数里有它），就是他；
  *   否则「不知道是谁」（10-16 a1：认不出就别替人认领）。Joy 在文件夹里直接改，系统看不见是她，也说不知道。
  * - 自己动的不报给自己（那是它自己做的事，经历里已有工具调用）。
- * - 谁看得到：home 只有主人看得到（别人的 home 看不到，soma2.md §四）；commons 屋里人人看得到。
+ * - 谁看得到：home 只有主人看得到（别人的 home 看不到，soma2.md §四）；commons 全屋人人看得到。
  * - 只报路径和怎么变了，不抄内容——想看自己去读。
- * - 递：<now>「屋里的东西」，本会话上次递到之后的；递一次写 percept.noticed（sensor = files）。
+ * - 递：<now>「全屋的东西」，本会话上次递到之后的；递一次写 percept.noticed（sensor = files）。
  * - commons 用 git：同一圈的变化按谁动的分组提交，作者是那个住户（commons-git.ts）。
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -76,7 +76,7 @@ export function whoTouched(residents: { id: string; store: EventStore }[], abs: 
 }
 
 /**
- * 屋子看一圈文件。places：每个住户的 home + commons。返回这圈记了几条。
+ * 全屋看一圈文件。places：每个住户的 home + commons。返回这圈记了几条。
  * 快照只在内存和 files.json 里，第一次见到一个地方只建快照、不报（不然一开机全是"新出现"）。
  */
 export function filesTick(
@@ -139,7 +139,7 @@ export const saveSnaps = (file: string, state: { snaps: Record<string, Snap> }) 
 
 const CHANGE: Record<Change, string> = { added: "新出现", modified: "被改过", removed: "没了" };
 
-/** <now> 的「屋里的东西」：本会话上次递到之后的变化，同一个文件压成一行（最后的样子 + 次数）；最多 10 行 */
+/** <now> 的「全屋的东西」：本会话上次递到之后的变化，同一个文件压成一行（最后的样子 + 次数）；最多 10 行 */
 export function deliverFiles(store: EventStore, session: string | undefined, names: (id: string) => string = (id) => id): string | null {
   const lastRow =
     (session
@@ -172,7 +172,7 @@ export function deliverFiles(store: EventStore, session: string | undefined, nam
     return `- ${path}：${CHANGE[p.value]}${evs.length > 1 ? `（这段时间变了 ${evs.length} 次）` : ""}，${who}（${clockOf(last.at, store.now(), store.timeZone)}）`;
   });
   const more = by.size > 10 ? [`（还有 ${by.size - 10} 个文件也变了）`] : [];
-  const text = ["屋里的东西：", ...lines, ...more].join("\n");
+  const text = ["全屋的东西：", ...lines, ...more].join("\n");
   const situation = (session ? store.situationOfSession(session, store.now()) : null) ?? undefined;
   store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation, payload: { sensor: "files", refs: fresh.map((e) => e.id), text, ...(session ? { session } : {}) } });
   return text;

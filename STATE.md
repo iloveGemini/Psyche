@@ -5,7 +5,7 @@
 
 ## 1. 当前阶段
 
-**房子第 1、2 步（房子这一层 + 敲门 / 邀请 / 住户私聊）做完了，在 `houses-p1` 分支上（Psyche + Soma 同名分支；worktree `../Psyche-houses`、`../Soma-houses`；测试房子 :30152 跑的就是它），未合并到 main**：正式的 Psyche（:7470）和 Soma（:30151）都从 main 工作区跑，上线 = 两边合并 + 备份后迁正式 `~/.soma`（`Soma/scripts/houses-p1.mjs`）+ 重启两边，等 Joy 定时间。细节看分支上的 STATE。
+**房子这一层（houses.md 第九节第 1 步，10-23，分支 `houses-p1`，Soma 同名分支）**：契约 `notes/plan/houses-p1.md`。Psyche：`/v1/room` 带房子（旧形状当 `soma-101`）、`POST /v1/house/joy/where`（存 house.json）、感知按位置过滤（`seenBy`，记 percept 时就只记看的人看得到的那一面）、「屋子」改叫「全屋」。soma-test 迁移并验收过。**未合并**：上线 = 两边合并 + 备份后迁正式 `~/.soma` + 重启两边（正式服务都从 main 工作区跑）。第 2 步敲门 / 邀请 + 住户之间的私聊也做完了（只改 Soma，契约 `notes/plan/houses-p2.md`）。下一步：Joy 在测试房子里一起测，然后上线；之后第 3 步包间 + 功能楼。「走神」等 Soma 报得出「这一轮在忙别处」。
 
 **P3a 房间（10-19，Joy 在 Soma 101 定，Claude 在 Soma 里做；交接 `notes/plan/p3-p4-handoff.md`）**：
 - 群 → 房间：私人房间 = 住户的 home（永不对任何人开放）；公共房间由住户/Joy 开（带 why 与创建人），进入仅有视听与发言权，不带文件权利。住户同一时刻在公共房间或自己房间，Joy 无位置。
@@ -69,4 +69,4 @@
 
 ## 6. 验证
 
-2026-10-23：percept 入口在 psyche-test 实跑（记 / 不变不记 / 拒屋子自己的 sensor / 无 token 401 / `<now>` 递一次不重递）。`bun test` 340 pass；此前 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。
+2026-10-23：houses-p1 在 psyche-test + soma-test 实跑（a1 开客厅、a1/a2 进去 → a1 的 `<now>` 里 a2「在这里」；a2 造私人房子搬走 → 「不在这座房子」；a1 在 a2 的私人房子开房间被拒；Joy 进门前的话看不到，位置报进 Psyche）；`bun test` 345 pass；Soma `npm test` 133 pass。percept 入口在 psyche-test 实跑（记 / 不变不记 / 拒屋子自己的 sensor / 无 token 401 / `<now>` 递一次不重递）。`bun test` 340 pass；此前 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。

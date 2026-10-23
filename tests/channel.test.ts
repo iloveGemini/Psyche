@@ -508,18 +508,18 @@ describe("住户之间写信（m6.md §八）", () => {
     return { a1, a2, send };
   }
 
-  test("写给住户：进对方库（from = 寄信人、经屋里），对方 <now> 报有信、会被叫醒；记 mail.sent", async () => {
+  test("写给住户：进对方库（from = 寄信人、经全屋），对方 <now> 报有信、会被叫醒；记 mail.sent", async () => {
     const { a1, a2, send } = house();
     const r = await send(a1, "a1", { to: "a2", text: "分镜好了，在 project/绘本/STATE.md，轮到你上色" });
     expect(r.status).toBe(200);
     const got = a2.store.list({ kinds: ["mail.in"], fonds: "", limit: 10 });
     expect(got.map((e) => e.payload)).toEqual([{ from: "a1", text: "分镜好了，在 project/绘本/STATE.md，轮到你上色", via: "house", ext: r.j.id }]);
     expect(mailCandidates(a2.store, factsNow(a2.store, null)).map((c) => c.by)).toEqual(["mail"]);
-    expect(await a2.now()).toContain("来信（a1 · 屋里");
+    expect(await a2.now()).toContain("来信（a1 · 全屋");
     expect(a1.store.readSyslog({ kind: "mail.sent", limit: 10 }).map((l) => l.detail)).toEqual([{ ref: r.j.id, via: "house", ok: true }]);
   });
 
-  test("写给住户每封都算额度，回信也算；写给自己 / 屋里没有的人 → 拒", async () => {
+  test("写给住户每封都算额度，回信也算；写给自己 / 全屋没有的人 → 拒", async () => {
     const { a1, a2, send } = house();
     const first = await send(a1, "a1", { to: "a2", text: "好了" });
     expect(first.j.budget.used).toBe(1);

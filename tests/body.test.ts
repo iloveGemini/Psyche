@@ -89,7 +89,7 @@ test("订阅额度：跨档才说，跟窗口走、换一段不重报，窗口�
   store.setSituation({ harness: "soma", session: "s1" }, "soma");
   const w = (pct: number, resetsAt = "2026-10-16T14:00:00Z") => ({ quota: { fiveHour: { pct, resetsAt } } });
   expect(deliverBody(store, "s1", w(30))).toBeNull();
-  expect(deliverBody(store, "s1", w(62))).toBe("身上：\n- 订阅额度（屋里用同一个登录的共用）：5 小时窗口用了 62%，10-16 22:00 重置");
+  expect(deliverBody(store, "s1", w(62))).toBe("身上：\n- 订阅额度（全屋用同一个登录的共用）：5 小时窗口用了 62%，10-16 22:00 重置");
   expect(deliverBody(store, "s1", w(70))).toBeNull();
   // 换了一段：同一个窗口说过的不再说
   store.setSituation({ harness: "soma", session: "s2" }, "soma");

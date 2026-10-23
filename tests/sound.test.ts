@@ -131,7 +131,7 @@ describe("递：这段时间听到的", () => {
     expect((await h.call("a1", "/v1/listen/with", { host: "zz" })).json.error).toContain("没有 zz");
   });
 
-  test("Joy 在 Soma 分一只耳机：屋子记进 host 的库；能取到此刻的地址和位置", async () => {
+  test("Joy 在 Soma 分一只耳机：全屋记进 host 的库；能取到此刻的地址和位置", async () => {
     const h = setup();
     const house = openHouse(mkdtempSync(join(tmpdir(), "house-")), [{ id: "a1", store: h.a1 }], () => h.clock.t, fake);
     await h.ok("a1", "/v1/play", { query: "夜曲" });
