@@ -52,7 +52,7 @@
 ## 3. 未完成与下一步
 
 1. **P3b 工具支持**：房间内 `share` 工具及文件共享交互。
-2. **Mac 感知上线**（`mcp/mac/`，m8.md §6.5，代码与考卷已做）：开放按住户各自一份（Psyche 设置 `mac`，缺省全关），Joy 要在 dashboard 上做开关；天气 `~/.psyche/mac.json` 已写重庆大渡口；装 launchd 常驻 `feed.ts` 连正式库（Joy 决定）；`look_at_screen` 先关，且等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
+2. **Mac 感知**（m8.md §6.5）：✅ 10-23 上线：launchd `com.joy.psyche-mac`（`feed.ts` → 正式 7470，token 用 `~/.soma/tokens/claude.token`，日志 `~/.psyche/logs/mac-feed.log`）；开关在 dashboard（10-23 Joy 只给 roy 开了 desk / app / screen）。`look_at_screen` 等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
 3. **没说出口的话**（m1.md §3.1）：✅ 10-23 上线（正式 Psyche 先重启，Soma master `152e59d` build 重启）。下一步看他们用不用、怎么用，不教。
 4. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 5. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
