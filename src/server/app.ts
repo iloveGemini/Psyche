@@ -42,6 +42,7 @@ import { analyzeTrack } from "../perception/features.ts";
 import { NoticeError, writeNotice } from "../perception/env.ts";
 import { deliverBody } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
+import { deliverOutside } from "../perception/outside.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 import { claimedFonds, claimPast, PastError, pastBirthLines, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
 import { writePastCatalog } from "../catalog/past-catalog.ts";
@@ -433,7 +434,8 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
       const other = storeOf?.(id);
       return (other && currentName(other)) || id;
     });
-    for (const block of [just, body, house, things, heard, s]) if (block) text = text.replace(/\n<\/now>$/, () => `\n\n${block}\n</now>`);
+    const outside = deliverOutside(store, session);
+    for (const block of [just, body, house, things, outside, heard, s]) if (block) text = text.replace(/\n<\/now>$/, () => `\n\n${block}\n</now>`);
     return text;
   };
   app.get("/v1/now", async (c) => {

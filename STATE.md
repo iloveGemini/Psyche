@@ -27,6 +27,7 @@
 - ✅ **M7「还开着的事」**：`notes/plan/m7.md`，线索卷（`threads.ts`），追踪承诺与待办。
 - ✅ **M8 感知（以自身为中心）**：`notes/plan/m8.md`。M8a 屋里有谁（在线/忙/闲/个签）；M8b 声音与播放（网易云镜像、音频特征自算、一起听）；M8c 环境进记忆（环境指纹与 `notice`）；内感受（上下文跨档预警）与屋里的东西（文件变动感知）。
 - ✅ **Soma 二代架构 & 多租户**：`notes/design/soma2.md`，每住户独立 home + 单物理线 + 独立记忆库；身体适配器（Agent SDK / pi）；P1 多租户路由（`x-psyche-agent` / `?agent=`）。
+- ✅ **外头来的事实（10-23，m8.md §6.3）**：`POST /v1/house/percept { sensor, subject?, value, text, to? }`，只记变化，屋子自己的几路不收；`<now>`「这段时间感知到的」。还没有哪一路接进来，Soma / Roxy 的转发路由等第一路接入时再加。
 - ✅ **Claude Code 工位**：`notes/plan/claude-code.md`，hook 注入 `<now>` 与 `<continuity>`，工具收敛到 `psyche` 门面。
 
 ## 2. 已定的决定（细节见链接）
@@ -36,7 +37,7 @@
 - 情节改写（`revises`）：新条修正旧条，旧条保留，经历投影显示最新
 - 翻出的记忆（recall / detail）不计入新经历，防止记忆自我递归复制
 - 家 = Soma，一条连续生活线；Psyche 不跑大模型，仅留向量一个外部服务 → `notes/design/lib-vs-harness.md`
-- Roxy 与 Soma 不融合（10-23 Joy 和 Roy 定），两个地方共用 Psyche；加功能先走「加功能放哪」的判断流程 → `notes/design/lib-vs-harness.md`。缺口：通用外部 percept 入口（`POST /v1/percept`）还没有，第一个用到它的功能先补
+- Roxy 与 Soma 不融合（10-23 Joy 和 Roy 定），两个地方共用 Psyche；加功能先走「加功能放哪」的判断流程 → `notes/design/lib-vs-harness.md`
 
 ## 3. 未完成与下一步
 
@@ -44,7 +45,8 @@
 2. **P4 感知设置**：住户对感知项的开关与粒度控制。
 3. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 4. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
-5. **记忆与检索边界调优**：
+5. **音乐按判断流程拆**：搜歌、取地址和歌词、下载算特征、`player` / `playlist` 工具归地方；`played` / 歌单 / 一起听的记录和「这段时间听到的」留 Psyche。Soma（`lib/music`）、Roxy 各有一套曲库，先定以谁为准。
+6. **记忆与检索边界调优**：
    - 情节晚于冷写落库时，按引用的原行去重候选证据。
    - 线索全段输入时常见词 IDF 顶满导致的字面打分饱和（`lex 0.8`）微调。
 
@@ -64,4 +66,4 @@
 
 ## 6. 验证
 
-2026-10-23：`bun test` 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。
+2026-10-23：percept 入口在 psyche-test 实跑（记 / 不变不记 / 拒屋子自己的 sensor / 无 token 401 / `<now>` 递一次不重递）。`bun test` 339 pass；此前 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。

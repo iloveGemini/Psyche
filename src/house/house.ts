@@ -5,6 +5,7 @@
  * - 她的个签存 <数据目录>/house.json（重启不丢）；变了下一圈作为 percept 进其他人的库。
  * - GET /v1/house：此刻全屋的样子（给 Soma 和 Dashboard 显示），现算。
  * - POST /v1/house/residents：添加新住户或为未出生的住户触发 birth()，热挂载入屋。
+ * - POST /v1/house/percept：地方报来的外头的事实（m8.md §6.3），记进收件人的库。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,6 +16,7 @@ import { renameResidentFiles } from "./rename.ts";
 import { nowPlaying } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { filesTick, loadSnaps, saveSnaps, type Place } from "./files.ts";
+import { PerceptError, recordPercept } from "../perception/outside.ts";
 import { getSettings } from "../heartbeat/schedule.ts";
 import { budgetUsedToday, nextWake } from "../heartbeat/scheduler.ts";
 import { pulseOf } from "../reading/health.ts";
@@ -232,6 +234,17 @@ export function openHouse(
         }
       }
       return Response.json({ from, to: viewer.id, name: currentName(viewer.store) ?? viewer.id, ...(named ? { archiveNo: named.archiveNo } : {}) });
+    }
+    // 外头来的事实（m8.md §6.3）：地方收进来报到这里，存和递在 Psyche
+    if (req.method === "POST" && path === "/v1/house/percept") {
+      const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!b || typeof b !== "object") return Response.json({ error: "要 JSON 对象" }, { status: 400 });
+      try {
+        return Response.json(recordPercept(residents, b, now()));
+      } catch (e) {
+        if (e instanceof PerceptError) return Response.json({ error: e.message }, { status: 400 });
+        throw e;
+      }
     }
     if (req.method === "POST" && path === "/v1/house/joy/seen") {
       joy.lastSeen = now();
