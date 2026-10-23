@@ -5,7 +5,7 @@
 
 ## 1. 当前阶段
 
-**【进行中】房子 P1/P2 减法瘦身与 Bug 修复（10-23 18:10 Joy 与 a2 复盘定，见 `notes/design/houses.md` 与 Soma `STATE.md`）**：照搬「人类实时在线」的机制不适合回合制 Agent，做减法。Soma 在分支 `claude/stoic-knuth-vzh7om`（10-23 和 Joy 一起在 soma-test 测过、修过，**还没合进 Soma master、没上线**：合并要和 build、正式库迁移、重启一起做，步骤在 Soma `STATE.md`；Psyche 这边已合进 main）：
+**【进行中】房子 P1/P2 减法瘦身与 Bug 修复（1、2、Bug A 已上线）（10-23 18:10 Joy 与 a2 复盘定，见 `notes/design/houses.md` 与 Soma `STATE.md`）**：照搬「人类实时在线」的机制不适合回合制 Agent，做减法。Soma 在分支 `claude/stoic-knuth-vzh7om`（10-23 和 Joy 一起测过、修过，**10-23 已上线**：Soma master + 正式库迁移，备份 `~/.soma.bak-houses-slim-1023.tgz`）：
 1. ✅ 没有「自己的房间」、没有门、没有敲门：回自己屋只是不在任何房间，报 `{ house: 住址, id: "own-<住户 id>", room: "<名字>的房间" }`（`houses-p1.md` §四），两人都在自己屋不算同一间；Psyche 不用改代码（`presence.test.ts`「回自己屋」锁住）。
 2. ✅ 没有住户之间的私聊，私下找人写信；**邀请和收回都发信**（Joy 10-23 定，`houses-p2.md`「§二（减法后）」）：住户发的走 `via: "house"`，Joy 的走 `soma-note`，标题是事实、正文是主人附言原样（收回也带附言）；工具参数写错直接报错不悄悄忽略；一轮只答一个房间（轮中别的房间来话排到下一轮）。Psyche 不用改代码。
 3. **待做**：日常公共房间改为「留言板模式」，去掉 `present` 在场过滤；位置只管「全屋感知」与「Joy 在房间说话时谁当场接话」。只有第 3 步的「包间」才按参与人隔离记录。
