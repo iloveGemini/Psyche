@@ -80,6 +80,15 @@
       ],
       "port": 7470,
       "autoPort": false
+    },
+    {
+      "name": "soma-test-houses",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/joy/workspace/Soma-houses && SOMA_HOME=/Users/joy/.soma-test SOMA_CLAUDE_CONFIG_DIR=/Users/joy/.soma/claude PSYCHE_URL=http://127.0.0.1:7450 SOMA_AGENT=a1 PSYCHE_TOKEN=test-a1 SOMA_COMPACT_AT=200000 SOMA_DIST_DIR=.next-test-houses exec npx next dev -H 0.0.0.0 -p 30152"
+      ],
+      "port": 30152
     }
   ]
 }

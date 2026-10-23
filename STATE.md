@@ -5,7 +5,7 @@
 
 ## 1. 当前阶段
 
-**下一步：和 Joy 细化 `notes/design/houses.md` 第十二节，定稿后照第九节施工（第 1 步：房子这一层）。**
+**房子这一层做完了，在 `houses-p1` 分支上（Psyche + Soma 同名分支，测试房子验收过），未合并到 main**：正式的 Psyche（:7470）和 Soma（:30151）都从 main 工作区跑，上线 = 两边合并 + 备份后迁正式 `~/.soma`（`Soma/scripts/houses-p1.mjs`）+ 重启两边，等 Joy 定时间。细节看分支上的 STATE。
 
 **P3a 房间（10-19，Joy 在 Soma 101 定，Claude 在 Soma 里做；交接 `notes/plan/p3-p4-handoff.md`）**：
 - 群 → 房间：私人房间 = 住户的 home（永不对任何人开放）；公共房间由住户/Joy 开（带 why 与创建人），进入仅有视听与发言权，不带文件权利。住户同一时刻在公共房间或自己房间，Joy 无位置。
