@@ -117,13 +117,13 @@ describe("只记变化，记进别人的库", () => {
     expect(h.a2.list({ kinds: ["room.entered"] }).at(-1)!.payload).toEqual({ house: "soma-101", houseName: "Soma 101", room: "客厅", id: "living" });
     expect(readExperience(h.a2.db, {}).map((l) => l.text)).toContain("我进了 Soma 101 · 客厅");
     expect(presenceOf(h.a2).place).toEqual({ house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" });
-    // a1 没有位置记录：当成在 Soma 101（不知道哪间），看 a2 只看得到在哪间
+    // a1 没有位置记录，看 a2 也同时看得到位置与状态
     h.tick();
-    expect(h.percepts(h.a1).find((p) => p.subject === "a2").value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" } });
+    expect(h.percepts(h.a1).find((p) => p.subject === "a2").value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" }, state: "offline" });
     enterRoom(h.a1, { room: "客厅", id: "living" });
     h.tick();
     expect(h.percepts(h.a1).findLast((p) => p.subject === "a2").value).toEqual({ here: true, state: "offline" });
-    expect(h.percepts(h.a1).findLast((p) => p.subject === JOY).value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "", room: "" } }); // Joy 没报过位置
+    expect(h.percepts(h.a1).findLast((p) => p.subject === JOY).value).toEqual({ active: false }); // Joy 没报过位置
     expect(line("a2", "a2", { here: true, state: "idle", where: "pi" })).toBe("a2：在这里，闲（这会儿在 pi 上）");
     // 旧的「空串 = 自己房间」：当成 own-<id>「<名字>的房间」
     await post({ room: "" });
@@ -140,68 +140,73 @@ describe("只记变化，记进别人的库", () => {
     expect(h.a2.list({ kinds: ["room.entered"] }).at(-1)!.payload).toEqual(body);
     expect(presenceOf(h.a2).place).toEqual({ house: "a2-house", houseName: "a2 的房子", id: "own-a2", room: "a2的房间" });
     expect(readExperience(h.a2.db, {}).map((l) => l.text)).toContain("我进了 a2 的房子 · a2的房间");
-    expect((await post({ house: "fun", houseName: "功能楼", id: "box-1", room: "包间·一", parent: "cinema" })).status).toBe(200);
-    expect(presenceOf(h.a2).place).toEqual({ house: "fun", houseName: "功能楼", id: "box-1", room: "包间·一", parent: "cinema" });
+    expect((await post({ house: "soma-101", houseName: "Soma 101", id: "b-1", room: "你画我猜·网络梗", parent: "game", parentName: "游戏室" })).status).toBe(200);
+    expect(presenceOf(h.a2).place).toEqual({ house: "soma-101", houseName: "Soma 101", id: "b-1", room: "你画我猜·网络梗", parent: "game", parentName: "游戏室" });
     expect((await post({ house: "fun", room: "没有 id" })).status).toBe(400);
   });
 });
 
-describe("感知按位置（houses-p1.md §五）", () => {
+describe("全屋感知全透明（houses-p1.md §五，10-23 复盘）", () => {
   const P = (house: string, id: string, room = id): Place => ({ house, houseName: house === "soma-101" ? "Soma 101" : house, id, room });
   const living = P("soma-101", "living", "客厅");
   const tea = P("soma-101", "tea", "茶水间");
   const far = P("roxy", "study", "书房");
 
-  test("表里每一格：同一间房看得到状态、同房子只看得到在哪间、不同房子只有不在这座房子；个签都看得到", () => {
+  test("同一间房标 here，不同房间或不同房子带 at，状态与个签都保留", () => {
     const s = { state: "busy" as const, where: "soma", mood: "在赶 S2" };
     expect(seenBy(living, { ...s, place: living })).toEqual({ here: true, state: "busy", where: "soma", mood: "在赶 S2" });
-    expect(seenBy(tea, { ...s, place: living })).toEqual({ at: living, mood: "在赶 S2" });
-    expect(seenBy(far, { ...s, place: living })).toEqual({ away: true, mood: "在赶 S2" });
-    // Joy 照同样的规则：同一间房是有没有动静
+    expect(seenBy(tea, { ...s, place: living })).toEqual({ at: living, state: "busy", where: "soma", mood: "在赶 S2" });
+    expect(seenBy(far, { ...s, place: living })).toEqual({ at: living, state: "busy", where: "soma", mood: "在赶 S2" });
+    // Joy 照同样的规则：不管在哪都带 active
     expect(seenBy(living, { home: false, place: living })).toEqual({ here: true, active: false });
-    expect(seenBy(tea, { home: true, place: living })).toEqual({ at: living });
-    expect(seenBy(far, { home: true, place: living, mood: "下班了" })).toEqual({ away: true, mood: "下班了" });
-    // 没有位置记录的当成在 Soma 101
-    expect(seenBy(undefined, { state: "idle", place: far })).toEqual({ away: true });
-    expect(seenBy(far, { state: "idle" })).toEqual({ away: true });
-    expect(seenBy(living, { state: "idle" })).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "", room: "" } });
+    expect(seenBy(tea, { home: true, place: living })).toEqual({ at: living, active: true });
+    expect(seenBy(far, { home: true, place: living, mood: "下班了" })).toEqual({ at: living, active: true, mood: "下班了" });
+    // 没有位置记录的不硬塞默认位置
+    expect(seenBy(undefined, { state: "idle", place: far })).toEqual({ at: far, state: "idle" });
+    expect(seenBy(far, { state: "idle" })).toEqual({ state: "idle" });
+    expect(seenBy(living, { state: "idle" })).toEqual({ state: "idle" });
     expect(seenBy(undefined, { state: "idle" })).toEqual({ state: "idle" });
-    // 显示
+    // 显示（含包间与历史旧格式兼容）
     expect(line("a2", "a2", { here: true, state: "busy", where: "soma", mood: "在赶 S2" })).toBe("a2：在这里，忙；个签「在赶 S2」");
+    expect(line("a2", "a2", { at: living, state: "busy", where: "soma", mood: "在赶 S2" })).toBe("a2：在 Soma 101 · 客厅，忙；个签「在赶 S2」");
+    expect(line("a2", "a2", { at: { house: "soma-101", houseName: "Soma 101", id: "b-1", room: "你画我猜·网络梗", parent: "game", parentName: "游戏室" }, state: "busy" })).toBe("a2：在 Soma 101 · 游戏室 · 包间《你画我猜·网络梗》，忙");
     expect(line("a2", "a2", { at: living })).toBe("a2：在 Soma 101 · 客厅");
-    expect(line("a2", "a2", { at: { house: "soma-101", houseName: "Soma 101", id: "", room: "" } })).toBe("a2：在 Soma 101");
     expect(line("a2", "a2", { away: true, mood: "在赶 S2" })).toBe("a2：不在这座房子；个签「在赶 S2」");
     expect(line(JOY, JOY, { here: true, active: true })).toBe("Joy：在这里，有动静");
+    expect(line(JOY, JOY, { at: living, active: true })).toBe("Joy：在 Soma 101 · 客厅，有动静");
     expect(line(JOY, JOY, { active: false })).toBe("Joy：在，没动静");
   });
 
-  test("只记看得到的变化：别的房子里的人忙闲变了不记；换了位置、看得到的范围变了才记", () => {
+  test("不同房子或不同房间的人忙闲变了也照记；自己在别的房间之间换位置（都没进对方那间）不重复记", () => {
     const h = setup();
     enterRoom(h.a1, { house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" });
     enterRoom(h.a2, { house: "a2-house", houseName: "a2 的房子", id: "own-a2", room: "a2的房间" });
     h.tick();
-    expect(h.percepts(h.a1).find((p) => p.subject === "a2").value).toEqual({ away: true });
-    expect(h.percepts(h.a2).find((p) => p.subject === "a1").value).toEqual({ away: true });
-    const n = h.percepts(h.a1).length;
+    expect(h.percepts(h.a1).find((p) => p.subject === "a2").value).toEqual({
+      at: { house: "a2-house", houseName: "a2 的房子", id: "own-a2", room: "a2的房间" },
+      state: "offline",
+    });
+    // a2 在自己房子里上线了：a1 看得到
     h.sit(h.a2, "s2", "pi");
-    h.me(h.a2, "hi"); // a2 上线了，a1 看不到
+    h.me(h.a2, "hi");
     h.tick();
-    expect(h.percepts(h.a1)).toHaveLength(n);
-    // 个签例外
-    setMoodVia(h.a2, "在造房子");
-    h.tick();
-    expect(h.percepts(h.a1).at(-1)).toMatchObject({ subject: "a2", value: { away: true, mood: "在造房子" } });
-    // a2 搬回 Soma 101 的茶水间：a1 看得到在哪间，看不到状态
-    enterRoom(h.a2, { house: "soma-101", houseName: "Soma 101", id: "tea", room: "茶水间" });
-    h.tick();
-    expect(h.percepts(h.a1).at(-1).value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "tea", room: "茶水间" }, mood: "在造房子" });
-    // a1 自己走进茶水间：看得到 a2 的状态了
+    expect(h.percepts(h.a1).at(-1).value).toEqual({
+      at: { house: "a2-house", houseName: "a2 的房子", id: "own-a2", room: "a2的房间" },
+      state: "idle",
+      where: "pi",
+    });
+    // a1 从客厅去茶水间（还是和 a2 不同房）：眼里 a2 没变，不重记
+    const n = h.percepts(h.a1).length;
     enterRoom(h.a1, { house: "soma-101", houseName: "Soma 101", id: "tea", room: "茶水间" });
     h.tick();
-    expect(h.percepts(h.a1).at(-1).value).toEqual({ here: true, state: "idle", where: "pi", mood: "在造房子" });
+    expect(h.percepts(h.a1)).toHaveLength(n);
+    // a2 也走进茶水间：变成 here: true
+    enterRoom(h.a2, { house: "soma-101", houseName: "Soma 101", id: "tea", room: "茶水间" });
+    h.tick();
+    expect(h.percepts(h.a1).at(-1).value).toEqual({ here: true, state: "idle", where: "pi" });
   });
 
-  test("回自己屋（houses-p1.md §四，减法）：每人一个 own-<id>，两人都在自己屋不算同一间；Joy 在客厅也只看得到在谁的房间", () => {
+  test("回自己屋（houses-p1.md §四，减法）：每人一个 own-<id>，两人都在自己屋不算同一间，且看得到对方状态和 Joy 有没有动静", () => {
     const h = setup();
     enterRoom(h.a1, { house: "soma-101", houseName: "Soma 101", id: "own-a1", room: "a1的房间" });
     enterRoom(h.a2, { house: "soma-101", houseName: "Soma 101", id: "own-a2", room: "a2的房间" });
@@ -209,16 +214,20 @@ describe("感知按位置（houses-p1.md §五）", () => {
     h.joy.lastSeen = h.clock.t;
     h.sit(h.a1, "s1");
     h.tick();
-    expect(deliverPresence(h.a1, "s1")!.split("\n")).toEqual(["全屋：", "- a2：在 Soma 101 · a2的房间", "- Joy：在 Soma 101 · 客厅"]);
+    expect(deliverPresence(h.a1, "s1")!.split("\n")).toEqual([
+      "全屋：",
+      "- a2：在 Soma 101 · a2的房间，离线",
+      "- Joy：在 Soma 101 · 客厅，有动静",
+    ]);
     // 老记录：room 空串照 own-<他> 解读，和新报法是同一个位置，不算变化
     enterRoom(h.a2, { room: "" });
     h.tick();
     const seen = h.percepts(h.a1).filter((p) => p.subject === "a2");
     expect(seen).toHaveLength(1);
-    expect(seen[0].value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "own-a2", room: "a2的房间" } });
+    expect(seen[0].value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "own-a2", room: "a2的房间" }, state: "offline" });
   });
 
-  test("<now> 和 look 只递看得到的；递过不重递", () => {
+  test("<now> 和 look 递全屋位置与状态；递过不重递", () => {
     const h = setup();
     enterRoom(h.a1, { house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" });
     enterRoom(h.a2, { house: "soma-101", houseName: "Soma 101", id: "tea", room: "茶水间" });
@@ -226,27 +235,27 @@ describe("感知按位置（houses-p1.md §五）", () => {
     h.joy.lastSeen = h.clock.t;
     h.sit(h.a1, "s1");
     h.tick();
-    expect(deliverPresence(h.a1, "s1")!.split("\n")).toEqual(["全屋：", "- a2：在 Soma 101 · 茶水间", "- Joy：在这里，有动静"]);
+    expect(deliverPresence(h.a1, "s1")!.split("\n")).toEqual([
+      "全屋：",
+      "- a2：在 Soma 101 · 茶水间，离线",
+      "- Joy：在这里，有动静",
+    ]);
     expect(deliverPresence(h.a1, "s1")).toBeNull();
-    // a2 在茶水间忙起来：a1 看不到，不递
+    // a2 在茶水间忙起来：a1 看得到变化
     h.sit(h.a2, "s2", "soma");
     h.her(h.a2, "在吗");
     h.pass(MIN);
     h.tick();
-    expect(deliverPresence(h.a1, "s1")).toBeNull();
-    // Joy 去了茶水间
-    h.joy.place = { house: "soma-101", houseName: "Soma 101", id: "tea", room: "茶水间" };
-    h.tick();
-    expect(deliverPresence(h.a1, "s1")).toBe("这段时间全屋：\n- Joy：在 Soma 101 · 茶水间（18:01）");
-    expect(deliverPresence(h.a1, "s1")).toBeNull();
-    // look 看到的也是过滤过的；看过 <now> 不重报
+    expect(deliverPresence(h.a1, "s1")).toBe("这段时间全屋：\n- a2：在 Soma 101 · 茶水间，忙（18:01）");
+    // Joy 去了 Roxy 书房
     h.joy.place = { house: "roxy", houseName: "Roxy", id: "study", room: "书房" };
     h.tick();
-    expect(lookPresence(h.a1, "s1").split("\n")).toEqual(["全屋：", "- a2：在 Soma 101 · 茶水间", "- Joy：不在这座房子"]);
+    expect(lookPresence(h.a1, "s1").split("\n")).toEqual([
+      "全屋：",
+      "- a2：在 Soma 101 · 茶水间，忙",
+      "- Joy：在 Roxy · 书房，有动静",
+    ]);
     expect(deliverPresence(h.a1, "s1")).toBeNull();
-    // a2 那边：Joy 在别的房子，a1 在客厅
-    h.sit(h.a2, "s2");
-    expect(deliverPresence(h.a2, "s2")!.split("\n")).toEqual(["全屋：", "- a1：在 Soma 101 · 客厅", "- Joy：不在这座房子"]);
   });
 });
 
@@ -288,8 +297,8 @@ describe("Joy 有没有动静、在哪", () => {
     expect(await (await where(living)).json()).toEqual({ place: living });
     expect(JSON.parse(readFileSync(join(dir, "house.json"), "utf8")).joyWhere).toEqual(living);
     expect(openHouse(dir, h.residents, () => h.clock.t).joy.place).toEqual(living); // 重启不丢
-    // 马上看一圈：a1 没有位置记录（Soma 101、不知道哪间），看 Joy 只看得到在哪间
-    expect(h.percepts(h.a1).find((p) => p.subject === JOY).value).toEqual({ at: living });
+    // 马上看一圈：a1 看得到 Joy 的位置与有没有动静
+    expect(h.percepts(h.a1).find((p) => p.subject === JOY).value).toEqual({ at: living, active: false });
     // 给 Soma / Dashboard 的全貌不过滤
     enterRoom(h.a2, { house: "roxy", houseName: "Roxy", id: "study", room: "书房" });
     const all = await (await house.handle(new Request("http://x/v1/house"))).json();

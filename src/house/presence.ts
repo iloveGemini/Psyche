@@ -19,7 +19,7 @@ import { delivers, records } from "../perception/senses.ts";
 export type State = "busy" | "idle" | "asleep" | "offline";
 export const STATE_NAME: Record<State, string> = { busy: "忙", idle: "闲", asleep: "睡着", offline: "离线" };
 
-/** 一个人此刻在哪：哪座房子的哪间房（houses-p1.md §四）；包间再带 parent */
+/** 一个人此刻在哪：哪座房子的哪间房（houses-p1.md §四）；包间再带 parent / parentName（houses-p3.md §六） */
 export interface Place {
   house: string;
   houseName: string;
@@ -27,10 +27,10 @@ export interface Place {
   id: string;
   room: string;
   parent?: string;
+  parentName?: string;
 }
 /** 没有位置记录的（历史）当成在 Soma 101（houses-p1.md §五） */
 export const DEFAULT_HOUSE = { house: "soma-101", houseName: "Soma 101" };
-const UNPLACED: Place = { ...DEFAULT_HOUSE, id: "", room: "" };
 
 export interface ResidentPresence {
   state: State;
@@ -49,15 +49,13 @@ export interface JoyPresence {
 export type Presence = ResidentPresence | JoyPresence;
 
 /**
- * 看的人眼里被看的人的样子（houses.md §四点五）：记进看的人库里的 percept.value 就是这个。
- * - 同一间房：状态（住户忙 / 闲 / 睡着 / 离线；Joy 有没有动静）；知道是哪间房时带 here
- * - 同一座房子、不同房间：在哪间（at）
- * - 不同房子：只有「不在这座房子」（away）
- * - 个签不管在哪都带
+ * 看的人眼里被看的人的样子（houses.md §四点五，10-23 复盘全透明）：记进看的人库里的 percept.value 就是这个。
+ * - 同一间房（或同包间）：带 here + 状态（住户忙 / 闲 / 睡着 / 离线；Joy 有没有动静）+ 个签
+ * - 不同房间或不同房子：带 at（在哪间）+ 状态 + 个签（不再因跨房间/跨房子抹掉状态或报「不在这座房子」；不想看谁由 P4 senses 管）
  */
 export type Seen =
-  | { here?: true; state: State; where?: string; mood?: string }
-  | { here?: true; active: boolean; mood?: string }
+  | { here?: true; at?: Place; state: State; where?: string; mood?: string }
+  | { here?: true; at?: Place; active: boolean; mood?: string }
   | { at: Place; mood?: string }
   | { away: true; mood?: string };
 /** 库里 percept 的值：Seen，或改位置之前记下的老样子（住户的 room 是字符串、Joy 只有 home） */
@@ -138,7 +136,7 @@ export function currentMood(store: EventStore): string | undefined {
 export function currentPlace(store: EventStore, self?: string): Place | undefined {
   const ev = ownSince(store, "room.entered").at(-1);
   if (!ev) return undefined;
-  const p = ev.payload as { house?: string; houseName?: string; id?: string; room?: string; parent?: string };
+  const p = ev.payload as { house?: string; houseName?: string; id?: string; room?: string; parent?: string; parentName?: string };
   const house = p.house || DEFAULT_HOUSE.house;
   const houseName = p.houseName || (house === DEFAULT_HOUSE.house ? DEFAULT_HOUSE.houseName : house);
   const room = p.room ?? "";
@@ -146,24 +144,38 @@ export function currentPlace(store: EventStore, self?: string): Place | undefine
     const who = self ?? "self";
     return { house, houseName, id: `own-${who}`, room: `${currentName(store) ?? who}的房间` };
   }
-  return { house, houseName, id: p.id || room, room: room || p.id!, ...(p.parent ? { parent: p.parent } : {}) };
+  return {
+    house,
+    houseName,
+    id: p.id || room,
+    room: room || p.id!,
+    ...(p.parent ? { parent: p.parent } : {}),
+    ...(p.parentName ? { parentName: p.parentName } : {}),
+  };
 }
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
-/** 报来的位置：{ house, houseName, id, room, parent? }；Joy 的 /v1/house/joy/where 也用它 */
+/** 报来的位置：{ house, houseName, id, room, parent?, parentName? }；Joy 的 /v1/house/joy/where 也用它 */
 export function parsePlace(body: Record<string, unknown>): Place {
   const house = str(body.house);
   const id = str(body.id);
   if (!house) throw new MoodError("house 应为非空字符串（房子 id）");
   if (!id) throw new MoodError("id 应为非空字符串（房间 id）");
   if (body.room !== undefined && typeof body.room !== "string") throw new MoodError("room 应为字符串（房间名）");
-  return { house, houseName: str(body.houseName) ?? house, id, room: str(body.room) ?? id, ...(str(body.parent) ? { parent: str(body.parent) } : {}) };
+  return {
+    house,
+    houseName: str(body.houseName) ?? house,
+    id,
+    room: str(body.room) ?? id,
+    ...(str(body.parent) ? { parent: str(body.parent) } : {}),
+    ...(str(body.parentName) ? { parentName: str(body.parentName) } : {}),
+  };
 }
 
 /**
- * POST /v1/room：Soma 在他换位置时记（houses-p1.md §四）。
- * 新形状 { house, houseName, id, room, from, fromHouse, parent? }；旧形状 { room, id?, from? }（没有 house）照收，当成 soma-101。
+ * POST /v1/room：Soma 在他换位置时记（houses-p1.md §四、houses-p3.md §六）。
+ * 新形状 { house, houseName, id, room, from, fromHouse, parent?, parentName? }；旧形状 { room, id?, from? }（没有 house）照收，当成 soma-101。
  */
 export function enterRoom(store: EventStore, body: Record<string, unknown>) {
   const { room, from, fromHouse } = body;
@@ -173,7 +185,14 @@ export function enterRoom(store: EventStore, body: Record<string, unknown>) {
     payload = { ...DEFAULT_HOUSE, room: room.trim(), ...(str(body.id) ? { id: str(body.id) } : {}) };
   } else {
     const p = parsePlace(body);
-    payload = { house: p.house, houseName: p.houseName, id: p.id, room: p.room, ...(p.parent ? { parent: p.parent } : {}) };
+    payload = {
+      house: p.house,
+      houseName: p.houseName,
+      id: p.id,
+      room: p.room,
+      ...(p.parent ? { parent: p.parent } : {}),
+      ...(p.parentName ? { parentName: p.parentName } : {}),
+    };
   }
   if (typeof from === "string") payload.from = from.trim();
   if (str(fromHouse)) payload.fromHouse = str(fromHouse);
@@ -197,16 +216,14 @@ export interface Viewer {
   store: EventStore;
 }
 
-/** 看的人在 viewer，被看的人此刻是 subject：他能感知到的那一面（houses.md §四点五、houses-p1.md §五）。没有位置记录的当成在 Soma 101 */
+/** 看的人在 viewer，被看的人此刻是 subject：全屋全透明（houses.md §四点五、houses-p1.md §五），同一间房标 here，不同房间/房子带 at，状态与个签都保留 */
 export function seenBy(viewer: Place | undefined, subject: Presence): Seen {
-  const v = viewer ?? UNPLACED;
-  const s = subject.place ?? UNPLACED;
+  const s = subject.place;
+  const sameRoom = !!(s && viewer && s.house === viewer.house && s.id && s.id === viewer.id);
+  const loc = sameRoom ? { here: true as const } : s ? { at: s } : {};
   const mood = subject.mood ? { mood: subject.mood } : {};
-  if (s.house !== v.house) return { away: true, ...mood };
-  if (s.id !== v.id) return { at: s, ...mood };
-  const here = s.id ? { here: true as const } : {};
-  if ("home" in subject) return { ...here, active: subject.home, ...mood };
-  return { ...here, state: subject.state, ...(subject.where ? { where: subject.where } : {}), ...mood };
+  if ("home" in subject) return { ...loc, active: subject.home, ...mood };
+  return { ...loc, state: subject.state, ...(subject.where ? { where: subject.where } : {}), ...mood };
 }
 
 /** 在不在跟前（环境指纹用）：同一间房里在线 / 有动静；老记录照老口径（在线、在家） */
@@ -228,7 +245,7 @@ export function lastSeenPresence(store: EventStore): Map<string, { value: Percei
 const same = (a: Perceived | undefined, b: Perceived) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * 全屋看一圈：算每个住户和 Joy 此刻的样子，按位置过滤成每个看的人能感知到的那一面，变了的记进他的库。
+ * 全屋看一圈：算每个住户和 Joy 此刻的样子，按看的人是否在同房间标 here 或 at，变了的记进他的库。
  * names：显示名（他自己取的名字，没取用 id），记在 percept 里，渲染不用再跨库查。
  */
 export function houseTick(residents: Viewer[], joy: JoyState, now: number): number {
@@ -262,19 +279,28 @@ export function houseTick(residents: Viewer[], joy: JoyState, now: number): numb
 // ── 渲染 ──
 
 
-/** 「Soma 101 · 客厅」；不知道哪间就只说房子 */
-export const placeName = (p: Place) => (p.room ? `${p.houseName} · ${p.room}` : p.houseName);
+/** 「Soma 101 · 客厅」；包间带 parentName 时显示「Soma 101 · 游戏室 · 包间《…》」；不知道哪间就只说房子 */
+export const placeName = (p: Place) => {
+  if (!p.room) return p.houseName;
+  if (p.parentName) return `${p.houseName} · ${p.parentName} · ${p.room.startsWith("包间") ? p.room : `包间《${p.room}》`}`;
+  return `${p.houseName} · ${p.room}`;
+};
 
 export function describe(subject: string, name: string, v: Perceived): string {
   const who = subject === JOY || name === subject ? name : `${name}（${subject}）`;
   const mood = v.mood ? `；个签「${v.mood}」` : "";
   if ("away" in v) return `${who}：不在这座房子${mood}`;
-  if ("at" in v) return `${who}：在 ${placeName(v.at)}${mood}`;
-  if ("active" in v) return `${who}：${v.here ? "在这里" : "在"}，${v.active ? "有动静" : "没动静"}${mood}`;
+  if ("active" in v) {
+    const where = v.here ? "在这里" : "at" in v && v.at ? `在 ${placeName(v.at)}` : "在";
+    return `${who}：${where}，${v.active ? "有动静" : "没动静"}${mood}`;
+  }
+  if ("at" in v && !("state" in v)) return `${who}：在 ${placeName(v.at)}${mood}`;
   // 改位置之前记下的老样子
   if ("home" in v) return `${who}：${v.home ? "在家（Soma 里能直接说）" : "不在家（要找她就写信）"}${mood}`;
   const online = v.state === "busy" || v.state === "idle";
-  if ("here" in v && v.here) return `${who}：在这里，${STATE_NAME[v.state]}${v.where && online && v.where !== "soma" ? `（这会儿在 ${v.where} 上）` : ""}${mood}`;
+  const onOther = v.where && online && v.where !== "soma" ? `（这会儿在 ${v.where} 上）` : "";
+  if ("here" in v && v.here) return `${who}：在这里，${STATE_NAME[v.state]}${onOther}${mood}`;
+  if ("at" in v && v.at) return `${who}：在 ${placeName(v.at)}，${STATE_NAME[v.state]}${onOther}${mood}`;
   const r = "room" in v ? v.room : undefined;
   const room = r === undefined ? "" : r ? `《${r}》` : "自己房间";
   const where = v.where && online ? `在 ${v.where}${room ? ` · ${room}` : ""}，` : "";
