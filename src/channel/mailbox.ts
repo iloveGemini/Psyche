@@ -2,7 +2,7 @@
  * 通道的口子（notes/plan/m6.md §一 §五）：来信、写信、翻开、来往的信、在哪、通道设置。
  *
  * - 来信（POST /v1/mail/in）：通道交进来，`mail.in` 不挂处境（信不在哪段对话里）。外部消息 id 做幂等。
- * - 写信（POST /v1/mail/out）：给登记过的人、屋里别的住户（m6.md §八），或给自己（交接信）。系统补记写信处 from: { harness, session }。
+ * - 写信（POST /v1/mail/out）：给登记过的人、全屋别的住户（m6.md §八），或给自己（交接信）。系统补记写信处 from: { harness, session }。
  *   回她的信挂 replyTo 不算额度；主动写给人的每封算 1 次，和它约的醒同一份额度，用完拒。
  * - 翻开（POST /v1/mail/open）：给全文，没读过的记 `mail.read`（它的动作，m6.md §〇.2）。
  * - 通道设置是 Joy 的：发给谁经哪些通道、外部地址。改一次记 `param.changed`；地址不进事件。
@@ -97,7 +97,7 @@ function resolve(store: EventStore, ref: unknown): PsycheEvent | null {
 }
 
 /**
- * housemates：屋里别的住户的 id（不含自己）。写给他们不用登记通道，每封都算额度——回信也算：
+ * housemates：全屋别的住户的 id（不含自己）。写给他们不用登记通道，每封都算额度——回信也算：
  * 两个住户互相回信、互相叫醒，不算就停不下来（m6.md §八）。
  */
 export function sendMail(
@@ -107,7 +107,7 @@ export function sendMail(
 ): { ev: PsycheEvent; id: string; archiveNo: string; budget: { used: number; of: number } } {
   const { to, text, subject, replyTo, for: dest, urgent } = body;
   if (!nonEmpty(text)) throw new MailError("text 是空的");
-  if (!nonEmpty(to)) throw new MailError("to 是空的：写给谁（Joy、屋里的住户），或 self（交接信）");
+  if (!nonEmpty(to)) throw new MailError("to 是空的：写给谁（Joy、全屋的住户），或 self（交接信）");
   const who = to.trim();
   const people = Object.keys(getChannels(store).channels);
   const housemate = housemates.includes(who);
@@ -116,7 +116,7 @@ export function sendMail(
   if (subject !== undefined && typeof subject !== "string") throw new MailError("subject 应为字符串");
   if (urgent !== undefined && typeof urgent !== "boolean") throw new MailError("urgent 应为 true / false");
   // 紧急通道（P3，Joy 10-19）：住户之间的信才标得了；叫不叫得醒看收信人自己的勿扰
-  if (urgent === true && !housemate) throw new MailError("urgent 只给写给屋里住户的信用");
+  if (urgent === true && !housemate) throw new MailError("urgent 只给写给全屋住户的信用");
   if (dest !== undefined) {
     if (who !== "self") throw new MailError("for 只给交接信用（to: self）");
     if (!nonEmpty(dest) || !knownPlaces(store).has(dest.trim())) throw new MailError(`不认识这个地方：${String(dest)}（认识：${[...knownPlaces(store)].join("、")}）`);

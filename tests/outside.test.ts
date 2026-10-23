@@ -1,5 +1,5 @@
 /**
- * 外头来的事实的确定性考卷（m8.md §6.3）：屋子的口子收、只记变化、按 to 分发、屋子自己的几路不收、递成一行行。
+ * 外头来的事实的确定性考卷（m8.md §6.3）：全屋的口子收、只记变化、按 to 分发、全屋自己的几路不收、递成一行行。
  */
 import { expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
@@ -46,7 +46,7 @@ test("收：缺省记进全屋；读数没变不记；to 只记给点名的", as
   expect(h.percepts(h.a2)).toHaveLength(2);
 });
 
-test("收：屋子自己的几路、坏字段、屋里没有的人都退回", async () => {
+test("收：全屋自己的几路、坏字段、全屋没有的人都退回", async () => {
   const h = setup();
   for (const body of [
     { sensor: "presence", value: 1, text: "x" },
@@ -85,7 +85,7 @@ test("递：同一样压成一行；递过不重递；新会话接着上次；�
   expect(lines.some((l) => l.includes("下小雨"))).toBe(false);
 });
 
-test("递：从没递过只报最近 6 小时的；屋子自己的感知不混进来", async () => {
+test("递：从没递过只报最近 6 小时的；全屋自己的感知不混进来", async () => {
   const h = setup();
   await h.post({ sensor: "weather", value: "rain", text: "下小雨" });
   h.a1.append({ kind: "percept", class: "experience", source: "house", situation: null, payload: { sensor: "presence", subject: "a2", value: "online" } });

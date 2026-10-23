@@ -14,7 +14,7 @@ export function agentOf(req: Request): string | undefined {
   return req.headers.get(AGENT_HEADER)?.trim() || new URL(req.url).searchParams.get("agent")?.trim() || undefined;
 }
 
-/** 屋子自己的口子（/v1/house/*，m8.md §二）：不属于哪一个人；tokens 里任何一个都能进 */
+/** 全屋自己的口子（/v1/house/*，m8.md §二）：不属于哪一个人；tokens 里任何一个都能进 */
 export interface HouseRoutes {
   tokens: string[];
   handle: (req: Request) => Response | Promise<Response>;

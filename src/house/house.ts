@@ -1,15 +1,17 @@
 /**
- * 屋子（m8.md §二、dashboard.md §4.2.1）：每 30 秒看一圈谁变了；Joy 在不在家、她的个签记在这里，不进谁的库。
+ * 全屋（m8.md §二、dashboard.md §4.2.1；这个 Psyche 里住着的所有人，接口路径仍叫 /v1/house）：每 30 秒看一圈谁变了；
+ * Joy 在哪、有没有动静、她的个签记在这里，不进谁的库。
  *
  * - Joy 的 Soma 页面有动静就报一声（POST /v1/house/joy/seen）；只留最后一次的时刻，不存明细。
- * - 她的个签存 <数据目录>/house.json（重启不丢）；变了下一圈作为 percept 进其他人的库。
- * - GET /v1/house：此刻全屋的样子（给 Soma 和 Dashboard 显示），现算。
+ * - Joy 换位置报到 POST /v1/house/joy/where（houses-p1.md §四）；她关了页面不报，位置留着。
+ * - 她的个签和位置存 <数据目录>/house.json（重启不丢）；变了作为 percept 进其他人的库（按位置过滤，presence.ts）。
+ * - GET /v1/house：此刻全屋的样子（给 Soma 和 Dashboard 显示），现算，不按位置过滤。
  * - POST /v1/house/residents：添加新住户或为未出生的住户触发 birth()，热挂载入屋。
  * - POST /v1/house/percept：地方报来的外头的事实（m8.md §6.3），记进收件人的库。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { houseTick, joyPresence, presenceOf, JOY, MOOD_MAX, type Viewer } from "./presence.ts";
+import { houseTick, joyPresence, presenceOf, parsePlace, JOY, MOOD_MAX, MoodError, type JoyState, type Place as Spot, type Viewer } from "./presence.ts";
 import { birth, currentName, letterText, nameSelf, SelfError, type BornDetail } from "../self/self.ts";
 import { readLetter, registerResident } from "./add.ts";
 import { renameResidentFiles } from "./rename.ts";
@@ -46,11 +48,11 @@ export function openHouse(
 ) {
   const storeOf = (id: string) => residents.find((r) => r.id === id)?.store;
   const file = join(dataDir, "house.json");
-  const saved = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { joyMood?: string }) : {};
-  const joy: { lastSeen?: number; mood?: string } = { mood: saved.joyMood || undefined };
-  const save = () => writeFileSync(file, JSON.stringify({ joyMood: joy.mood ?? "" }, null, 2));
+  const saved = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { joyMood?: string; joyWhere?: Spot }) : {};
+  const joy: JoyState = { mood: saved.joyMood || undefined, ...(saved.joyWhere ? { place: saved.joyWhere } : {}) };
+  const save = () => writeFileSync(file, JSON.stringify({ joyMood: joy.mood ?? "", ...(joy.place ? { joyWhere: joy.place } : {}) }, null, 2));
 
-  // 屋里的东西（m8.md §6.2）：home、commons 的文件变化；快照存着，重启不丢
+  // 全屋的东西（m8.md §6.2）：home、commons 的文件变化；快照存着，重启不丢
   const snapFile = join(dataDir, "files.json");
   const snaps = loadSnaps(snapFile);
   const tick = () => {
@@ -76,7 +78,7 @@ export function openHouse(
     return {
       id: r.id,
       name: currentName(r.store) ?? r.id,
-      ...presenceOf(r.store, t),
+      ...presenceOf(r.store, t, r.id),
       born,
       wake,
       pulse: pulseOf(r.store),
@@ -193,7 +195,7 @@ export function openHouse(
       if (!ID_PATTERN.test(from)) return Response.json({ error: "原 id 格式不对" }, { status: 400 });
       if (!ID_PATTERN.test(to)) return Response.json({ error: "新 id 格式不对" }, { status: 400 });
       const idx = residents.findIndex((r) => r.id === from);
-      if (idx < 0) return Response.json({ error: `屋里没有 ${from}` }, { status: 404 });
+      if (idx < 0) return Response.json({ error: `全屋没有 ${from}` }, { status: 404 });
       let viewer = residents[idx];
       if (from !== to) {
         try {
@@ -250,6 +252,20 @@ export function openHouse(
       joy.lastSeen = now();
       return Response.json({ ok: true });
     }
+    // Joy 换位置（houses-p1.md §四）：{ house, houseName, id, room }，存下来，马上看一圈
+    if (req.method === "POST" && path === "/v1/house/joy/where") {
+      const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!b || typeof b !== "object" || Array.isArray(b)) return Response.json({ error: "要 JSON 对象" }, { status: 400 });
+      try {
+        joy.place = parsePlace(b);
+      } catch (e) {
+        if (e instanceof MoodError) return Response.json({ error: e.message }, { status: 400 });
+        throw e;
+      }
+      save();
+      tick();
+      return Response.json({ place: joy.place });
+    }
     if (req.method === "POST" && path === "/v1/house/joy/mood") {
       const b = (await req.json().catch(() => null)) as { text?: unknown } | null;
       if (typeof b?.text !== "string") return Response.json({ error: "text 应为字符串（空串 = 清空）" }, { status: 400 });
@@ -266,7 +282,7 @@ export function openHouse(
       // 谁戴的由 Soma 页面说（?viewer=，缺省 Joy）；不替人认领（10-16 a1：测试时点的按钮被记成了 Joy）
       const who = typeof b?.who === "string" && b.who.trim() ? b.who.trim().slice(0, 40) : JOY;
       const host = typeof b?.host === "string" ? storeOf(b.host) : undefined;
-      if (!host) return Response.json({ error: "屋里没有这个人" }, { status: 404 });
+      if (!host) return Response.json({ error: "全屋没有这个人" }, { status: 404 });
       host.append({ kind: b!.on === false ? "ear.left" : "ear.joined", class: "experience", source: "house", situation: null, payload: { who } });
       return Response.json({ ok: true });
     }
@@ -274,7 +290,7 @@ export function openHouse(
     const m = path.match(/^\/v1\/house\/playing\/([^/]+)$/);
     if (req.method === "GET" && m) {
       const s = storeOf(decodeURIComponent(m[1]));
-      if (!s) return Response.json({ error: "屋里没有这个人" }, { status: 404 });
+      if (!s) return Response.json({ error: "全屋没有这个人" }, { status: 404 });
       const p = nowPlaying(s, now());
       if (!p) return Response.json({ track: null });
       return Response.json({ track: p.track, pos: p.pos, url: (await music.url(p.track.id).catch(() => undefined)) ?? null });

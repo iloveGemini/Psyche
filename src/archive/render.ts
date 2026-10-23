@@ -14,7 +14,7 @@ const cut = (s: string, n: number) => {
   return cps.length > n ? `${cps.slice(0, n).join("")}…` : s;
 };
 const WOKE_BY: Record<string, string> = { catchup: "补写", tidy: "整理", alarm: "闹钟", daily: "定点", heartbeat: "心跳", mail: "来信", manual: "手动", retry: "重试" };
-export const VIA: Record<string, string> = { "soma-note": "Soma 留言", email: "邮件", house: "屋里" };
+export const VIA: Record<string, string> = { "soma-note": "Soma 留言", email: "邮件", house: "全屋" };
 
 /** 来信在经历里的样子：没翻开只说有信（m6.md §〇.2），翻开后（mail.read）投影换成全文 */
 export function mailInText(p: { from: string; text: string; via: string; subject?: string }, read: boolean): string {
@@ -78,7 +78,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/(^|__)hotwrite$/.test(p.name) && p.ok) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
-      return null; // 屋子记下的变化不等于它经历过的；递到眼前的在 percept.noticed 里（m8.md §五）
+      return null; // 全屋记下的变化不等于它经历过的；递到眼前的在 percept.noticed 里（m8.md §五）
     case "percept.noticed":
       if (!p.text) return null; // 只记档位回落、没递话的那种
       return p.looked ? `（我看了看）${p.text}` : p.text;
@@ -104,7 +104,9 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "mood.set":
       return p.text ? `我把个签改成了「${p.text}」` : "我清空了个签";
     case "room.entered":
-      return p.room ? `我进了《${p.room}》` : "我回了自己房间";
+      // houses-p1.md §四：带房子的显示成「Soma 101 · 客厅」；老记录照旧
+      if (!p.room) return "我回了自己房间";
+      return p.house ? `我进了 ${p.houseName ?? p.house} · ${p.room}` : `我进了《${p.room}》`;
     case "mail.in":
       return mailInText(p as { from: string; text: string; via: string }, false);
     case "mail.read":

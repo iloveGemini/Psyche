@@ -1,5 +1,5 @@
 /**
- * 环境指纹（m8.md §四，M8c）：一段时间里它所处的环境——放着哪些歌、屋里有谁在。
+ * 环境指纹（m8.md §四，M8c）：一段时间里它所处的环境——放着哪些歌、全屋有谁在。
  *
  * - 被动：不用它写。情节发生的那段时间（所引原件的首尾）的指纹，事后从 played / 一起听 / 在场的 percept 算得出来，
  *   所以不另存；过去的不会再变，算过一次就缓存。
@@ -7,12 +7,12 @@
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import type { Track } from "./netease.ts";
-import type { Presence } from "../house/presence.ts";
+import { around, type Perceived } from "../house/presence.ts";
 
 export interface Env {
   /** 这段时间听到的歌（自己放的，或戴着谁的耳机听的） */
   tracks: { id: string; title: string; artist: string }[];
-  /** 这段时间在屋里的人：住户在线（忙 / 闲）、Joy 在家 */
+  /** 这段时间在跟前的人：同一间房里的住户在线（忙 / 闲）、Joy 有动静 */
   people: string[];
 }
 
@@ -79,14 +79,15 @@ function tracksBetween(store: EventStore, from: number, to: number, storeOf?: (i
   return [...out].map(([id, t]) => ({ id, ...t }));
 }
 
-/** [from, to] 里在屋里的人：到 to 为止每人最后记下的样子，或这段时间里出现过在线 / 在家 */
+/** [from, to] 里在跟前的人：到 to 为止每人最后记下的样子，或这段时间里出现过在跟前 */
 function peopleBetween(store: EventStore, from: number, to: number): string[] {
   const rows = store.list({ kinds: ["percept"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { sensor: string }).sensor === "presence" && e.at <= to);
-  const last = new Map<string, Presence>();
+  const last = new Map<string, Perceived>();
   const seen = new Set<string>();
-  const here = (v: Presence) => ("home" in v ? v.home : v.state === "busy" || v.state === "idle");
+  // 在跟前：同一间房里在线 / 有动静（houses.md §三「环境指纹按房子 + 房间算」：记下的就是按位置过滤过的那一面）
+  const here = around;
   for (const e of rows) {
-    const p = e.payload as { subject: string; value: Presence };
+    const p = e.payload as { subject: string; value: Perceived };
     if (e.at >= from && here(p.value)) seen.add(p.subject);
     last.set(p.subject, p.value);
   }
@@ -133,7 +134,7 @@ export function envSimilarity(now: Env, then: Env): { song: number; artist: numb
   const b = new Set(then.people);
   const inter = [...a].filter((x) => b.has(x)).length;
   const union = new Set([...a, ...b]).size;
-  // 只有人对得上不够浮现（屋里天天是那几个人）；它是加分，不单独成立
+  // 只有人对得上不够浮现（全屋天天是那几个人）；它是加分，不单独成立
   const people = (song || artist) && union ? (inter / union) * W_ENV.people : 0;
   return { song, artist, people };
 }

@@ -25,7 +25,7 @@
 9. [组装器](notes/design/assembler.md) —— 它此刻看得见什么：`<now>` 与 `<continuity>` 种子装配
 10. [通道与心跳](notes/design/channel-and-heartbeat.md) —— 收件箱、邮箱、勿扰、调度器唤醒（契约 [m5](notes/plan/m5.md)、[m6](notes/plan/m6.md)）
 11. [Soma 二代：住户、身体与房间](notes/design/soma2.md) —— 一个房子多住户，每人 home + 一条线 + 一个记忆库；身体适配器（Agent SDK / pi）；公共房间（P3a 交接 [p3-p4-handoff](notes/plan/p3-p4-handoff.md)）
-12. [以自身为中心的感知](notes/plan/m8.md) —— 屋里有谁（在线/在场）、声音与播放（自算音频特征与共听）、环境指纹与 `notice`
+12. [以自身为中心的感知](notes/plan/m8.md) —— 全屋有谁（在线/在场）、声音与播放（自算音频特征与共听）、环境指纹与 `notice`
 
 ---
 
@@ -68,7 +68,7 @@
 | 6 | 组装器 | ✅ 已落地 | [assembler](notes/design/assembler.md)：组装 `<now>` 与 `<continuity>` 换段接续种子 |
 | 7 / 8 | 通道、心跳与调度 | ✅ 已落地 | [channel-and-heartbeat](notes/design/channel-and-heartbeat.md)、[m5](notes/plan/m5.md)、[m6](notes/plan/m6.md)：收件箱、邮箱唤醒、调度器委托 Soma 执行睡着任务 |
 | 9 | 门户与多租户（Soma 二代） | ✅ 已落地 | [lib-vs-harness](notes/design/lib-vs-harness.md)、[soma2](notes/design/soma2.md)：多住户路由、公共房间（[P3a](notes/plan/p3-p4-handoff.md)）与工位 [claude-code](notes/plan/claude-code.md) |
-| 1 | 感知（以自身为中心） | ✅ 已落地 | [m8](notes/plan/m8.md)：M8a 屋里有谁（在线/在场）、M8b 声音与播放（特征自算与共听）、M8c 环境指纹与 `notice` |
+| 1 | 感知（以自身为中心） | ✅ 已落地 | [m8](notes/plan/m8.md)：M8a 全屋有谁（在线/在场）、M8b 声音与播放（特征自算与共听）、M8c 环境指纹与 `notice` |
 | ⟂ | Lethe 褪色 | ⏸ 后置 | [events §九](notes/design/events.md) |
 
 ## 已定的取舍

@@ -1,5 +1,5 @@
 /**
- * 屋里的东西的确定性考卷（m8.md §6.2）：扫描比对、谁动的只在说得准时说、自己动的不报给自己、home 只主人看得到、递成一行行。
+ * 全屋的东西的确定性考卷（m8.md §6.2）：扫描比对、谁动的只在说得准时说、自己动的不报给自己、home 只主人看得到、递成一行行。
  */
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -97,7 +97,7 @@ test("递：压成一行行，说谁动的或不知道；递到的才进经历",
   h.tick();
   const text = deliverFiles(h.a1, "s1", (id) => (id === "a2" ? "Argon" : id))!;
   expect(text.split("\n")).toEqual([
-    "屋里的东西：",
+    "全屋的东西：",
     "- home/门牌.md：被改过（这段时间变了 2 次），不知道是谁（21:01）",
     "- commons/projects/x/STATE.md：新出现，Argon动的（21:01）",
   ]);
@@ -107,7 +107,7 @@ test("递：压成一行行，说谁动的或不知道；递到的才进经历",
   writeFileSync(abs, "xy");
   h.tick();
   h.clock.t = Date.parse("2026-10-17T08:00:00+08:00");
-  expect(deliverFiles(h.a1, "s3")).toBe("屋里的东西：\n- commons/projects/x/STATE.md：被改过，a2动的（10-16 21:01）");
+  expect(deliverFiles(h.a1, "s3")).toBe("全屋的东西：\n- commons/projects/x/STATE.md：被改过，a2动的（10-16 21:01）");
   const lines = readExperience(h.a1.db, {}).map((l) => l.text);
   expect(lines).toContain(text);
   expect(lines.some((l) => l.includes("感知"))).toBe(false);

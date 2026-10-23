@@ -1,6 +1,6 @@
 /**
  * 添加住户（notes/howto/add-resident.md）：在 agents.json 里登记、建目录。出生另调 birth()。
- * 屋子的口子 POST /v1/house/residents（Psyche 开着、热挂进屋）和 scripts/add-resident.ts（没开时直接写）都用这里。
+ * 全屋的口子 POST /v1/house/residents（Psyche 开着、热挂进屋）和 scripts/add-resident.ts（没开时直接写）都用这里。
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

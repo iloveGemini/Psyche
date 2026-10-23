@@ -636,7 +636,7 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
         <span>Psyche 档案馆与阅览室</span>
       </div>
       <div class="nav-tabs" id="top-nav">
-        <button class="nav-btn active" onclick="goHome()">屋子总览</button>
+        <button class="nav-btn active" onclick="goHome()">全屋总览</button>
       </div>
       <div class="header-actions">
         <span class="badge-auth" id="auth-badge"><span class="badge-dot"></span> 租户隔离 · 本地直通</span>
@@ -834,7 +834,7 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
       const nav = document.getElementById('top-nav');
       const rs = STATE.house?.residents || [];
       nav.innerHTML = [
-        \`<button class="nav-btn \${!STATE.agent ? 'active' : ''}" onclick="goHome()">屋子总览</button>\`,
+        \`<button class="nav-btn \${!STATE.agent ? 'active' : ''}" onclick="goHome()">全屋总览</button>\`,
         ...rs.map(r => \`<button class="nav-btn \${STATE.agent === r.id ? 'active' : ''}" onclick="selectResident('\${esc(r.id)}')">\${esc(r.name || r.id)}</button>\`)
       ].join('');
     }

@@ -360,7 +360,7 @@ export async function surface(
   const skip = new Set([...tail.map((r) => r.event_id), ...(seeded?.episodes ?? [])]);
 
   const scored: Surfaced[] = [];
-  // 此刻的环境（m8.md §4.1）：放着什么、谁在。没在放歌就不比（屋里天天是那几个人，单靠人不浮现）
+  // 此刻的环境（m8.md §4.1）：放着什么、谁在。没在放歌就不比（全屋天天是那几个人，单靠人不浮现）
   const envHere: Env = envNow(store, opts.storeOf);
   const byEnv = envHere.tracks.length > 0;
   if (cue.trim() || byEnv) {

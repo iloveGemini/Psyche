@@ -174,7 +174,7 @@ export function listeningTo(store: EventStore): string | undefined {
   return ev?.kind === "listen.joined" ? (ev.payload as { host: string }).host : undefined;
 }
 
-/** 谁戴着我的耳机：别人来戴 / 摘是我经历到的（ear.joined / ear.left，屋子写进我的库） */
+/** 谁戴着我的耳机：别人来戴 / 摘是我经历到的（ear.joined / ear.left，全屋写进我的库） */
 export function listenersOf(store: EventStore): string[] {
   const on = new Map<string, boolean>();
   for (const e of store.list({ kinds: ["ear.joined", "ear.left"], fonds: "", limit: 100_000 })) on.set((e.payload as { who: string }).who, e.kind === "ear.joined");
@@ -204,7 +204,7 @@ export async function deliverSound(store: EventStore, deps: SoundDeps, session: 
   const now = store.now();
   const tz = store.timeZone;
   // 递到哪了：本会话递过就从那次算；新会话（含睡着、收尾那段）接任何会话最后递到的那次——递过的不再翻；
-  // 从没递过：只看最近 6 小时（同屋里的东西）
+  // 从没递过：只看最近 6 小时（同全屋的东西）
   const noticed = store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { sensor?: string }).sensor === "sound");
   const last = noticed.filter((e) => (e.payload as { session?: string }).session === session).at(-1) ?? noticed.at(-1);
   const since = last?.at;

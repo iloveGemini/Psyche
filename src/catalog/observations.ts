@@ -8,7 +8,7 @@ import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
 import { localDay, wallClock } from "../core/time.ts";
 import { hearings, type Env } from "../perception/env.ts";
-import { describe as describePresence, type Presence } from "../house/presence.ts";
+import { describe as describePresence, type Perceived } from "../house/presence.ts";
 import type { Track } from "../perception/netease.ts";
 
 export interface Observation {
@@ -65,7 +65,7 @@ export function observationsFor(store: EventStore, upTo: string, storeOf?: (id: 
         .filter((e) => e.at > n.at && (e.payload as { subject?: string }).subject === p.about)
         .slice(-MAX_LATER)
         .map((e) => {
-          const q = e.payload as { subject: string; name: string; value: Presence };
+          const q = e.payload as { subject: string; name: string; value: Perceived };
           return { at: e.at, text: `${stamp(e.at, tz)} ${describePresence(q.subject, q.name, q.value)}` };
         });
       later.push(...seen);
