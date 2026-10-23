@@ -95,7 +95,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=BAAI/bge-m3; PSYCHE_COMMONS=/Users/joy/.soma-test/commons PSYCHE_NCM_COOKIE=/Users/joy/.roxy/agent/music/cookies.json PSYCHE_DATA_DIR=/Users/joy/.psyche/test PSYCHE_PORT=7450 cd /Users/joy/workspace/Psyche-houses && exec bun run src/main.ts"
+        "cd /Users/joy/workspace/Psyche-houses && export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=BAAI/bge-m3; PSYCHE_COMMONS=/Users/joy/.soma-test/commons PSYCHE_NCM_COOKIE=/Users/joy/.roxy/agent/music/cookies.json PSYCHE_DATA_DIR=/Users/joy/.psyche/test PSYCHE_PORT=7450 exec bun run src/main.ts"
       ],
       "port": 7450
     }
