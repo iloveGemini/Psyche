@@ -26,6 +26,8 @@ export const KINDS: Record<string, KindSpec> = {
   "message.out": { class: "experience", required: { text: "string" } }, // + to?, session?
   // 这一轮选了不开口（10-20：Roxy 的 <keep_silence/>）；跟没轮到他说（没能回应）、什么都没发生都不一样
   "speech.silent": { class: "experience", required: {} }, // + to?, session?
+  // 没说出口的话（10-23 Joy 提）：和说出口的地位一样，只是没对人说；上报的 message.out 里的 <unsaid> 在入库口拆出来（speech.ts）
+  "speech.unsaid": { class: "experience", required: { text: "string" } }, // + to?, session?
   "tool.call": { class: "experience", required: { name: "string", callId: "string" } }, // + args?
   "tool.result": { class: "experience", required: { callId: "string", name: "string", ok: "boolean" } }, // + text? | result?: MaterialRef
   percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + subject?, name?, prev?（m8.md：全屋记下的变化；不进经历，递到才算）

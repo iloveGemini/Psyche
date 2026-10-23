@@ -198,7 +198,7 @@ export function feedbackLines(store: EventStore, since: string, upTo: string, sp
   const year = refYear(store);
   const rows = store.db
     .query(
-      `SELECT * FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out', 'speech.silent', 'tool.call', 'tool.result') AND id > ? AND id <= ? AND at >= ? AND at <= ? ORDER BY at, id`,
+      `SELECT * FROM events WHERE fonds = '' AND kind IN ('message.in', 'message.out', 'speech.silent', 'speech.unsaid', 'tool.call', 'tool.result') AND id > ? AND id <= ? AND at >= ? AND at <= ? ORDER BY at, id`,
     )
     .all(since, upTo, span?.from ?? 0, span?.to ?? Number.MAX_SAFE_INTEGER) as Record<string, any>[];
   const evs = rows.map((r) => ({ ...r, payload: JSON.parse(r.payload), archiveNo: `${r.day}#${r.seq}` }) as PsycheEvent);
@@ -214,7 +214,7 @@ export function feedbackLines(store: EventStore, since: string, upTo: string, sp
     open.delete(session);
   };
   for (const e of evs) {
-    if (e.kind !== "message.in" && e.kind !== "message.out" && e.kind !== "speech.silent") continue;
+    if (e.kind !== "message.in" && e.kind !== "message.out" && e.kind !== "speech.silent" && e.kind !== "speech.unsaid") continue;
     const s = sessionOf(store.db, e) ?? "";
     // 没出声也是他这一轮的回应，她接下来说的是对它的反馈
     if (e.kind !== "message.in") open.set(s, [...(open.get(s) ?? []), e]);

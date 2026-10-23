@@ -43,6 +43,7 @@ import { NoticeError, writeNotice } from "../perception/env.ts";
 import { deliverBody } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
 import { deliverOutside } from "../perception/outside.ts";
+import { expandSpeech } from "../archive/speech.ts";
 import { delivers, outsideSensors, readSenses, SensesError, setSenses } from "../perception/senses.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 import { claimedFonds, claimPast, PastError, pastBirthLines, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
@@ -94,7 +95,8 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.post("/v1/events", async (c) => {
     const body = await c.req.json();
     const items: IntakeItem[] = Array.isArray(body?.items) ? body.items : [body];
-    const out = store.db.transaction(() => items.map((it) => intake(store, it)))();
+    // 他说的话里的 <unsaid> / <keep_silence/> 在这里拆开（archive/speech.ts）
+    const out = store.db.transaction(() => items.flatMap(expandSpeech).map((it) => intake(store, it)))();
     return c.json({ events: out.map((e) => ({ id: e.id, archiveNo: e.archiveNo })) });
   });
 
