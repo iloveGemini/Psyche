@@ -145,6 +145,8 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我改了自己的策略`;
     case "schedule.changed":
       return `我改了作息${p.why ? `：${p.why}` : ""}`;
+    case "senses.changed":
+      return `我改了留意的感知：${p.why}`;
     case "prompt.changed":
       return `我改写了自己那段提示词（第 ${p.version} 版）${ref(p.doc)}：${p.why}`;
     case "moved":

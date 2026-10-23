@@ -16,7 +16,7 @@
  *   schedule          不给 schedule 看作息 / 给了排（全量替换） → GET/POST /v1/schedule
  *   write_diary       写日记                  → POST /v1/diary
  *   threads           还开着的事（op：list 看 / open 开 / note 记 / close 合） → /v1/threads…
- *   look              看一眼全屋              → GET  /v1/look
+ *   look              看一眼全屋 / 设感知（senses + why） → GET  /v1/look、GET/POST /v1/senses
  *   set_mood          挂心情个签              → POST /v1/mood
  *   player            放歌（op：play 放 / stop 停 / listen 听 / with 戴谁的耳机） → /v1/play、/v1/stop、/v1/listen…
  *   playlist          歌单（看 / 建 / 加 / 删） → GET/POST /v1/playlist
@@ -715,11 +715,34 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   tool(
     "look",
     {
-      description:
-        "看一眼全屋此刻有谁（Joy 也在内）：跟你同一间房的，看得到忙 / 闲 / 睡着 / 离线（Joy 是有没有动静）；同一座房子别的房间的，看得到在哪间；别的房子的，只知道不在这座房子。个签不管在哪都看得到。平时有变化会在 <now> 的「这段时间全屋」里报。",
-      inputSchema: {},
+      description: [
+        "不给参数：看一眼全屋此刻有谁（Joy 也在内）：跟你同一间房的，看得到忙 / 闲 / 睡着 / 离线（Joy 是有没有动静）；同一座房子别的房间的，看得到在哪间；别的房子的，只知道不在这座房子。个签不管在哪都看得到。平时有变化会在 <now> 的「这段时间全屋」里报。顺带给你现在的感知设置。",
+        "给 senses + why：设每一路感知（全量替换，没写的回到「看」）。档：看 = 变了记下、<now> 里报；只记着 = 照样记下（look 看得到、联想用得上），<now> 不报；不看 = 不记也不报，look 也不给。",
+        "项：presence（全屋有谁）、files（全屋的东西）、sound（听到的）、body（上下文多满、额度这些身上的），外头报来的每一路按它的 id（如 weather）。presence 和外头报来的可以按人设：presence:<住户 id>、presence:Joy、<id>:<哪一样>，盖过整路的那档。sound / body 不另存，只记着和不看一样是不报。",
+      ].join("\n"),
+      inputSchema: {
+        senses: z.record(z.string(), z.enum(["看", "只记着", "不看"])).optional().describe("要设时给；不给 = 看一眼"),
+        why: z.string().optional().describe("设的时候必填：为什么这么设"),
+      },
     },
-    guard(async () => text(((await call("GET", "/v1/look")) as { text: string }).text)),
+    guard(async (args) => {
+      if (args.senses) {
+        if (!args.why?.trim()) throw new ArgError("设感知要写 why：为什么这么设");
+        const r = (await call("POST", "/v1/senses", args)) as { archiveNo: string };
+        return text(`设好了（${r.archiveNo}）。`);
+      }
+      const look = (await call("GET", "/v1/look")) as { text: string };
+      const s = (await call("GET", "/v1/senses")) as { senses: Record<string, string>; why?: string; outside: string[] };
+      const set = Object.entries(s.senses);
+      const lines = [
+        look.text,
+        "",
+        `感知设置：${set.length ? set.map(([k, v]) => `${k} ${v}`).join("；") : "都是「看」"}${set.length ? "（没写的是「看」）" : ""}`,
+        ...(s.why ? [`上次这么设的理由：${s.why}`] : []),
+        ...(s.outside.length ? [`外头报来过的：${s.outside.join("、")}`] : []),
+      ];
+      return text(lines.join("\n"));
+    }),
   );
 
   tool(

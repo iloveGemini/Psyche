@@ -71,6 +71,7 @@ export const KINDS: Record<string, KindSpec> = {
   recalled: { class: "self", required: { refs: "array" } }, // + query?
   "policy.changed": { class: "self", required: { policy: "object" }, rels: ["evidence"] },
   "schedule.changed": { class: "self", required: { schedule: "object" } },
+  "senses.changed": { class: "self", required: { senses: "object", why: "string" } }, // 感知设置（m8.md §6.4）
   "prompt.changed": { class: "self", required: { doc: "object", version: "number", why: "string" }, rels: ["evidence"] },
   moved: { class: "self", required: { to: "string" } },
   "mail.out": { class: "self", required: { to: "string", text: "string" } }, // + subject?, replyTo?, for?, from: { harness, session }（系统填）

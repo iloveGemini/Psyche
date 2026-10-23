@@ -7,6 +7,7 @@
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { clockOf } from "../core/time.ts";
+import { delivers, records } from "./senses.ts";
 
 export class PerceptError extends Error {}
 
@@ -44,7 +45,12 @@ export function recordPercept(residents: { id: string; store: EventStore }[], bo
   const payload: Outside = { sensor, subject, value, text: text.trim() };
   const written: string[] = [];
   const unchanged: string[] = [];
+  const muted: string[] = [];
   for (const r of targets as { id: string; store: EventStore }[]) {
+    if (!records(r.store, sensor, subject)) {
+      muted.push(r.id); // 他设了不看这一路（m8.md §6.4）
+      continue;
+    }
     const last = outsideOf(r.store)
       .filter((e) => {
         const p = e.payload as Outside;
@@ -58,7 +64,7 @@ export function recordPercept(residents: { id: string; store: EventStore }[], bo
     r.store.append({ kind: "percept", class: "experience", source: "place", at: (at as number | undefined) ?? now, situation: null, payload: { ...payload } });
     written.push(r.id);
   }
-  return { written, unchanged };
+  return { written, unchanged, ...(muted.length ? { muted } : {}) };
 }
 
 /** <now> 的「这段时间感知到的」：本会话上次递到之后的，同一样压成一行（最后的样子 + 次数）；最多 10 行 */
@@ -68,7 +74,10 @@ export function deliverOutside(store: EventStore, session: string | undefined): 
   const lastRow = (session ? last(`${base} AND json_extract(payload, '$.session') = ? ORDER BY id DESC LIMIT 1`, session) : null) ?? last(`${base} ORDER BY id DESC LIMIT 1`);
   // 同全屋的东西（§6.2）：本会话递过就从那次算；新会话接最后递到的那次；从没递过只报最近 6 小时的
   const floor = lastRow ? 0 : store.now() - 6 * 3_600_000;
-  const fresh = outsideOf(store).filter((e) => (lastRow ? e.id > lastRow.id : e.at >= floor) && e.at <= store.now());
+  const fresh = outsideOf(store).filter((e) => {
+    const p = e.payload as Outside;
+    return (lastRow ? e.id > lastRow.id : e.at >= floor) && e.at <= store.now() && delivers(store, p.sensor, p.subject);
+  });
   if (!fresh.length) return null;
   const by = new Map<string, PsycheEvent[]>();
   for (const e of fresh) {

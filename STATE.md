@@ -18,7 +18,7 @@
 - Soma：`rooms.ts`、`rooms-round.ts`（Joy 说话只问醒着的，`urgent` 叫醒房间所有人）、`rooms-flow.ts`（在线状态查 `/v1/house`）、MCP `rooms`（list / read / go / open / say_in_room）、`<now>` 带 `room` 状态。
 - Psyche：`room.entered`（`POST /v1/room`，presence 带 room）、住户间信件支持 `urgent` 标头。
 - 迁移：`Soma/scripts/rooms-p3.mjs`（Soma 101 → 客厅，历史接续）。
-- **待做**：P3b share 工具、P4 感知设置。P0–P2（10-19）待补录。
+- **待做**：P3b share 工具。P0–P2（10-19）待补录。
 
 **近期关键规则定案（10-20 ~ 10-23）**：
 - **系统提示词顺序（10-20 Joy 定）**：自述在前、机制段在后（`composePrompt` / `filePrompt`）；机制段改第一人称（「# 我的记忆」，加「是系统的，我改不了」）。下一段换段起生效（修改机制现读，顺序调整需重启 Psyche）。
@@ -36,6 +36,7 @@
 - ✅ **M8 感知（以自身为中心）**：`notes/plan/m8.md`。M8a 屋里有谁（在线/忙/闲/个签）；M8b 声音与播放（网易云镜像、音频特征自算、一起听）；M8c 环境进记忆（环境指纹与 `notice`）；内感受（上下文跨档预警）与屋里的东西（文件变动感知）。
 - ✅ **Soma 二代架构 & 多租户**：`notes/design/soma2.md`，每住户独立 home + 单物理线 + 独立记忆库；身体适配器（Agent SDK / pi）；P1 多租户路由（`x-psyche-agent` / `?agent=`）。
 - ✅ **外头来的事实（10-23，m8.md §6.3）**：`POST /v1/house/percept { sensor, subject?, value, text, to? }`，只记变化，屋子自己的几路不收；`<now>`「这段时间感知到的」。还没有哪一路接进来，Soma / Roxy 的转发路由等第一路接入时再加。
+- ✅ **P4 感知设置（10-23，m8.md §6.4）**：三档 看 / 只记着 / 不看，项 presence / files / sound / body / 外头来的每一路，presence 与外头来的可按人（`presence:Joy`）；`senses.changed` 全量替换带 why，写错拒；并进 `look`（给 `senses` + `why` = 改），`GET/POST /v1/senses`。公共房间来话叫不叫醒不在这里（Soma，等留言板模式）。
 - ✅ **Claude Code 工位**：`notes/plan/claude-code.md`，hook 注入 `<now>` 与 `<continuity>`，工具收敛到 `psyche` 门面。
 
 ## 2. 已定的决定（细节见链接）
@@ -51,11 +52,12 @@
 ## 3. 未完成与下一步
 
 1. **P3b 工具支持**：房间内 `share` 工具及文件共享交互。
-2. **P4 感知设置**：住户对感知项的开关与粒度控制。
-3. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
-4. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
-5. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：第一个服务（候选影音室）、percept 的 `block` 递法、Soma / Roxy 读 manifest 挂服务；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
-6. **记忆与检索边界调优**：
+2. **Roxy 的 Joy 感知搬进来**（在不在 / 前台应用 / 手机）：Psyche 这边口子（§6.3）和开关（§6.4）都有了，缺 Mac 上的采集（Soma 侧）；m8 §八.3 定过「Joy 只报在不在家」，接哪几路要 Joy 再定。
+3. **没说出口的话**（Joy 10-23 提，未设计）：和说出口的话地位一样、都进它的记忆，只是没对人说（表面夸、心里嫌红配绿）——让它延续自己时不只剩场面话。和 `notice`（外头的观察，挂环境证据）分开；先出考卷再定工具和渲染。
+4. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
+5. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
+6. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：第一个服务（候选影音室）、percept 的 `block` 递法、Soma / Roxy 读 manifest 挂服务；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
+7. **记忆与检索边界调优**：
    - 情节晚于冷写落库时，按引用的原行去重候选证据。
    - 线索全段输入时常见词 IDF 顶满导致的字面打分饱和（`lex 0.8`）微调。
 
@@ -74,6 +76,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-23（P4）：`bun test` 354 pass / 0 fail（新增 `tests/senses.test.ts` 8 个）；`tsc --noEmit` 0 错误。test 库副本起在 7460 实跑：错档 400；设 `presence` 只记着 + `presence:Joy` 看 → `<now>` 全屋只剩 Joy，`look` 照列四人。
 
 2026-10-23（和 Joy 一起测 stoic-knuth）：psyche-test + soma-test（Soma worktree `../Soma-stoic`）实跑：a2 的 `<now>` 里 a1「在 Soma 101 · a1的房间」；邀请 / 收回信进 a2 收件箱（`via: house`，正文是附言）；Joy 的邀请 `via: soma-note`。顺带看到：a2 的 Psyche MCP 一直 401（16:59 起，测试环境老问题，未查）；a3 / cc 在 `<now>` 里只显示「在 Soma 101」不带房间（旧格式位置，未查）。
 

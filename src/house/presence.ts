@@ -14,6 +14,7 @@ import { AWAKE_MS, BUSY_MS, NOT_PLACE_SQL } from "../channel/inbox.ts";
 import { currentName, ownSince } from "../self/self.ts";
 import { clockOf } from "../core/time.ts";
 import { resolveSession } from "../catalog/hotwrite.ts";
+import { delivers, records } from "../perception/senses.ts";
 
 export type State = "busy" | "idle" | "asleep" | "offline";
 export const STATE_NAME: Record<State, string> = { busy: "忙", idle: "闲", asleep: "睡着", offline: "离线" };
@@ -240,6 +241,7 @@ export function houseTick(residents: Viewer[], joy: JoyState, now: number): numb
     const at = subjects.get(v.id)?.value.place;
     for (const [subject, { value: full, name }] of subjects) {
       if (subject === v.id) continue;
+      if (!records(v.store, "presence", subject)) continue; // 他设了不看这个人（m8.md §6.4）
       const value = seenBy(at, full);
       const prev = seen.get(subject)?.value;
       if (same(prev, value)) continue;
@@ -299,7 +301,11 @@ const noticedIn = (store: EventStore, session: string | undefined) => presenceNo
 export function deliverPresence(store: EventStore, session: string | undefined): string | null {
   const tz = store.timeZone;
   const mine = noticedIn(store, session);
-  const all = store.list({ kinds: ["percept"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { sensor: string }).sensor === "presence");
+  // 只递他设了「看」的人（m8.md §6.4）
+  const shown = (subject: string) => delivers(store, "presence", subject);
+  const all = store
+    .list({ kinds: ["percept"], fonds: "", limit: 100_000 })
+    .filter((e) => (e.payload as { sensor: string }).sensor === "presence" && shown((e.payload as { subject: string }).subject));
   let text: string;
   let refs: string[];
   if (mine.length) {
@@ -315,7 +321,7 @@ export function deliverPresence(store: EventStore, session: string | undefined):
     text = ["这段时间全屋：", ...[...by.values()].map((evs) => `- ${changeLine(evs, tz, store.now())}`)].join("\n");
     refs = fresh.map((e) => e.id);
   } else {
-    const current = lastSeenPresence(store);
+    const current = new Map([...lastSeenPresence(store)].filter(([k]) => shown(k)));
     if (!current.size) return null;
     // 上一次递到（任何会话）之后变过几次
     const anyNoticed = presenceNoticed(store).at(-1);
@@ -354,7 +360,8 @@ export function lookPresence(store: EventStore, session: string | undefined): st
     } catch {
       // 还没有会话
     }
-  const current = lastSeenPresence(store);
+  // 不看的人 look 也不给（只记着的照给）
+  const current = new Map([...lastSeenPresence(store)].filter(([k]) => records(store, "presence", k)));
   const text = current.size
     ? ["全屋：", ...[...current.entries()].map(([k, { value, ev }]) => `- ${describe(k, (ev.payload as { name: string }).name, value)}`)].join("\n")
     : "全屋还没看到别人。";

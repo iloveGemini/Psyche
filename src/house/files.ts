@@ -16,6 +16,7 @@ import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { clockOf } from "../core/time.ts";
 import { currentName } from "../self/self.ts";
 import { commitChanges, ensureRepo } from "./commons-git.ts";
+import { records } from "../perception/senses.ts";
 
 export interface Place {
   /** 显示名：home / commons */
@@ -104,6 +105,7 @@ export function filesTick(
       const viewers = place.owner ? residents.filter((r) => r.id === place.owner) : residents;
       for (const v of viewers) {
         if (by === v.id) continue; // 自己动的不报给自己
+        if (!records(v.store, "files")) continue; // 他设了不看（m8.md §6.4）
         v.store.append({
           kind: "percept",
           class: "experience",

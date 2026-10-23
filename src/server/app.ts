@@ -43,6 +43,7 @@ import { NoticeError, writeNotice } from "../perception/env.ts";
 import { deliverBody } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
 import { deliverOutside } from "../perception/outside.ts";
+import { delivers, outsideSensors, readSenses, SensesError, setSenses } from "../perception/senses.ts";
 import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
 import { claimedFonds, claimPast, PastError, pastBirthLines, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
 import { writePastCatalog } from "../catalog/past-catalog.ts";
@@ -84,7 +85,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
-    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError || err instanceof SoundError || err instanceof NoticeError || err instanceof PastError) return c.json({ error: err.message }, 400);
+    if (err instanceof IntakeError || err instanceof HotwriteError || err instanceof ColdwriteError || err instanceof SelfError || err instanceof ScheduleError || err instanceof MailError || err instanceof GistError || err instanceof ThreadError || err instanceof MoodError || err instanceof SoundError || err instanceof NoticeError || err instanceof PastError || err instanceof SensesError) return c.json({ error: err.message }, 400);
     console.error(err);
     return c.json({ error: String(err) }, 500);
   });
@@ -423,17 +424,20 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const s = renderSurfaced(await surface(store, embedder, { session, storeOf }));
     // 全屋有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
     const house = deliverPresence(store, session);
-    const heard = await deliverSound(store, sound, session).catch(() => null);
+    // 感知设置（m8.md §6.4）：整路设了不递的不递；presence / 外头来的按人分，在各自的 deliver 里滤
+    const heard = delivers(store, "sound") ? await deliverSound(store, sound, session).catch(() => null) : null;
     // 内感受（m8.md §六.1）：上下文多满由 Soma 带来
     const quota = {
       ...(num(q.q5h) !== undefined ? { fiveHour: { pct: num(q.q5h)!, resetsAt: q.q5hReset || null } } : {}),
       ...(num(q.q7d) !== undefined ? { sevenDay: { pct: num(q.q7d)!, resetsAt: q.q7dReset || null } } : {}),
     };
-    const body = deliverBody(store, session, { ctx: num(q.ctx), wrapAt: num(q.wrapAt), ...(quota.fiveHour || quota.sevenDay ? { quota } : {}) });
-    const things = deliverFiles(store, session, (id) => {
-      const other = storeOf?.(id);
-      return (other && currentName(other)) || id;
-    });
+    const body = !delivers(store, "body") ? null : deliverBody(store, session, { ctx: num(q.ctx), wrapAt: num(q.wrapAt), ...(quota.fiveHour || quota.sevenDay ? { quota } : {}) });
+    const things = !delivers(store, "files")
+      ? null
+      : deliverFiles(store, session, (id) => {
+          const other = storeOf?.(id);
+          return (other && currentName(other)) || id;
+        });
     const outside = deliverOutside(store, session);
     for (const block of [just, body, house, things, outside, heard, s]) if (block) text = text.replace(/\n<\/now>$/, () => `\n\n${block}\n</now>`);
     return text;
@@ -548,6 +552,13 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   app.post("/v1/past/catalog", async (c) => c.json({ entries: writePastCatalog(store, (await obj(c)) as Record<string, unknown>).map((e) => e.archiveNo) }));
 
   app.get("/v1/look", (c) => c.json({ text: lookPresence(store, c.req.query("session") || undefined) }));
+  // 感知设置（m8.md §6.4）
+  app.get("/v1/senses", (c) => c.json({ ...readSenses(store), outside: outsideSensors(store) }));
+  app.post("/v1/senses", async (c) => {
+    const b = await c.req.json();
+    if (!b || typeof b !== "object" || Array.isArray(b)) throw new SensesError("body 必须是对象");
+    return c.json(setSenses(store, b as Record<string, unknown>));
+  });
   app.post("/v1/mood", async (c) => {
     const b = await c.req.json();
     if (!b || typeof b !== "object" || Array.isArray(b)) throw new MoodError("body 必须是对象");
