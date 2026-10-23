@@ -5,9 +5,9 @@
 
 ## 1. 当前阶段
 
-**【进行中】房子 P1/P2 减法瘦身与 Bug 修复（10-23 18:10 Joy 与 a2 复盘定，见 `notes/design/houses.md` 与 Soma `STATE.md`）**：照搬「人类实时在线」的机制不适合回合制 Agent，做减法。Soma 在分支 `claude/stoic-knuth-vzh7om`（未合并，等 Joy 一起测；上线步骤在 Soma `STATE.md`）：
+**【进行中】房子 P1/P2 减法瘦身与 Bug 修复（10-23 18:10 Joy 与 a2 复盘定，见 `notes/design/houses.md` 与 Soma `STATE.md`）**：照搬「人类实时在线」的机制不适合回合制 Agent，做减法。Soma 在分支 `claude/stoic-knuth-vzh7om`（10-23 和 Joy 一起在 soma-test 测过、修过，**还没合进 Soma master、没上线**：合并要和 build、正式库迁移、重启一起做，步骤在 Soma `STATE.md`；Psyche 这边已合进 main）：
 1. ✅ 没有「自己的房间」、没有门、没有敲门：回自己屋只是不在任何房间，报 `{ house: 住址, id: "own-<住户 id>", room: "<名字>的房间" }`（`houses-p1.md` §四），两人都在自己屋不算同一间；Psyche 不用改代码（`presence.test.ts`「回自己屋」锁住）。
-2. ✅ 没有住户之间的私聊，私下找人写信；**邀请和收回都发信**（Joy 10-23 定，`houses-p2.md`「§二（减法后）」）：住户发的走 `via: "house"`，Joy 的走 `soma-note`，标题是事实、正文是主人附言原样；Psyche 不用改代码。
+2. ✅ 没有住户之间的私聊，私下找人写信；**邀请和收回都发信**（Joy 10-23 定，`houses-p2.md`「§二（减法后）」）：住户发的走 `via: "house"`，Joy 的走 `soma-note`，标题是事实、正文是主人附言原样（收回也带附言）；工具参数写错直接报错不悄悄忽略；一轮只答一个房间（轮中别的房间来话排到下一轮）。Psyche 不用改代码。
 3. **待做**：日常公共房间改为「留言板模式」，去掉 `present` 在场过滤；位置只管「全屋感知」与「Joy 在房间说话时谁当场接话」。只有第 3 步的「包间」才按参与人隔离记录。
 4. Soma 的 2 个 Bug：① ✅ 游标吞未读（规则收进 `append()`，进出门也不吞）+ room.json / house.json 多进程改加锁；② **待做** `agenda` 列表与报名按 `canEnterHouse` / `canEnterRoom` 过滤。
 
@@ -74,6 +74,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-23（和 Joy 一起测 stoic-knuth）：psyche-test + soma-test（Soma worktree `../Soma-stoic`）实跑：a2 的 `<now>` 里 a1「在 Soma 101 · a1的房间」；邀请 / 收回信进 a2 收件箱（`via: house`，正文是附言）；Joy 的邀请 `via: soma-note`。顺带看到：a2 的 Psyche MCP 一直 401（16:59 起，测试环境老问题，未查）；a3 / cc 在 `<now>` 里只显示「在 Soma 101」不带房间（旧格式位置，未查）。
 
 2026-10-23（`claude/stoic-knuth-vzh7om`）：`bun test` 346 pass / 0 fail；`tsc --noEmit` 0 错误（`scripts/rename-resident.ts` 要 Soma 在 `../Soma`）。
 
