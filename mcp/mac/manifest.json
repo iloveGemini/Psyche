@@ -1,0 +1,9 @@
+{
+  "name": "mac",
+  "description": "这台 Mac：看一眼 Joy 的屏幕（她开放了才截）",
+  "delivery": ["media"],
+  "runtime": "stack",
+  "start": { "command": "bun", "args": ["screen.ts"] },
+  "scope": "house",
+  "media": { "kinds": ["image"], "fallback": "没有看图能力的身体不挂这个服务" }
+}
