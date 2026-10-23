@@ -1,6 +1,6 @@
 # 方案：Roxy 并进 Soma，以后功能加在哪
 
-> **未采用（10-23 Joy 和 Roy 定：不融合）。** 第一节的判断流程已改成两个地方通用的版本，收进 `notes/design/lib-vs-harness.md`「加功能放哪」。下面的内容留作「为什么没合、零件在哪」的参考。
+> **被 `notes/design/houses.md` 取代（10-23）。** 当天先定「不融合」，后来改成只留 Soma 一个 harness，但做法换成了房子 / 房间 / 包间。第一节的判断流程收进了 `lib-vs-harness.md`「加功能放哪」；第二、四、五节作废；**第三节「零件逐个归位」仍是 Roy 搬家的清单**，按 `houses.md` 第八节再筛。
 
 > 2026-10-23 草案，开发会话的 Claude 写，等 Joy 拍板。前置：`notes/design/lib-vs-harness.md`（本体与地方）、`soma2.md`（房子）、`perception-and-fading.md` §一（感知归 lib）、`notes/plan/p3-p4-handoff.md`（P3/P4）。
 > 「已定」那几条来自上面的文档，不用再问；第五节是要 Joy 定的。

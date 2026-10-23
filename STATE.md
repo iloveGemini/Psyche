@@ -5,6 +5,8 @@
 
 ## 1. 当前阶段
 
+**下一步：和 Joy 细化 `notes/design/houses.md` 第十二节，定稿后照第九节施工（第 1 步：房子这一层）。**
+
 **P3a 房间（10-19，Joy 在 Soma 101 定，Claude 在 Soma 里做；交接 `notes/plan/p3-p4-handoff.md`）**：
 - 群 → 房间：私人房间 = 住户的 home（永不对任何人开放）；公共房间由住户/Joy 开（带 why 与创建人），进入仅有视听与发言权，不带文件权利。住户同一时刻在公共房间或自己房间，Joy 无位置。
 - Soma：`rooms.ts`、`rooms-round.ts`（Joy 说话只问醒着的，`urgent` 叫醒房间所有人）、`rooms-flow.ts`（在线状态查 `/v1/house`）、MCP `rooms`（list / read / go / open / say_in_room）、`<now>` 带 `room` 状态。
@@ -37,7 +39,7 @@
 - 情节改写（`revises`）：新条修正旧条，旧条保留，经历投影显示最新
 - 翻出的记忆（recall / detail）不计入新经历，防止记忆自我递归复制
 - 家 = Soma，一条连续生活线；Psyche 不跑大模型，仅留向量一个外部服务 → `notes/design/lib-vs-harness.md`
-- Roxy 与 Soma 不融合（10-23 Joy 和 Roy 定），两个地方共用 Psyche；加功能先走「加功能放哪」的判断流程 → `notes/design/lib-vs-harness.md`
+- **只留 Soma 一个 harness**（10-23 Joy 和 Roy 定，方案 v1 待细化）：房子（public / invite）→ 房间（private / public）→ 包间（临时，挂一个活动）；住户同一时刻只在一处；房间不再是 cwd；Roxy 冻结，Roy 搬来 → `notes/design/houses.md`。加功能先走「加功能放哪」→ `notes/design/lib-vs-harness.md`
 - 他主动用的工具做成独立 MCP 服务，放 `mcp/<名字>/`，按送达类（纯工具 / 递 / 叫醒 / 媒体）和运行类（同栈 / 自带依赖 / 外部 app）分；要递的报 percept 由 Psyche 汇总进 `<now>`；`src/` 不 import `mcp/`（`tests/boundary.test.ts`）→ `notes/plan/mcp-manifest.md`（只有契约，还没有服务）
 
 ## 3. 未完成与下一步

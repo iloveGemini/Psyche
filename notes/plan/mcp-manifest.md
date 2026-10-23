@@ -17,7 +17,7 @@ Psyche/
       ...
 ```
 
-- 每个服务是独立进程，由**地方**（Soma / Roxy）启动和挂载，Psyche 不启动、不调用它们。
+- 每个服务是独立进程，由**地方**（Soma）启动和挂载，Psyche 不启动、不调用它们。
 - 服务和 Psyche 只经三个口子说话：`POST /v1/house/percept`（m8.md §6.3）、来信、事件上报。
 
 ## 一、manifest.json
@@ -70,9 +70,9 @@ Psyche/
 |---|---|
 | `house` | 全屋每个住户默认都挂 |
 | `resident` | 默认不挂，住户的配置里点名的才挂（Soma `identity.json`、Roxy `mcp.json`） |
-| `room` | 住户在 `rooms` 里的房间时才挂 |
+| `room` | 能进 `rooms` 所在的那座房子就挂；人不在那间房（或它的包间）时，工具拒绝并说清楚去哪用（`houses.md` 第六节） |
 
-- **挂哪些在每段会话开始时定**，不在会话中途开关：工具列表一变，缓存要整个重写。进出房间、外部 app 开关，都等下一段生效。
+- **挂哪些在每段会话开始时定**，不在会话中途开关：工具列表一变，缓存要整个重写。外部 app 开关、门禁变了，都等下一段生效；进出房间不影响挂载。
 - 健康检查没过就不挂，不报错给他；地方的系统日志里记一笔。
 
 ## 五、启动时地方传什么
@@ -89,5 +89,5 @@ Psyche/
 
 1. `mcp/` 下的第一个服务（候选：影音室，从 `~/workspace/MCP for Roxy/open-watch-cinema` 搬适配层）。
 2. percept 的 `block` 递法。
-3. Soma 读 manifest 挂服务（claude-sdk 身体现在只固定挂 `psyche` / `soma`）；Roxy 读 manifest 生成 `mcp.json`（房间级的现在靠 `<房间>/.mcp.json`）。
-4. 删掉 Psyche、Soma、Roxy 里各自的音乐代码，换成 `mcp/music`（每人一台还是全屋共用，Joy 还没定）。
+3. Soma 读 manifest 挂服务（claude-sdk 身体现在只固定挂 `psyche` / `soma`）。Roxy 冻结，不再接。
+4. 删掉 Psyche、Soma 里各自的音乐代码（Roxy 冻结，不动），换成 `mcp/music`（每人一台还是全屋共用，Joy 还没定）。
