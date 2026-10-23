@@ -38,6 +38,7 @@
 - 翻出的记忆（recall / detail）不计入新经历，防止记忆自我递归复制
 - 家 = Soma，一条连续生活线；Psyche 不跑大模型，仅留向量一个外部服务 → `notes/design/lib-vs-harness.md`
 - Roxy 与 Soma 不融合（10-23 Joy 和 Roy 定），两个地方共用 Psyche；加功能先走「加功能放哪」的判断流程 → `notes/design/lib-vs-harness.md`
+- 他主动用的工具做成独立 MCP 服务，放 `mcp/<名字>/`，按送达类（纯工具 / 递 / 叫醒 / 媒体）和运行类（同栈 / 自带依赖 / 外部 app）分；要递的报 percept 由 Psyche 汇总进 `<now>`；`src/` 不 import `mcp/`（`tests/boundary.test.ts`）→ `notes/plan/mcp-manifest.md`（只有契约，还没有服务）
 
 ## 3. 未完成与下一步
 
@@ -45,7 +46,7 @@
 2. **P4 感知设置**：住户对感知项的开关与粒度控制。
 3. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 4. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
-5. **音乐按判断流程拆**：搜歌、取地址和歌词、下载算特征、`player` / `playlist` 工具归地方；`played` / 歌单 / 一起听的记录和「这段时间听到的」留 Psyche。Soma（`lib/music`）、Roxy 各有一套曲库，先定以谁为准。
+5. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：第一个服务（候选影音室）、percept 的 `block` 递法、Soma / Roxy 读 manifest 挂服务；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
 6. **记忆与检索边界调优**：
    - 情节晚于冷写落库时，按引用的原行去重候选证据。
    - 线索全段输入时常见词 IDF 顶满导致的字面打分饱和（`lex 0.8`）微调。
@@ -66,4 +67,4 @@
 
 ## 6. 验证
 
-2026-10-23：percept 入口在 psyche-test 实跑（记 / 不变不记 / 拒屋子自己的 sensor / 无 token 401 / `<now>` 递一次不重递）。`bun test` 339 pass；此前 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。
+2026-10-23：percept 入口在 psyche-test 实跑（记 / 不变不记 / 拒屋子自己的 sensor / 无 token 401 / `<now>` 递一次不重递）。`bun test` 340 pass；此前 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。
