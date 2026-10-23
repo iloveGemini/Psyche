@@ -89,6 +89,15 @@
         "cd /Users/joy/workspace/Soma-houses && SOMA_HOME=/Users/joy/.soma-test SOMA_CLAUDE_CONFIG_DIR=/Users/joy/.soma/claude PSYCHE_URL=http://127.0.0.1:7450 SOMA_AGENT=a1 PSYCHE_TOKEN=test-a1 SOMA_COMPACT_AT=200000 SOMA_DIST_DIR=.next-test-houses exec npx next dev -H 0.0.0.0 -p 30152"
       ],
       "port": 30152
+    },
+    {
+      "name": "psyche-test-houses",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "export SILICONFLOW_API_KEY=$(grep '^SILICONFLOW_API_KEY=' /Users/joy/workspace/refs/memory/honcho/.env | cut -d= -f2- | tr -d '\"'); export PSYCHE_EMBED_URL=https://api.siliconflow.cn/v1 PSYCHE_EMBED_MODEL=BAAI/bge-m3; PSYCHE_COMMONS=/Users/joy/.soma-test/commons PSYCHE_NCM_COOKIE=/Users/joy/.roxy/agent/music/cookies.json PSYCHE_DATA_DIR=/Users/joy/.psyche/test PSYCHE_PORT=7450 cd /Users/joy/workspace/Psyche-houses && exec bun run src/main.ts"
+      ],
+      "port": 7450
     }
   ]
 }
