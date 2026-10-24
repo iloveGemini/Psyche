@@ -15,7 +15,7 @@
  *   name_self         取名 / 改名             → POST /v1/self/name
  *   schedule          不给 schedule 看作息 / 给了排（全量替换） → GET/POST /v1/schedule
  *   write_diary       写日记                  → POST /v1/diary
- *   threads           还开着的事（op：list 看 / open 开 / note 记 / close 合） → /v1/threads…
+ *   threads           还开着的事与活动卷（op：list 看 / open 开 / note 记 / close 合） → /v1/threads…
  *   look              看一眼全屋 / 设感知（senses + why） → GET  /v1/look、GET/POST /v1/senses
  *   set_mood          挂心情个签              → POST /v1/mood
  *   player            放歌（op：play 放 / stop 停 / listen 听 / with 戴谁的耳机） → /v1/play、/v1/stop、/v1/listen…
@@ -678,6 +678,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
 
   // 还开着的事（m7.md）
   const HOW: Record<string, string> = { done: "做到了", dropped: "不做了", moot: "不用做了" };
+  const HOW_ACTIVITY: Record<string, string> = { done: "结束了", dropped: "不接着了", moot: "不用接了" };
   const cites = z.array(z.string()).optional().describe("证据档号（你的经历或情节），可不挂");
   tool(
     "threads",
@@ -685,14 +686,16 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       description: [
         "还开着的事：你挂上的、答应过谁的、等后续的。开着的在 <now> 里看得到开着几件、最久没动的是哪件，换会话时全列在开头。系统不替你合、不催、不判做没做到。",
         "op：list 看（缺省；all: true 连合上的一起看）· open 开一卷（type：promise = 你答应了谁什么，要写 to；matter = 挂着、等后续的事；写 title，可带 note）· note 在一卷上记一笔进展（target + text）· close 合上（target + how：done 做到了 / dropped 不做了 / moot 不用做了，写 why；合上的不能再记，同一件事再起就开新卷）。",
+        "活动卷（type: activity）：一场活动（一起看的片、玩的局、跑的团）你自己的手账——演到哪、你怎么看、下次怎么接，可写 with（和谁）。不进 <now>、不在换会话时列；list 要带 type: activity 才看得到。合上的说法：done 结束了 / dropped 不接着了 / moot 不用接了。",
         "target 是开卷那条的档号。",
       ].join("\n"),
       inputSchema: {
         op: z.enum(["list", "open", "note", "close"]).optional(),
         all: z.boolean().optional().describe("list：连合上的一起看"),
-        type: z.enum(["promise", "matter"]).optional().describe("open"),
+        type: z.enum(["promise", "matter", "activity"]).optional().describe("open 必填；list：只看这一种（不给 = promise 和 matter）"),
         title: z.string().optional().describe("open"),
         to: z.string().optional().describe("open promise：答应了谁"),
+        with: z.array(z.string().min(1)).optional().describe("open activity：和谁一起"),
         note: z.string().optional().describe("open：开卷时顺手记的一笔"),
         target: z.string().optional().describe("note / close：开卷那条的档号"),
         text: z.string().optional().describe("note：这一笔"),
@@ -703,7 +706,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     },
     guard(async ({ op = "list", all, ...rest }) => {
       if (op === "open") {
-        const r = (await call("POST", "/v1/threads", { type: rest.type, title: rest.title, to: rest.to, note: rest.note, cites: rest.cites })) as { archiveNo: string };
+        const r = (await call("POST", "/v1/threads", { type: rest.type, title: rest.title, to: rest.to, with: rest.with, note: rest.note, cites: rest.cites })) as { archiveNo: string };
         return text(`开了（${r.archiveNo}）。`);
       }
       if (op === "note") {
@@ -714,15 +717,17 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         const r = (await call("POST", "/v1/threads/close", { target: rest.target, how: rest.how, why: rest.why, cites: rest.cites })) as { archiveNo: string };
         return text(`合上了（${r.archiveNo}）。`);
       }
-      type T = { archiveNo: string; type: string; title: string; to?: string; openedAt: number; notes: { at: number; text: string }[]; closed?: { at: number; how: string; why: string } };
-      const r = (await call("GET", `/v1/threads${all ? "?all=1" : ""}`)) as { open: T[]; closed?: T[] };
+      type T = { archiveNo: string; type: string; title: string; to?: string; with?: string[]; openedAt: number; notes: { at: number; text: string }[]; closed?: { at: number; how: string; why: string } };
+      const activity = rest.type === "activity";
+      const q = new URLSearchParams({ type: rest.type ?? "promise,matter", ...(all ? { all: "1" } : {}) });
+      const r = (await call("GET", `/v1/threads?${q}`)) as { open: T[]; closed?: T[] };
       const show = (t: T) =>
         [
-          `[${t.archiveNo}] ${t.type === "promise" ? `答应 ${t.to}：` : ""}${t.title}（${shortTime(t.openedAt, tz)} 开）`,
+          `[${t.archiveNo}] ${t.type === "promise" ? `答应 ${t.to}：` : ""}${t.title}${t.with?.length ? `（和 ${t.with.join("、")}）` : ""}（${shortTime(t.openedAt, tz)} 开）`,
           ...t.notes.map((n) => `  ${shortTime(n.at, tz)} ${n.text}`),
-          ...(t.closed ? [`  ${shortTime(t.closed.at, tz)} 合上（${HOW[t.closed.how] ?? t.closed.how}）：${t.closed.why}`] : []),
+          ...(t.closed ? [`  ${shortTime(t.closed.at, tz)} 合上（${(t.type === "activity" ? HOW_ACTIVITY : HOW)[t.closed.how] ?? t.closed.how}）：${t.closed.why}`] : []),
         ].join("\n");
-      const out = [r.open.length ? r.open.map(show).join("\n") : "没有开着的事。"];
+      const out = [r.open.length ? r.open.map(show).join("\n") : activity ? "没有没结束的活动卷。" : "没有开着的事。"];
       if (r.closed?.length) out.push("", "合上的：", r.closed.map(show).join("\n"));
       return text(out.join("\n"));
     }),
