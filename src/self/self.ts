@@ -30,9 +30,24 @@ const MIME = "text/markdown";
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 const year = (store: EventStore) => Number(localDay(store.now(), store.timeZone).slice(0, 4));
 
+export const EMPTY_SELF = "这里现在还是空的，由我自己定义。";
+
+/** 自述段：带 `# 我是谁` 标题；空的时候放占位句（currentSelf 本身仍是空串，不影响 birthDue） */
+function formatSelfSection(raw: string): string {
+  const t = raw.trim();
+  if (!t) return `# 我是谁\n\n${EMPTY_SELF}`;
+  return /^#\s+我是谁\b/.test(t) ? t : `# 我是谁\n\n${t}`;
+}
+
+export function renderPsychePrompt(selfText: string, mechText: string): string {
+  if (!selfText.trim() && !mechText.trim()) return "";
+  const parts = [formatSelfSection(selfText), mechText.trim()].filter(Boolean);
+  return `<psyche>\n${parts.join("\n\n")}\n</psyche>`;
+}
+
 /** 文件拼的那份（机制 + 初我）：考卷、没出生的库用 */
 export function filePrompt(dir = PROMPTS_DIR): string {
-  return [readPrompt("self-v0.md", dir).text, readPrompt("mechanism.md", dir).text].filter(Boolean).join("\n\n");
+  return renderPsychePrompt(readPrompt("self-v0.md", dir).text, readPrompt("mechanism.md", dir).text);
 }
 
 export function bornRecord(store: EventStore): BornDetail | null {
@@ -120,11 +135,11 @@ export function currentName(store: EventStore): string | null {
   return ev ? (ev.payload as { name: string }).name : null;
 }
 
-/** GET /v1/prompt：机制 + 现行自述 */
+/** GET /v1/prompt：机制 + 现行自述，包在 <psyche> 里 */
 export function composePrompt(store: EventStore, dir = PROMPTS_DIR) {
   const mech = readPrompt("mechanism.md", dir);
   const cur = currentSelf(store, dir);
-  return { text: [cur.text, mech.text].filter(Boolean).join("\n\n"), version: cur.version, mechanismVersion: mech.version, born: !!bornRecord(store) };
+  return { text: renderPsychePrompt(cur.text, mech.text), version: cur.version, mechanismVersion: mech.version, born: !!bornRecord(store) };
 }
 
 /** 逐行比对（LCS）：- 出厂的 / + Joy 的；一样返回 null */

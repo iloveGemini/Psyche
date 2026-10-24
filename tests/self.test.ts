@@ -38,17 +38,23 @@ function setup() {
 }
 
 describe("/v1/prompt 拼法", () => {
-  test("没出生：现读的初我 + 机制，第 0 版；改文件立刻生效", async () => {
+  test("没出生：现读的初我 + 机制，第 0 版，包在 <psyche> 里；改文件立刻生效", async () => {
     const { get, dir } = setup();
-    expect(await get("/v1/prompt")).toEqual({ text: "## 起点\n你们是同伴。\n\n# 机制\n记忆怎么运转。", version: 0, mechanismVersion: 1, born: false });
+    expect(await get("/v1/prompt")).toEqual({
+      text: "<psyche>\n# 我是谁\n\n## 起点\n你们是同伴。\n\n# 机制\n记忆怎么运转。\n</psyche>",
+      version: 0,
+      mechanismVersion: 1,
+      born: false,
+    });
     writeFileSync(join(dir, "self-v0.md"), doc(3, "## 起点\n改过了。"));
-    expect((await get("/v1/prompt")).text).toStartWith("## 起点\n改过了。");
-    expect(filePrompt(dir)).toBe("## 起点\n改过了。\n\n# 机制\n记忆怎么运转。");
+    expect((await get("/v1/prompt")).text).toStartWith("<psyche>\n# 我是谁\n\n## 起点\n改过了。");
+    expect(filePrompt(dir)).toBe("<psyche>\n# 我是谁\n\n## 起点\n改过了。\n\n# 机制\n记忆怎么运转。\n</psyche>");
   });
 
-  test("仓库里的提示词：只有机制段（10-17 起初我是空的，自述由它自己写）", () => {
+  test("仓库里的提示词：初我是空的，# 我是谁 放占位句 + 机制段（10-24 起包在 <psyche> 里）", () => {
     const t = filePrompt();
-    expect(t.startsWith("# 我的记忆")).toBe(true);
+    expect(t).toStartWith("<psyche>\n# 我是谁\n\n这里现在还是空的，由我自己定义。\n\n# 我的记忆");
+    expect(t.endsWith("</psyche>")).toBe(true);
     expect(t).not.toContain("## 你和 Joy");
   });
 });
@@ -60,7 +66,12 @@ describe("出生", () => {
     writeFileSync(join(dir, "self-v0.md"), doc(3, "## 起点\n出厂的改了。"));
     writeFileSync(join(dir, "mechanism.md"), doc(2, "# 机制\n新版机制。"));
     const p = await get("/v1/prompt");
-    expect(p).toEqual({ text: "## 起点\n你们是同伴。\n\n# 机制\n新版机制。", version: 0, mechanismVersion: 2, born: true });
+    expect(p).toEqual({
+      text: "<psyche>\n# 我是谁\n\n## 起点\n你们是同伴。\n\n# 机制\n新版机制。\n</psyche>",
+      version: 0,
+      mechanismVersion: 2,
+      born: true,
+    });
   });
 
   test("只能一次", () => {
@@ -92,7 +103,7 @@ describe("出生", () => {
     const ev = her("你可以改自己的提示词");
     expect((await post("/v1/self/prompt", { text: "测试时改的", why: "试试", cites: [no(ev)], baseVersion: 0 })).status).toBe(200);
     expect((await post("/v1/self/name", { name: "试名" })).status).toBe(200);
-    expect((await get("/v1/prompt")).text).toStartWith("测试时改的");
+    expect((await get("/v1/prompt")).text).toStartWith("<psyche>\n# 我是谁\n\n测试时改的");
     birth(store, { promptsDir: dir });
     const s = await get("/v1/self");
     expect([s.name, s.prompt.version, s.prompt.text, s.history]).toEqual([null, 0, "## 起点\n你们是同伴。", []]);
@@ -110,7 +121,7 @@ describe("改自述的闸", () => {
     tick();
     await post("/v1/self/prompt", { text: "## 我\n说话直接，也会问。", why: "补一句", cites: [no(ev)], baseVersion: 1 });
     const p = await get("/v1/prompt");
-    expect([p.version, p.text]).toEqual([2, "## 我\n说话直接，也会问。\n\n# 机制\n记忆怎么运转。"]);
+    expect([p.version, p.text]).toEqual([2, "<psyche>\n# 我是谁\n\n## 我\n说话直接，也会问。\n\n# 机制\n记忆怎么运转。\n</psyche>"]);
     const s = await get("/v1/self");
     expect(s.prompt).toMatchObject({ version: 2, why: "补一句", evidence: [no(ev)], chars: 14 });
     expect(s.history.map((h: { version: number; chars: number }) => [h.version, h.chars])).toEqual([[1, 10], [2, 14]]);

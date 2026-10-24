@@ -220,12 +220,12 @@ describe("提示词", () => {
     expect(await (await app.request("/v1/prompt")).json()).toEqual({ text: "", version: 0, mechanismVersion: 0, born: false });
   });
 
-  test("/v1/prompt：仓库里的机制（初我是空的）", async () => {
+  test("/v1/prompt：仓库里的机制（初我是空的，# 我是谁 放占位句）", async () => {
     const store = new EventStore(":memory:");
     const app = createApp({ store, projections: new Projections(store) });
     const p = await (await app.request("/v1/prompt")).json();
     expect(p.version).toBe(0);
-    expect(p.text.startsWith("# 我的记忆")).toBe(true);
+    expect(p.text.startsWith("<psyche>\n# 我是谁\n\n这里现在还是空的，由我自己定义。\n\n# 我的记忆")).toBe(true);
     expect(p.text).not.toContain("你们的起点是同伴");
   });
 });
