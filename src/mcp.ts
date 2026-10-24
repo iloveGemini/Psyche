@@ -262,10 +262,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     {
       description: [
         "把这一段写成情节，存进你的记忆。情节是你自己写的记忆：以后你想起这段，读到的就是这些话；没有别人替你写、替你改、替你补。",
-        "一件事一条，用你自己的话。每条的 cites 挂上它依据的档号，必须是这一段里的；felt 可写当时的感受。",
-        "upTo 用 hotwrite_segment 或收尾提示给的那个，原样传回。",
-        "整批要么全收、要么全拒；被拒时会告诉你原因，改了再交。",
-        "pin / unpin（可选，书架档号）：顺手调整常驻区——钉上的书架条目每次醒来都在你眼前，不用 recall；下一段生效。总共 1200 字以内，超了整批拒。",
+        "先用 hotwrite_segment（或收尾提示）拿到 upTo、待写清单和写法说明，再提交 entries（一件事一条，cites 挂这一段里的档号，felt 可写感受；可顺手传 pin / unpin 调整 1200 字以内的常驻区）。整批要么全收、要么全拒。",
       ].join("\n"),
       inputSchema: {
         upTo: z.string().min(1).describe("这一段到哪为止，原样传回给你的那个"),
@@ -434,13 +431,9 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "coldwrite",
     {
       description: [
-        "睡前整理你的书架。不给 upTo：取上次整理之后的经历（按会话分组，写过情节的给情节）、你书架上的现行条目、按你留意的词找到的候选证据、反馈（你做了什么 → 之后对方的原话或工具出错，一律给），以及你 track 了的互动统计（系统数的，只有数，没有结论），附写法说明和 upTo。",
-        "给 upTo 和 entries：写回书架。书架上的字都是你写的；证据数、强弱由系统从你挂的档号数，不用自评。醒着时发现书架有误也可以这样当场改。",
-        "op：propose 新条目（shelf: fact 事实 / told 明说的规矩 / rule 规律 / mirror 镜子 / attend 留意 / relation 关系）· evidence 对现行条目判一条证据（for 印证 / against 反例 / irrelevant 无关）· revise 改写 · retire 作废。",
-        "规律和镜子要写 when（条件）、then（结果）、observe（结果怎么观察），首批证据至少 2 条、来自不同时间（不同会话、不同的天或相隔 6 小时以上）；明说的规矩 quote 逐字照录她的原话。",
-        "留意是你想看下去的疑问，要写 watch，一件事就能写；关系是你和某个人现在怎么样，要写 about，一人一条，变了就 revise。",
-        `留意和关系可以带 track（要写 about），系统以后只给你看你 track 的统计：${TRACK_KEYS.join(" / ")}；想看全表用 stats。`,
-        "upTo 原样传回。entries 可以是空的（看过了，没什么要写）。整批要么全收、要么全拒；被拒时会告诉你原因，改了再交。",
+        "整理你的书架（事实 fact / 明说的规矩 told / 规律 rule / 镜子 mirror / 留意 attend / 关系 relation）。",
+        "不给 upTo：取上次整理之后的经历、现行书架、候选证据、反馈线、当场观察及你 track 的互动统计，附完整写法说明和 upTo。",
+        "给 upTo 和 entries：按写法说明写回书架（op: propose / evidence / revise / retire；entries 可为空数组表示看过了没什么要写）。醒着时发现书架有误也可以先不传参取 upTo 再当场改。整批要么全收、要么全拒。",
       ].join("\n"),
       inputSchema: {
         upTo: z.string().optional().describe("写回时填：取材料时给的 upTo，原样传回；不填 = 取材料"),
@@ -619,21 +612,24 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     out.push(`下次醒：${s.next ? `${shortTime(s.next.due, tz)}（${BY[s.next.by] ?? s.next.by}${s.next.note ? `：${s.next.note}` : ""}）` : "没有排着的"}`);
     out.push(`今天唤醒额度：${s.budget.used}/${s.budget.of}（闹钟、定点、心跳在你没醒着时叫醒各花一次，主动写给 Joy 的信、写给全屋住户的信（回信也算）每封花一次；整理、补写、来信叫醒、回 Joy 的信不花；到点时你醒着（30 分钟内有动静）也不花。勿扰只挡信，不挡闹钟、定点、心跳）`);
     if (s.settings.paused) out.push("Joy 暂停了叫醒（整理、补写也不叫）；你自己的哪一轮里到点的事照样递给你。");
+    out.push(
+      "",
+      "排作息说明（传 schedule + why 全量替换，没写的会被清空）：",
+      "- alarms：一次性闹钟 [{ id?, at, note }]，at 用本地时间（如 2026-10-15T15:00）；要保留已有的闹钟须原样带上它的 id。",
+      "- daily：每天定点 [{ at, note? }]（HH:MM）。",
+      "- heartbeat：每隔多少分钟留给自己一段 { everyMin ≥ 15, active?: { from, to } }（HH:MM，可跨零点），从上次醒来与有人找你较晚处算起；落在 active 外顺延到下一个 from。",
+      "- wakeOn：{ mail: boolean }，没醒着时来信能否叫醒你（缺省 true，不花额度）。",
+      "- dnd：勿扰 [{ when: { time?: { from, to }, awake?: boolean, in?: string, busy?: boolean }, except?: [{ from, urgent?: boolean }] }]。同一条里的 when 条件都满足才挡信（不叫醒、<now> 暂不报，条件解除再报；busy = 最近 15 分钟用过记忆以外的工具）；except 放行指定发信人（如 [{ from: \"Joy\", urgent: true }] 只放行她标急的）。",
+    );
     return text(out.join("\n"));
   }
   tool(
     "schedule",
     {
       description: [
-        "不给 schedule：看你的作息——闹钟、每天定点、心跳间隔，下次会因什么醒，今天的唤醒额度用了几次，以及 Joy 的设置（暂停、额度、心跳开没开放）。",
-        "给 schedule：排你的作息，交一整份（全量替换，没写的就没了），写 why 为什么这么排。",
-        "alarms：一次性闹钟，at 用本地时间（如 2026-10-15T15:00），note 是到时告诉你的话；要保留已有的闹钟，带上它的 id 原样交回。",
-        "daily：每天定点（HH:MM）。heartbeat：每隔多少分钟给自己留一段时间（everyMin ≥ 15），从你上次醒来和有人上次找你两者较晚的那个算起；active { from, to }（HH:MM，可跨零点）= 只在这段时间里响，到点落在外面就顺延到下一个 from，不写就是全天。",
-        "到点就在你这条会话里叫醒你（推一轮进来，<now> 的「刚发生」里写着是什么）；你正忙着就排在这一轮后面。你自己的哪一轮先赶上了，就在那一轮的 <now> 里报，不另叫。",
-        "到点时你醒着（30 分钟内有对话或工具调用）不花额度；没醒着的，闹钟、定点、心跳各花一次唤醒额度。",
-        "wakeOn.mail：来信能不能在你没醒着时叫醒你（缺省能，不花额度）。",
-        "dnd：勿扰，一条条规则；一条里的条件都满足才算。条件：time { from, to }（HH:MM，可跨零点）、awake（醒着）、in（在哪个地方，如 roxy）、busy（最近 15 分钟用过记忆以外的工具，在做事）。",
-        "勿扰挡住的信：不叫醒你，醒着时也不在 <now> 里报，攒着，规则不成立了再报。except 是例外：[{ from: \"Joy\" }] 她的信都放行，加 urgent: true 只放行她标了急的；from 也可以写其他发信人的 id。闹钟、定点、心跳不受勿扰影响。Joy 的暂停盖过例外。",
+        "看或排你的作息（一次性闹钟 alarms、每天定点 daily、心跳间隔 heartbeat、来信唤醒 wakeOn.mail、勿扰规则 dnd）。",
+        "不给 schedule：看现行作息、下次因什么醒、今天唤醒额度，以及排作息的详细字段说明。",
+        "给 schedule + why：全量替换你的作息（没写的就没了；保留已有闹钟须原样传回 id）。改之前建议先不传参看一眼现行作息。",
       ].join("\n"),
       inputSchema: {
         schedule: z
@@ -738,9 +734,9 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "look",
     {
       description: [
-        "不给参数：看一眼全屋此刻有谁（Joy 也在内）：在哪座房子哪间房（跟你同一间房的写「在这里」）、忙 / 闲 / 睡着 / 离线（Joy 是有没有动静）、心情个签。平时有变化会在 <now> 的「这段时间全屋」里报。顺带给你现在的感知设置。",
-        "给 senses + why：设每一路感知（全量替换，没写的回到「看」）。档：看 = 变了记下、<now> 里报；只记着 = 照样记下（look 看得到、联想用得上），<now> 不报；不看 = 不记也不报，look 也不给。",
-        "项：presence（全屋有谁）、files（全屋的东西）、sound（听到的）、body（上下文多满、额度这些身上的），外头报来的每一路按它的 id（如 weather）。presence 和外头报来的可以按人设：presence:<住户 id>、presence:Joy、<id>:<哪一样>，盖过整路的那档。sound / body 不另存，只记着和不看一样是不报。",
+        "看一眼全屋此刻有谁，或设置你的每一路感知开关。",
+        "不给参数：看全屋各人在哪座房子哪间房、忙闲状态、心情个签，以及你现在的感知设置与设法说明。",
+        "给 senses + why：全量替换每一路感知（没写的回到「看」）。改之前建议先不传参看一眼。",
       ].join("\n"),
       inputSchema: {
         senses: z.record(z.string(), z.enum(["看", "只记着", "不看"])).optional().describe("要设时给；不给 = 看一眼"),
@@ -762,6 +758,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         `感知设置：${set.length ? set.map(([k, v]) => `${k} ${v}`).join("；") : "都是「看」"}${set.length ? "（没写的是「看」）" : ""}`,
         ...(s.why ? [`上次这么设的理由：${s.why}`] : []),
         ...(s.outside.length ? [`外头报来过的：${s.outside.join("、")}`] : []),
+        "（设感知说明：传 senses + why 全量替换，没写的回到「看」。三档：看 = 变了记下并在 <now> 报；只记着 = 记下供 look 和联想，<now> 不报；不看 = 不记也不报，look 也不给。可设项：presence、files、sound、body 及外头报来的 id；presence 和外头报来的可按人或子项细设，如 presence:Joy、presence:<住户id>、<id>:<哪一样>，盖过整路）",
       ];
       return text(lines.join("\n"));
     }),

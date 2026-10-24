@@ -77,6 +77,10 @@ describe("MCP 工具 → REST", () => {
       if (u.pathname === "/v1/coldwrite") return Response.json({ written: [], unjudged: 0 });
       if (u.pathname === "/v1/gist" && req.method === "GET") return Response.json({ pending: [], limits: {}, prompt: "", promptVersion: 1 });
       if (u.pathname === "/v1/gist") return Response.json({ span: "day", key: "2026-10-17" });
+      if (u.pathname === "/v1/schedule" && req.method === "GET")
+        return Response.json({ schedule: null, next: null, nextHeartbeat: null, budget: { used: 0, of: 10 }, settings: { paused: false, wakeBudget: 10, heartbeat: true } });
+      if (u.pathname === "/v1/look" && req.method === "GET") return Response.json({ text: "全屋：\n- Joy：在客厅" });
+      if (u.pathname === "/v1/senses" && req.method === "GET") return Response.json({ senses: {}, outside: [] });
       return Response.json({ archiveNo: "10-18#1" });
     });
     const client = await connect({ url: "http://psyche.test", fetch: rest.fetch });
@@ -88,8 +92,10 @@ describe("MCP 工具 → REST", () => {
     expect(await call("player", {})).toBe("在放《晴天》");
     expect(await call("player", { op: "with", host: "a2" })).toBe("戴上了 a2 的一只耳机。");
     expect(await call("player", { op: "stop" })).toBe("停了。");
+    expect(await call("schedule", {})).toContain("排作息说明");
     expect(await call("schedule", { schedule: { daily: [] } })).toContain("要写 why");
     expect(await call("schedule", { schedule: { daily: [] }, why: "先空着" })).toBe("排好了（10-18#1）。");
+    expect(await call("look", {})).toContain("设感知说明");
     expect(await call("coldwrite", {})).toContain("不用整理");
     expect(await call("coldwrite", { upTo: "U1" })).toContain("要带 entries");
     expect(await call("coldwrite", { upTo: "U1", entries: [] })).toBe("这次没写。");
