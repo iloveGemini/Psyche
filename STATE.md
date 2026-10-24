@@ -21,7 +21,7 @@
 - Soma：`rooms.ts`、`rooms-round.ts`（Joy 说话只问醒着的，`urgent` 叫醒房间所有人）、`rooms-flow.ts`（在线状态查 `/v1/house`）、MCP `rooms`（list / read / go / open / say_in_room）、`<now>` 带 `room` 状态。
 - Psyche：`room.entered`（`POST /v1/room`，presence 带 room）、住户间信件支持 `urgent` 标头。
 - 迁移：`Soma/scripts/rooms-p3.mjs`（Soma 101 → 客厅，历史接续）。
-- **待做**：P3b share 工具。P0–P2（10-19）待补录。
+- ✅ **P3b share 工具已落地（10-24）**：Soma MCP 挂载 `share`（支持正文 Markdown、读取文件 path、发送到当前房间/包间或单聊）、聊天时间线与房间均支持折叠卡片与纸张阅读；Joy 展开/阅读后自动通过 `/api/agent/given` 标记已读、打入住户系统 notice，并报送 `POST /v1/house/percept`（`sensor: "given", subject: "read"`）进住户记忆库，同时住户 `<now>` 追踪「我最近给她的：...」。P0–P2（10-19）待补录。
 
 **近期关键规则定案（10-20 ~ 10-23）**：
 - **系统提示词顺序（10-20 Joy 定）**：自述在前、机制段在后（`composePrompt` / `filePrompt`）；机制段改第一人称（「# 我的记忆」，加「是系统的，我改不了」）。下一段换段起生效（修改机制现读，顺序调整需重启 Psyche）。
@@ -54,7 +54,7 @@
 
 ## 3. 未完成与下一步
 
-1. **P3b 工具支持**：房间内 `share` 工具及文件共享交互。
+1. **P3b 工具支持**：✅ 10-24 已上线（Soma MCP `share`、`ShareCard` 折叠与纸张阅读、已读追踪 `given.json`、notice 唤醒与 Psyche percept 联动）。
 2. **Mac 感知**（m8.md §6.5）：✅ 10-23 上线：launchd `com.joy.psyche-mac`（`feed.ts` → 正式 7470，token 用 `~/.soma/tokens/claude.token`，日志 `~/.psyche/logs/mac-feed.log`）；开关在 dashboard（10-23 Joy 只给 roy 开了 desk / app / screen）。`look_at_screen` 等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
 3. **没说出口的话**（m1.md §3.1）：✅ 10-23 上线（正式 Psyche 先重启，Soma master `152e59d` build 重启）。下一步看他们用不用、怎么用，不教。
 4. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
