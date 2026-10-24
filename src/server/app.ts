@@ -40,7 +40,7 @@ import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, 
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { analyzeTrack } from "../perception/features.ts";
 import { NoticeError, writeNotice } from "../perception/env.ts";
-import { deliverBody } from "../perception/body.ts";
+import { deliverBody, quotaLine } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
 import { deliverOutside } from "../perception/outside.ts";
 import { expandSpeech } from "../archive/speech.ts";
@@ -410,9 +410,15 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const notices = noticeMail(store, here, facts);
     const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
     const mail = mailStateLines(store, here, facts, notices);
+    // 订阅额度（走订阅的身体，Soma 带来）：此刻的数每轮一行，跨档提醒另在「身上」里（m8.md §六.1）
+    const quota = {
+      ...(num(q.q5h) !== undefined ? { fiveHour: { pct: num(q.q5h)!, resetsAt: q.q5hReset || null } } : {}),
+      ...(num(q.q7d) !== undefined ? { sevenDay: { pct: num(q.q7d)!, resetsAt: q.q7dReset || null } } : {}),
+    };
     const extra = [
       pendingSelfLine(store, promptsDir),
       ...mail.lines,
+      delivers(store, "body") ? quotaLine(store, quota) : null,
       scheduleLine(store, { held: mail.held }),
       threadsLine(store),
       noteSheetLine(store, session),
@@ -429,10 +435,6 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     // 感知设置（m8.md §6.4）：整路设了不递的不递；presence / 外头来的按人分，在各自的 deliver 里滤
     const heard = delivers(store, "sound") ? await deliverSound(store, sound, session).catch(() => null) : null;
     // 内感受（m8.md §六.1）：上下文多满由 Soma 带来
-    const quota = {
-      ...(num(q.q5h) !== undefined ? { fiveHour: { pct: num(q.q5h)!, resetsAt: q.q5hReset || null } } : {}),
-      ...(num(q.q7d) !== undefined ? { sevenDay: { pct: num(q.q7d)!, resetsAt: q.q7dReset || null } } : {}),
-    };
     const body = !delivers(store, "body") ? null : deliverBody(store, session, { ctx: num(q.ctx), wrapAt: num(q.wrapAt), ...(quota.fiveHour || quota.sevenDay ? { quota } : {}) });
     const things = !delivers(store, "files")
       ? null

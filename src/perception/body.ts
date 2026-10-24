@@ -73,6 +73,17 @@ function models(store: EventStore, session: string | undefined): { here?: string
   return { here, before };
 }
 
+/**
+ * 额度常显（10-24 Joy）：跨档的提醒照旧在「身上」里说一次；另外每轮在 <now> 的事实里给一行此刻的数，
+ * 只有 Soma 带来了额度（走订阅的身体）才有。不然他只能拿记着的旧数说话（10-21 的 84%，两天后还在报）。
+ */
+export function quotaLine(store: EventStore, quota: BodyInput["quota"]): string | null {
+  const parts = (["fiveHour", "sevenDay"] as const)
+    .map((k) => (quota?.[k] ? `${QUOTA_NAME[k]} ${Math.round(quota[k]!.pct)}%${resetLabel(quota[k]!.resetsAt, store.timeZone)}` : ""))
+    .filter(Boolean);
+  return parts.length ? `订阅额度（全屋共用）：${parts.join(" · ")}` : null;
+}
+
 export function deliverBody(store: EventStore, session: string | undefined, input: BodyInput): string | null {
   const now = store.now();
   const prev = lastBody(store, session);
