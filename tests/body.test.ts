@@ -102,3 +102,14 @@ test("订阅额度：跨档才说，跟窗口走、换一段不重报，窗口�
   // 本周的另算
   expect(deliverBody(store, "s2", { quota: { sevenDay: { pct: 80, resetsAt: "2026-10-20T00:00:00Z" } } })).toContain("本周用了 80%，10-20 08:00 重置");
 });
+
+test("订阅额度常显（10-24）：Soma 带来了就每轮一行此刻的数；没带（不走订阅的身体）就没有", async () => {
+  const { store, p } = setup();
+  store.setSituation({ harness: "soma", session: "s1" }, "soma");
+  const app = createApp({ store, projections: p });
+  const now = async (q: string) => ((await (await app.request(`/v1/now?session=s1${q}`)).json()) as { text: string }).text;
+  const q = "&q5h=32.4&q5hReset=2026-10-16T15:00:00Z&q7d=61";
+  expect(await now(q)).toContain("订阅额度（全屋共用）：5 小时窗口 32%，10-16 23:00 重置 · 本周 61%");
+  expect(await now(q)).toContain("订阅额度（全屋共用）：5 小时窗口 32%");
+  expect(await now("")).not.toContain("订阅额度");
+});
