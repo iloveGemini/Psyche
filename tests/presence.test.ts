@@ -1,6 +1,6 @@
 /**
  * 全屋有谁的确定性考卷（notes/plan/m8.md §七、M8a；位置与感知范围 houses-p1.md §四 §五）：在线 / 忙 / 闲 / 睡着 / 离线怎么算、
- * 只记变化、记进别人的库、<now> 递什么、递到的才是经历、look 不重报、个签、Joy 有没有动静、按位置过滤。只考系统，不跑模型。
+ * 只记变化、记进别人的库、<now> 递什么、递到的不进经历（look 的才算）、look 不重报、个签、Joy 有没有动静、按位置过滤。只考系统，不跑模型。
  */
 import { describe, expect, test } from "bun:test";
 import { EventStore } from "../src/store/events.ts";
@@ -331,15 +331,25 @@ describe("递：<now> 与经历", () => {
     expect(text).toMatch(/- Joy：在，没动静（18:21 起变了 2 次）/);
   });
 
-  test("递到的才是经历：percept 不进经历，noticed 进；挂在会话上", () => {
+  test("递到不等于留意：percept 和递送都不进经历，递送记系统日志", () => {
     const h = setup();
     h.sit(h.a1, "s1");
     h.her(h.a1, "在吗");
     h.tick();
-    deliverPresence(h.a1, "s1");
+    expect(deliverPresence(h.a1, "s1")).toBe("全屋：\n- a2：离线\n- Joy：在，有动静");
     const lines = readExperience(h.a1.db, {}).map((l) => l.text);
-    expect(lines.filter((l) => l.includes("a2"))).toEqual(["全屋：\n- a2：离线\n- Joy：在，有动静"]);
-    expect(lines.some((l) => l.includes("感知"))).toBe(false);
+    expect(lines.some((l) => l.includes("a2") || l.includes("感知"))).toBe(false);
+    expect(h.a1.readSyslog({ kind: "percept.delivered" }).map((l) => (l.detail as { session?: string }).session)).toEqual(["s1"]);
+  });
+
+  test("10-24 之前递送写下的 percept.noticed：经历里不显示，照旧当游标", () => {
+    const h = setup();
+    h.sit(h.a1, "s1");
+    h.her(h.a1, "在吗");
+    h.tick();
+    h.a1.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: null, payload: { sensor: "presence", refs: [], text: "全屋：旧递送", session: "s1" } });
+    expect(deliverPresence(h.a1, "s1")).toBeNull(); // 旧条之后没变化
+    expect(readExperience(h.a1.db, {}).map((l) => l.text).some((l) => l.includes("旧递送"))).toBe(false);
   });
 
   test("look：给全貌、算经历、之后 <now> 不重报", () => {

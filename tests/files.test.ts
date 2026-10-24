@@ -82,7 +82,7 @@ test("第一圈只建快照；谁动的说得准才说；自己动的不报给�
   expect(h.percepts(h.a1).some((p) => p.subject === "home/笔记.md")).toBe(false);
 });
 
-test("递：压成一行行，说谁动的或不知道；递到的才进经历", () => {
+test("递：压成一行行，说谁动的或不知道；递到的不进经历", () => {
   const h = setup();
   h.a1.setSituation({ harness: "soma", session: "s1" }, "soma");
   h.tick();
@@ -109,8 +109,7 @@ test("递：压成一行行，说谁动的或不知道；递到的才进经历",
   h.clock.t = Date.parse("2026-10-17T08:00:00+08:00");
   expect(deliverFiles(h.a1, "s3")).toBe("全屋的东西：\n- commons/projects/x/STATE.md：被改过，a2动的（10-16 21:01）");
   const lines = readExperience(h.a1.db, {}).map((l) => l.text);
-  expect(lines).toContain(text);
-  expect(lines.some((l) => l.includes("感知"))).toBe(false);
+  expect(lines.some((l) => l.includes("全屋的东西") || l.includes("感知"))).toBe(false);
 });
 
 test("commons 用 git：建库时把已有的提交一次；之后按谁动的分组提交，作者是住户（取了名用名字），认不出写「没认出」", () => {

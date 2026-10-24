@@ -7,9 +7,10 @@
  * - 订阅额度（10-17）：Soma 带来 claude.ai 登录的 5 小时 / 7 天窗口用了多少（只有走订阅的身体有）。50 / 75 / 90% 跨档才说；
  *   跟会话无关、跟窗口走：同一个窗口（重置时刻相同）说过的档不再说，换了窗口从头算。全屋同一个登录的人共用。
  * 唤醒额度、还没写进记忆的条数，<now> 别处已有，不重复。
- * 递一次写 percept.noticed（sensor = body），它的经历就是那几行；档位记在 payload 里，下一轮按它判跨没跨档。
+ * 递一次记系统日志 percept.delivered（sensor = body），不进经历（m8.md §五）；档位记在里面，下一轮按它判跨没跨档。
  */
 import type { EventStore } from "../store/events.ts";
+import { deliveries, lastDelivery, recordDelivery } from "./delivered.ts";
 
 export interface BodyInput {
   /** 已用 token */
@@ -38,9 +39,9 @@ const QUOTA_NAME = { fiveHour: "5 小时窗口", sevenDay: "本周" } as const;
 
 /** 额度上次说到哪：跟窗口走，不跟会话（换一段不重报） */
 function lastQuota(store: EventStore): Levels["quota"] {
-  for (const e of store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).reverse()) {
-    const p = e.payload as { sensor?: string; levels?: Levels };
-    if (p.sensor === "body" && p.levels?.quota) return p.levels.quota;
+  for (const d of deliveries(store, "body").reverse()) {
+    const levels = d.levels as Levels | undefined;
+    if (levels?.quota) return levels.quota;
   }
   return undefined;
 }
@@ -58,12 +59,7 @@ const CTX_BANDS = [0.5, 0.75, 0.9];
 const TOOL_BANDS = [3, 6, 10];
 const band = (x: number, bands: number[]) => bands.filter((b) => x >= b).length;
 
-function lastBody(store: EventStore, session: string | undefined) {
-  return store
-    .list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 })
-    .filter((e) => (e.payload as { sensor?: string; session?: string }).sensor === "body" && (e.payload as { session?: string }).session === session)
-    .at(-1);
-}
+const lastBody = (store: EventStore, session: string | undefined) => lastDelivery(store, "body", session, false);
 
 /** 这段会话和上一段的模型（处境里记的） */
 function models(store: EventStore, session: string | undefined): { here?: string; before?: string } {
@@ -80,7 +76,7 @@ function models(store: EventStore, session: string | undefined): { here?: string
 export function deliverBody(store: EventStore, session: string | undefined, input: BodyInput): string | null {
   const now = store.now();
   const prev = lastBody(store, session);
-  const was = (prev?.payload as { levels?: Levels } | undefined)?.levels ?? { ctx: 0, tools: 0 };
+  const was = (prev?.levels as Levels | undefined) ?? { ctx: 0, tools: 0 };
   const lines: string[] = [];
 
   // 上下文
@@ -135,12 +131,10 @@ export function deliverBody(store: EventStore, session: string | undefined, inpu
   // 档位回落也要记下（下次再涨过去才会再说），但不递话
   if (!lines.length) {
     if ((prev && (levels.ctx < was.ctx || levels.tools < was.tools)) || quotaUp)
-      store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "body", refs: [], text: "", levels, ...(session ? { session } : {}) } });
+      recordDelivery(store, "body", session, { refs: [], text: "", levels });
     return null;
   }
   const text = ["身上：", ...lines.map((l) => `- ${l}`)].join("\n");
-  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "body", refs: [], text, levels, ...(session ? { session } : {}) } });
+  recordDelivery(store, "body", session, { refs: [], text, levels });
   return text;
 }
-
-const sitOf = (store: EventStore, session: string | undefined) => (session ? store.situationOfSession(session, store.now()) : null) ?? undefined;

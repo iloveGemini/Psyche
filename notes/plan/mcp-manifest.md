@@ -48,7 +48,7 @@ Psyche/
 
 | 值 | 类 | 服务要做的 | 由谁注入 |
 |---|---|---|---|
-| `feed` | **B 工具 + 递** | 有变化时 `POST /v1/house/percept`，`sensor` 必须在 `percepts` 里声明过 | Psyche 汇总进 `<now>`，递一次记 `percept.noticed`，原文进经历 |
+| `feed` | **B 工具 + 递** | 有变化时 `POST /v1/house/percept`，`sensor` 必须在 `percepts` 里声明过 | Psyche 汇总进 `<now>`，递一次记系统日志 `percept.delivered`，不进经历（m8.md §五） |
 | `wake` | **C 工具 + 叫醒** | 给住户写来信，或者上报事件 | Psyche 决定叫不叫醒（作息、勿扰照常管），不由服务直接推线 |
 | `media` | **D 工具 + 媒体** | 工具结果里带图片 / 音频块 | 身体本身的能力；没有这项能力的身体照 `media.fallback` 退回 |
 

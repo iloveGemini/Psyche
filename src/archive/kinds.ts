@@ -31,7 +31,7 @@ export const KINDS: Record<string, KindSpec> = {
   "tool.call": { class: "experience", required: { name: "string", callId: "string" } }, // + args?
   "tool.result": { class: "experience", required: { callId: "string", name: "string", ok: "boolean" } }, // + text? | result?: MaterialRef
   percept: { class: "experience", required: { sensor: "string", value: "any" } }, // + subject?, name?, prev?（m8.md：全屋记下的变化；不进经历，递到才算）
-  // 递到它眼前的感知（m8.md §五）：text 是递出去的原文，它的经历就是这几行；looked = 它自己 look 的
+  // 它自己 look 看到的（looked: true，m8.md §五）；10-24 之前递送也写这一条（没有 looked，经历里不显示）。递送现在记系统日志 percept.delivered
   "percept.noticed": { class: "experience", required: { refs: "array", text: "string" } }, // + session?, looked?
   // 来信（m6.md §一）：经通道口子写，不挂处境；没翻开前经历里不给正文
   "mail.in": { class: "experience", required: { from: "string", text: "string", via: "string" } }, // + subject?, urgent?, ext?（外部通道的消息 id）

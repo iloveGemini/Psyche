@@ -2,7 +2,7 @@
  * 自己的声音（m8.md §三，M8b）：它为自己放歌、建歌单、听；和别人分一只耳机。
  *
  * - 播放器是虚的（§3.4）：放 = 一条 `played { tracks, startAt }`，此刻放到哪现算；只有有人分耳机时才真的出声。
- * - 听到的不另存 percept：从 played + 歌词 + 特征确定地算；递一次写 percept.noticed（sensor = sound），它的经历就是那几行。
+ * - 听到的不另存 percept：从 played + 歌词 + 特征确定地算；递一次记系统日志 percept.delivered（sensor = sound），不进经历（m8.md §五）；look 听一下记 looked 的 percept.noticed，那是它的经历。
  * - 歌单以 Psyche 为准（`playlist.changed`）；它的"喜欢"是它自己一个叫「喜欢的」的歌单。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
@@ -11,6 +11,7 @@ import { clockOf } from "../core/time.ts";
 import { parseLrc, type MusicSource, type Track } from "./netease.ts";
 import { describeSection, featuresOf, summarize, type Features } from "./features.ts";
 import { resolveSession } from "../catalog/hotwrite.ts";
+import { lastDelivery, recordDelivery } from "./delivered.ts";
 
 export class SoundError extends Error {}
 export const LIKED = "喜欢的";
@@ -205,8 +206,7 @@ export async function deliverSound(store: EventStore, deps: SoundDeps, session: 
   const tz = store.timeZone;
   // 递到哪了：本会话递过就从那次算；新会话（含睡着、收尾那段）接任何会话最后递到的那次——递过的不再翻；
   // 从没递过：只看最近 6 小时（同全屋的东西）
-  const noticed = store.list({ kinds: ["percept.noticed"], fonds: "", limit: 100_000 }).filter((e) => (e.payload as { sensor?: string }).sensor === "sound");
-  const last = noticed.filter((e) => (e.payload as { session?: string }).session === session).at(-1) ?? noticed.at(-1);
+  const last = lastDelivery(store, "sound", session);
   const since = last?.at;
   const sinceId = last?.id;
   const floor = last ? 0 : now - 6 * 3_600_000;
@@ -275,8 +275,12 @@ export async function deliverSound(store: EventStore, deps: SoundDeps, session: 
   // 在放着就每轮都报（声音一直在）；没在放、也没变化就不报
   if (!lines.length) return null;
   const text = [opts.looked ? "听：" : "这段时间听到的：", ...lines.map((l) => `- ${l}`)].join("\n");
+  if (!opts.looked) {
+    recordDelivery(store, "sound", session, { refs: [], text });
+    return text;
+  }
   const situation = (session ? store.situationOfSession(session, now) : null) ?? undefined;
-  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation, payload: { sensor: "sound", refs: [], text, ...(opts.looked ? { looked: true } : {}), ...(session ? { session } : {}) } });
+  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation, payload: { sensor: "sound", refs: [], text, looked: true, ...(session ? { session } : {}) } });
   return text;
 }
 

@@ -40,7 +40,7 @@ export function episodeText(p: { text: string; felt?: string }): string {
 
 export const experienceProjector: Projector = {
   name: "experience",
-  version: 15,
+  version: 16,
   setup(db: Database) {
     // 旧版表没有 session / covered：派生数据，直接丢掉，版本号变了会重放
     const cols = db.query(`PRAGMA table_info(p_experience)`).all() as { name: string }[];

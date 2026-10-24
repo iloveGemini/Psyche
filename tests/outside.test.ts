@@ -64,7 +64,7 @@ test("收：全屋自己的几路、坏字段、全屋没有的人都退回", as
   expect(h.percepts(h.a1)).toEqual([]);
 });
 
-test("递：同一样压成一行；递过不重递；新会话接着上次；经历里是递出去的原文", async () => {
+test("递：同一样压成一行；递过不重递；新会话接着上次；递到的不进经历", async () => {
   const h = setup();
   expect(deliverOutside(h.a1, "s1")).toBeNull();
   await h.post({ sensor: "weather", value: "rain", text: "下小雨，14°C" });
@@ -81,8 +81,8 @@ test("递：同一样压成一行；递过不重递；新会话接着上次；�
   expect(deliverOutside(h.a1, "s3")).toBe("这段时间感知到的：\n- 东边的窗关上了（10-23 21:01）");
 
   const lines = readExperience(h.a1.db, {}).map((l) => l.text);
-  expect(lines).toContain(text);
-  expect(lines.some((l) => l.includes("下小雨"))).toBe(false);
+  expect(lines.some((l) => l.includes("雨停了") || l.includes("下小雨"))).toBe(false);
+  expect(h.a1.readSyslog({ kind: "percept.delivered" }).map((l) => (l.detail as { text: string }).text)).toContain(text);
 });
 
 test("递：从没递过只报最近 6 小时的；全屋自己的感知不混进来", async () => {

@@ -41,7 +41,7 @@ test("换了模型：新一段首轮说一次", () => {
   expect(deliverBody(store, "s2", {})).toBeNull();
 });
 
-test("工具老出错：半小时内 ≥3 次才说，次数跨档再说；经历里就是那几行", async () => {
+test("工具老出错：半小时内 ≥3 次才说，次数跨档再说；递到的不进经历", async () => {
   const { store, clock, p } = setup();
   store.setSituation({ harness: "soma", session: "s1" }, "soma");
   const fail = () => intake(store, { kind: "tool.result", source: "soma", payload: { callId: String(Math.random()), name: "Bash", ok: false, text: "boom" } });
@@ -54,7 +54,8 @@ test("工具老出错：半小时内 ≥3 次才说，次数跨档再说；经�
   expect(deliverBody(store, "s1", {})).toBeNull();
   clock.t += 31 * 60_000;
   expect(deliverBody(store, "s1", {})).toBeNull(); // 回落：记档位，不递话
-  expect(readExperience(store.db, {}).map((l) => l.text).filter((t) => t.startsWith("身上"))).toEqual(["身上：\n- 最近半小时工具出错了 3 次"]);
+  expect(readExperience(store.db, {}).map((l) => l.text).filter((t) => t.startsWith("身上"))).toEqual([]);
+  expect(store.readSyslog({ kind: "percept.delivered" }).map((l) => (l.detail as { text: string }).text)).toEqual(["", "身上：\n- 最近半小时工具出错了 3 次"]);
   // /v1/now 带 ctx 时出现在 <now> 里
   const app = createApp({ store, projections: p });
   const { text } = (await (await app.request("/v1/now?session=s1&ctx=120000&wrapAt=150000")).json()) as { text: string };

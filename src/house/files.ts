@@ -7,7 +7,7 @@
  * - 自己动的不报给自己（那是它自己做的事，经历里已有工具调用）。
  * - 谁看得到：home 只有主人看得到（别人的 home 看不到，soma2.md §四）；commons 全屋人人看得到。
  * - 只报路径和怎么变了，不抄内容——想看自己去读。
- * - 递：<now>「全屋的东西」，本会话上次递到之后的；递一次写 percept.noticed（sensor = files）。
+ * - 递：<now>「全屋的东西」，本会话上次递到之后的；递一次记系统日志 percept.delivered（sensor = files），不进经历（m8.md §五）。
  * - commons 用 git：同一圈的变化按谁动的分组提交，作者是那个住户（commons-git.ts）。
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -17,6 +17,7 @@ import { clockOf } from "../core/time.ts";
 import { currentName } from "../self/self.ts";
 import { commitChanges, ensureRepo } from "./commons-git.ts";
 import { records } from "../perception/senses.ts";
+import { lastDelivery, recordDelivery } from "../perception/delivered.ts";
 
 export interface Place {
   /** 显示名：home / commons */
@@ -143,19 +144,9 @@ const CHANGE: Record<Change, string> = { added: "新出现", modified: "被改�
 
 /** <now> 的「全屋的东西」：本会话上次递到之后的变化，同一个文件压成一行（最后的样子 + 次数）；最多 10 行 */
 export function deliverFiles(store: EventStore, session: string | undefined, names: (id: string) => string = (id) => id): string | null {
-  const lastRow =
-    (session
-      ? store.db
-          .query(
-            `SELECT id FROM events WHERE kind = 'percept.noticed' AND fonds = '' AND json_extract(payload, '$.sensor') = 'files' AND json_extract(payload, '$.session') = ? ORDER BY id DESC LIMIT 1`,
-          )
-          .get(session)
-      : null) ??
-    store.db
-      .query(`SELECT id FROM events WHERE kind = 'percept.noticed' AND fonds = '' AND json_extract(payload, '$.sensor') = 'files' ORDER BY id DESC LIMIT 1`)
-      .get();
+  const lastRow = lastDelivery(store, "files", session);
   // 本会话递过就从那次算；新会话接任何会话最后递到的那次（递过的不再翻）；从没递过：只报最近 6 小时的
-  const since = (lastRow as { id: string } | null)?.id ?? "";
+  const since = lastRow?.id ?? "";
   const floor = lastRow ? 0 : store.now() - 6 * 3_600_000;
   const fresh = store
     .list({ kinds: ["percept"], fonds: "", afterId: since || undefined, from: floor || undefined, limit: 100_000 })
@@ -175,7 +166,6 @@ export function deliverFiles(store: EventStore, session: string | undefined, nam
   });
   const more = by.size > 10 ? [`（还有 ${by.size - 10} 个文件也变了）`] : [];
   const text = ["全屋的东西：", ...lines, ...more].join("\n");
-  const situation = (session ? store.situationOfSession(session, store.now()) : null) ?? undefined;
-  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation, payload: { sensor: "files", refs: fresh.map((e) => e.id), text, ...(session ? { session } : {}) } });
+  recordDelivery(store, "files", session, { refs: fresh.map((e) => e.id), text });
   return text;
 }

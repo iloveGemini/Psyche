@@ -111,8 +111,8 @@ describe("递：这段时间听到的", () => {
     const next = (await deliverSound(h.a1, h.deps, "s1"))!;
     expect(next).toBe("这段时间听到的：\n- 放完了：《晴天》周杰伦"); // 单曲放完就停
     expect(await deliverSound(h.a1, h.deps, "s1")).toBeNull();
-    // 经历里就是递出去的那几行
-    expect(readExperience(h.a1.db, {}).map((l) => l.text)).toContain(next);
+    // 递到的不进经历（m8.md §五）
+    expect(readExperience(h.a1.db, {}).map((l) => l.text).some((l) => l.includes("听到的"))).toBe(false);
   });
 
   test("一起听：戴上 a2 的耳机后听到的是 a2 的；a2 那边知道有人戴上 / 摘下", async () => {

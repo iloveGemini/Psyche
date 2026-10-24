@@ -56,7 +56,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
       // 10-18 起 threads 带 op；开卷 / 记一笔 / 合卷本身就是 thread.* 事件，调用不再抄一遍
       if (/^mcp__psyche__threads$/.test(p.name)) return !p.args?.op || p.args.op === "list" ? "我看了看还开着的事" : null;
       if (/^mcp__psyche__(open|note|close)_thread$/.test(p.name)) return null;
-      // 看到的、挂上的个签本身就是 percept.noticed / mood.set
+      // look 看到的、挂上的个签本身就是 percept.noticed（looked）/ mood.set
       if (/^mcp__psyche__(look|set_mood|player|play|stop|playlist|listen|listen_with|notice)$/.test(p.name)) return null;
       // 日记全文已在 diary 事件里（资料库）
       if (/^mcp__psyche__write_diary$/.test(p.name)) return "我写了一篇日记";
@@ -80,10 +80,10 @@ export function renderExperience(ev: PsycheEvent): string | null {
       if (/(^|__)hotwrite$/.test(p.name) && p.ok) return null;
       return `${p.name} ${p.ok ? "返回" : "出错"}：${typeof p.text === "string" ? cut(p.text, 300) : `${p.size ?? "?"} 字${ref(p.result)}`}`;
     case "percept":
-      return null; // 全屋记下的变化不等于它经历过的；递到眼前的在 percept.noticed 里（m8.md §五）
+      return null; // 全屋记下的变化不等于它经历过的（m8.md）
     case "percept.noticed":
-      if (!p.text) return null; // 只记档位回落、没递话的那种
-      return p.looked ? `（我看了看）${p.text}` : p.text;
+      // 递到不等于留意（m8.md §五，10-24）：只有它自己 look 的算经历；10-24 之前递送写下的旧条不显示
+      return p.looked && p.text ? `（我看了看）${p.text}` : null;
     case "played": {
       const ts = p.tracks as { title: string; artist: string }[];
       return p.playlist ? `我放了歌单「${p.playlist}」（${ts.length} 首，从《${ts[0]?.title}》开始）` : `我放了《${ts[0]?.title}》${ts[0]?.artist ?? ""}`;
@@ -100,7 +100,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
       return `我摘下了 ${p.host} 的耳机`;
     case "ear.joined":
     case "ear.left":
-      return null; // 递到时在 percept.noticed 里
+      return null; // 递到时在 <now> 里，一次性的
     case "notice":
       return `我注意到${p.about && p.about !== "self" ? `（关于 ${p.about}）` : ""}：${p.text}`;
     case "mood.set":

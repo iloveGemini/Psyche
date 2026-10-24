@@ -2,13 +2,14 @@
  * 外头来的事实（m8.md §6.3）：地方（Soma / Roxy）收进来的外界读数，存和递在这里。
  *
  * - 记：`POST /v1/house/percept`，每个收件人库里一条 `percept`（source = place）；同一样和上一条读数相同就不记。
- * - 递：<now>「这段时间感知到的」，本会话上次递到之后的，同一样压成一行；递一次写 percept.noticed（sensor = outside）。
+ * - 递：<now>「这段时间感知到的」，本会话上次递到之后的，同一样压成一行；递一次记系统日志 percept.delivered（sensor = outside），不进经历（m8.md §五）。
  * - 全屋自己的几路（presence / files / body / sound）不从这里进，免得被冒充。
  * - Joy 那边的（joy.mac）要她给这个人开放了才记（设置 mac，m8.md §6.5）；没开放的报 ungranted。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { clockOf } from "../core/time.ts";
 import { delivers, records } from "./senses.ts";
+import { lastDelivery, recordDelivery } from "./delivered.ts";
 import { getSettings } from "../heartbeat/schedule.ts";
 
 export class PerceptError extends Error {}
@@ -83,9 +84,7 @@ export function recordPercept(residents: { id: string; store: EventStore }[], bo
 
 /** <now> 的「这段时间感知到的」：本会话上次递到之后的，同一样压成一行（最后的样子 + 次数）；最多 10 行 */
 export function deliverOutside(store: EventStore, session: string | undefined): string | null {
-  const last = (sql: string, ...args: string[]) => store.db.query(sql).get(...args) as { id: string } | null;
-  const base = `SELECT id FROM events WHERE kind = 'percept.noticed' AND fonds = '' AND json_extract(payload, '$.sensor') = 'outside'`;
-  const lastRow = (session ? last(`${base} AND json_extract(payload, '$.session') = ? ORDER BY id DESC LIMIT 1`, session) : null) ?? last(`${base} ORDER BY id DESC LIMIT 1`);
+  const lastRow = lastDelivery(store, "outside", session);
   // 同全屋的东西（§6.2）：本会话递过就从那次算；新会话接最后递到的那次；从没递过只报最近 6 小时的
   const floor = lastRow ? 0 : store.now() - 6 * 3_600_000;
   const fresh = outsideOf(store).filter((e) => {
@@ -105,7 +104,6 @@ export function deliverOutside(store: EventStore, session: string | undefined): 
   });
   const more = by.size > MAX_LINES ? [`（还有 ${by.size - MAX_LINES} 样也变了）`] : [];
   const text = ["这段时间感知到的：", ...lines, ...more].join("\n");
-  const situation = (session ? store.situationOfSession(session, store.now()) : null) ?? undefined;
-  store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation, payload: { sensor: "outside", refs: fresh.map((e) => e.id), text, ...(session ? { session } : {}) } });
+  recordDelivery(store, "outside", session, { refs: fresh.map((e) => e.id), text });
   return text;
 }
