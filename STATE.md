@@ -59,7 +59,8 @@
 2. **Mac 感知**（m8.md §6.5）：✅ 10-23 上线：launchd `com.joy.psyche-mac`（`feed.ts` → 正式 7470，token 用 `~/.soma/tokens/claude.token`，日志 `~/.psyche/logs/mac-feed.log`）；开关在 dashboard（10-23 Joy 只给 roy 开了 desk / app / screen）。`look_at_screen` 等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
 3. **没说出口的话**（m1.md §3.1）：✅ 10-23 上线（正式 Psyche 先重启，Soma master `152e59d` build 重启）。下一步看他们用不用、怎么用，不教。
 4. **睡着的活连不上 API 时空跑**（10-24 查 a1）：03:16–07:57 补写 / 整理按退避重试 12 次，每次 Soma 那边 `connection_error`（SDK 报 `is_error` + `subtype: success`，账本记成 `error: "success"`），0 产出却留下 woke / slept / 处境各一组。未定是否在身体连不上时跳过重试、或不记这组。
-5. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
+5. **痕迹与时间感**（10-24 设计稿 `notes/design/traces.md`，待 Joy 定 §六）：回想出口的时刻按远近给时段 / 日期，精确时刻只来自 notice / look / detail；定了再出契约和考卷。
+6. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 5. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
 6. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：第一个服务（候选影音室）、percept 的 `block` 递法、Soma / Roxy 读 manifest 挂服务；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
 7. **记忆与检索边界调优**：

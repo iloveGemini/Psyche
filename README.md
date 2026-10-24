@@ -20,6 +20,7 @@
 5. [编目：热写与梦](notes/design/catalog.md) —— 显式归它写、隐式归系统算；召回 = 还原处境（契约 [m1](notes/plan/m1.md)）
 6. [阅览室](notes/design/reading-room.md) —— 认知 = 条件 → 结果；镜子、经验；规律该多当真它看证据自己推（契约 [m2](notes/plan/m2.md)）
    - [留意与关系](notes/design/attention.md) —— 关注什么由它定，系统只负责不让它忘了自己想看的
+   - [痕迹与时间感](notes/design/traces.md) —— 内容有痕迹、自然进经历；几点几分没痕迹，不留意回想时只给大概（设计稿，待定）
 7. [联想](notes/design/association.md) —— 隐式记忆的家，只管浮现：激活度 + 处境调制；FTS5 + 向量检索（契约 [m3](notes/plan/m3.md)）
 8. [自我与出生](notes/design/self.md) —— Agent 唯一能直接写的地方：自述、作息计划、线索卷（契约 [m4](notes/plan/m4.md)、[m7](notes/plan/m7.md)）
 9. [组装器](notes/design/assembler.md) —— 它此刻看得见什么：`<now>` 与 `<continuity>` 种子装配
