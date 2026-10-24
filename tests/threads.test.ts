@@ -148,3 +148,51 @@ test("thread.* 不走上报口", () => {
   const h = setup();
   expect(() => intake(h.store, { kind: "thread.opened", source: "soma", payload: { type: "matter", title: "x" } })).toThrow("口子");
 });
+
+describe("活动卷（m7.md §六）", () => {
+  test("with 的收与拒；按 type 筛", async () => {
+    const h = setup();
+    const a = await h.ok("/v1/threads", { type: "activity", title: "看《星际穿越》", with: ["Joy", " a2 "], note: "看到米勒星球" });
+    await h.ok("/v1/threads", { type: "matter", title: "等猫的结果" });
+    const bad: [unknown, string][] = [
+      [{ type: "matter", title: "x", with: ["Joy"] }, "with 只给 activity"],
+      [{ type: "activity", title: "x", with: [] }, "with 应为"],
+      [{ type: "activity", title: "x", with: "Joy" }, "with 应为"],
+      [{ type: "activity", title: "x", with: [" "] }, "with 应为"],
+    ];
+    for (const [body, why] of bad) expect((await h.post("/v1/threads", body)).json.error).toContain(why);
+    const acts = (await h.get("/v1/threads?type=activity")).open;
+    expect(acts.map((t: any) => [t.archiveNo, t.title, t.with])).toEqual([[a.archiveNo, "看《星际穿越》", ["Joy", "a2"]]]);
+    expect((await h.get("/v1/threads?type=promise,matter")).open.map((t: any) => t.title)).toEqual(["等猫的结果"]);
+    expect((await h.get("/v1/threads")).open).toHaveLength(2);
+  });
+
+  test("不进 <now> 那一行、不进种子", async () => {
+    const h = setup();
+    h.her("在吗");
+    await h.ok("/v1/threads", { type: "activity", title: "跑团《雾港》" });
+    expect(await h.now()).not.toContain("还开着的事");
+    expect(renderContinuity(h.store) ?? "").not.toContain("还开着的事");
+    await h.ok("/v1/threads", { type: "matter", title: "等猫的结果" });
+    expect(await h.now()).toContain("还开着的事：1 件；");
+    expect(renderContinuity(h.store)!).not.toContain("雾港");
+  });
+
+  test("经历里的痕：开卷带同伴，合上换说法；合上的照旧不能再记", async () => {
+    const h = setup();
+    const a = await h.ok("/v1/threads", { type: "activity", title: "看《星际穿越》", with: ["Joy"], note: "看了一半" });
+    await h.ok("/v1/threads/note", { target: a.archiveNo, text: "看完后半截" });
+    await h.ok("/v1/threads/close", { target: a.archiveNo, how: "done", why: "片尾那段她哭了" });
+    const texts = readExperience(h.store.db, {}).map((l) => l.text);
+    expect(texts).toContain("我开了一卷活动（和 Joy）：看《星际穿越》——看了一半");
+    expect(texts).toContain("我在「看《星际穿越》」上记了一笔：看完后半截");
+    expect(texts).toContain("我合上了「看《星际穿越》」（结束了）：片尾那段她哭了");
+    expect((await h.post("/v1/threads/note", { target: a.archiveNo, text: "二刷" })).json.error).toContain("开新卷");
+  });
+});
+
+test("翻活动卷的工具调用留一行", () => {
+  const h = setup();
+  intake(h.store, { kind: "tool.call", source: "soma", payload: { name: "mcp__psyche__threads", callId: "c1", args: { op: "list", type: "activity" } } });
+  expect(readExperience(h.store.db, {}).map((l) => l.text)).toEqual(["我翻了翻活动卷"]);
+});

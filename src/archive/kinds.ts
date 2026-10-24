@@ -50,9 +50,9 @@ export const KINDS: Record<string, KindSpec> = {
   // 梗概（10-16）：天 / 周 / 月，它睡着时自己写（catalog/gist.ts）
   gist: { class: "self", required: { span: "string", key: "string", text: "string" } },
   // 还开着的事（m7.md）：它开卷、记碎片、合卷；noted / closed 的 title 由系统抄上（经历模板看不到开卷那条）
-  "thread.opened": { class: "self", required: { type: "string", title: "string" }, rels: ["evidence"] }, // + to?, note?
+  "thread.opened": { class: "self", required: { type: "string", title: "string" }, rels: ["evidence"] }, // + to?, with?（activity）, note?
   "thread.noted": { class: "self", required: { target: "string", title: "string", text: "string" }, rels: ["evidence"] },
-  "thread.closed": { class: "self", required: { target: "string", title: "string", how: "string", why: "string" }, rels: ["evidence"] },
+  "thread.closed": { class: "self", required: { target: "string", title: "string", how: "string", why: "string" }, rels: ["evidence"] }, // + type?（activity 才抄）
   // 心情个签（m8.md §二）：本人挂，空串 = 清空
   "mood.set": { class: "self", required: { text: "string" } },
   // 换房间（P3，10-19；houses-p1.md §四）：在哪间由 Soma 管，这里记他走的这一步。老记录 room 空串 = 回了自己房间

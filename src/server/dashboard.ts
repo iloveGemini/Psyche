@@ -1245,7 +1245,7 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
               \${openList.map(x => \`
                 <div class="shelf-card" style="margin-bottom:0;">
                   <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <strong>[\${x.type === 'promise' ? '答应 ' + esc(x.to) : '挂着的事'}] \${esc(x.title)}</strong>
+                    <strong>[\${x.type === 'promise' ? '答应 ' + esc(x.to) : x.type === 'activity' ? '活动' : '挂着的事'}] \${esc(x.title)}</strong>
                     <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted);">\${linkifyTags(x.archiveNo)}</span>
                   </div>
                   \${(x.notes || []).map(n => \`<div style="font-size:12.5px; color:var(--muted); margin-top:4px;">• \${fmtTime(n.at)}：\${esc(n.text)}</div>\`).join('')}
@@ -1261,7 +1261,7 @@ export function renderDashboardHtml(deps: { agentTokens?: Record<string, string>
                 \${closedList.slice(0, 20).map(x => \`
                   <div class="shelf-card" style="margin-bottom:0; opacity:0.8;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                      <span style="font-size:13px; text-decoration:line-through; color:var(--muted);">[\${x.type === 'promise' ? '答应 ' + esc(x.to) : '挂着的事'}] \${esc(x.title)}</span>
+                      <span style="font-size:13px; text-decoration:line-through; color:var(--muted);">[\${x.type === 'promise' ? '答应 ' + esc(x.to) : x.type === 'activity' ? '活动' : '挂着的事'}] \${esc(x.title)}</span>
                       <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--muted);">\${linkifyTags(x.archiveNo)}</span>
                     </div>
                     \${(x.notes || []).map(n => \`<div style="font-size:12px; color:var(--muted); margin-top:2px;">• \${fmtTime(n.at)}：\${esc(n.text)}</div>\`).join('')}

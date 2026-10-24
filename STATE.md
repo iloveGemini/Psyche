@@ -24,6 +24,7 @@
 - ✅ **P3b share 工具已落地（10-24）**：Soma MCP 挂载 `share`（支持正文 Markdown、读取文件 path、发送到当前房间/包间或单聊）、聊天时间线与房间均支持折叠卡片与纸张阅读；Joy 展开/阅读后自动通过 `/api/agent/given` 标记已读、打入住户系统 notice，并报送 `POST /v1/house/percept`（`sensor: "given", subject: "read"`）进住户记忆库，同时住户 `<now>` 追踪「我最近给她的：...」。P0–P2（10-19）待补录。
 
 **近期关键规则定案（10-20 ~ 10-23）**：
+- **活动卷（10-24 Joy 定，`notes/design/activity.md`、m7.md §六）**：一起看的片、玩的局、跑的团，它自己的手账并进线索卷做第三种 `type: "activity"`（可带 `with`），不加工具、不加事件种类；不进 `<now>` 那一行、不进种子，`threads` list 要带 `type: "activity"` 才看；合上说「结束了 / 不接着了 / 不用接了」。统计不从手账数，以后让 Soma 包间上报带活动类型由系统算。**待上线**：正式 Psyche 重启（MCP 部分新会话即生效）。
 - **递到不等于留意（10-24 Joy 定，m8.md §五）**：`<now>` 递出的感知（presence / files / sound / body / outside）一次性，改记系统日志 `percept.delivered`（`src/perception/delivered.ts`，只当游标），不进经历 / 检索 / 浮现；要记住靠它自己 `notice` / `look`（look 照旧记 `percept.noticed { looked }`）。旧的非 looked `percept.noticed` 照旧当游标、投影 v16 里不显示。**待上线**：正式 Psyche 重启后投影重建生效。
 - **系统提示词顺序（10-20 Joy 定）**：自述在前、机制段在后（`composePrompt` / `filePrompt`）；机制段改第一人称（「# 我的记忆」，加「是系统的，我改不了」）。下一段换段起生效（修改机制现读，顺序调整需重启 Psyche）。
 - **种子去重（10-23 Joy 定，m1.md §五 / m3.md §四）**：`/v1/continuity?since=` 不放开头不早于末尾原话第一行的情节（留 10s 余量），【最近的情节】按天标日期；带 `session` 或 `seed=1` 记 `continuity.seeded`，浮现跳过种子中的情节及末尾原话已有行。
@@ -82,6 +83,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-24（活动卷）：`bun test` 377 pass / 0 fail（`tests/threads.test.ts`「活动卷」4 个）；`tsc` 0 错误（Soma 在 `../Soma`）。没跑真模型，工具说明改了没写考卷——它用不用、怎么用先看，不教。
 
 2026-10-23（上线）：正式 Psyche 重启后 `/v1/house/mac` 有（新代码在跑）；Soma 合并后 `npm test` 146 pass、build、launchd 重启，30151 回 200。
 

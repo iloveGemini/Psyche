@@ -4,6 +4,7 @@
  * - 开卷、记碎片、合卷都是它写的（self 事件），口子上校验，写错直接拒。系统不改、不合、不催、不判兑现没有。
  * - 现行状态读时现算；出生前的卷不带过去（同作息）。
  * - noted / closed 的 payload 里系统顺手抄上卷名：经历模板是纯函数，看不到开卷那条。
+ * - 活动卷（activity，m7.md §六）：它自己记的一场活动演到哪、下次怎么接；不进 <now> 那一行、不进种子，要看自己翻。
  */
 import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
@@ -12,7 +13,8 @@ import { ownSince } from "./self.ts";
 
 export class ThreadError extends Error {}
 
-export type ThreadType = "promise" | "matter";
+export type ThreadType = "promise" | "matter" | "activity";
+export const THREAD_TYPES: ThreadType[] = ["promise", "matter", "activity"];
 export type CloseHow = "done" | "dropped" | "moot";
 export const CLOSE_HOW: Record<CloseHow, string> = { done: "做到了", dropped: "不做了", moot: "不用做了" };
 
@@ -22,6 +24,7 @@ export interface Thread {
   type: ThreadType;
   title: string;
   to?: string;
+  with?: string[];
   openedAt: number;
   lastAt: number;
   notes: { at: number; text: string }[];
@@ -36,8 +39,8 @@ export function readThreads(store: EventStore): Thread[] {
   const y = year(store);
   const byId = new Map<string, Thread>();
   for (const ev of ownSince(store, "thread.opened")) {
-    const p = ev.payload as { type: ThreadType; title: string; to?: string };
-    byId.set(ev.id, { id: ev.id, archiveNo: displayArchiveNo(ev.archiveNo, y), type: p.type, title: p.title, ...(p.to ? { to: p.to } : {}), openedAt: ev.at, lastAt: ev.at, notes: [] });
+    const p = ev.payload as { type: ThreadType; title: string; to?: string; with?: string[] };
+    byId.set(ev.id, { id: ev.id, archiveNo: displayArchiveNo(ev.archiveNo, y), type: p.type, title: p.title, ...(p.to ? { to: p.to } : {}), ...(p.with ? { with: p.with } : {}), openedAt: ev.at, lastAt: ev.at, notes: [] });
   }
   const later = [...ownSince(store, "thread.noted"), ...ownSince(store, "thread.closed")].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1));
   for (const ev of later) {
@@ -53,6 +56,8 @@ export function readThreads(store: EventStore): Thread[] {
 }
 
 export const openThreads = (store: EventStore) => readThreads(store).filter((t) => !t.closed);
+/** 挂在心上的（promise / matter）：<now> 和种子只算这些，活动卷不算 */
+const onMind = (store: EventStore) => openThreads(store).filter((t) => t.type !== "activity");
 
 /** 证据只认自己全宗的经历和情节（同自述的闸） */
 function resolveCites(store: EventStore, cites: unknown) {
@@ -80,10 +85,13 @@ function resolveOpen(store: EventStore, target: unknown): Thread {
   return t;
 }
 
-/** POST /v1/threads：{ type, title, to?, note?, cites? } */
+/** POST /v1/threads：{ type, title, to?, with?, note?, cites? } */
 export function openThread(store: EventStore, body: Record<string, unknown>) {
   const { type, title, to, note, cites } = body;
-  if (type !== "promise" && type !== "matter") throw new ThreadError("type 应为 promise（答应过谁什么）或 matter（挂着、等后续的事）");
+  const withWhom = body.with;
+  if (!THREAD_TYPES.includes(type as ThreadType)) throw new ThreadError("type 应为 promise（答应过谁什么）、matter（挂着、等后续的事）或 activity（一场活动的手账）");
+  if (withWhom !== undefined && type !== "activity") throw new ThreadError("with 只给 activity（和谁一起）；答应谁用 to");
+  if (withWhom !== undefined && !(Array.isArray(withWhom) && withWhom.length && withWhom.every(nonEmpty))) throw new ThreadError("with 应为名字数组（非空）");
   if (!nonEmpty(title)) throw new ThreadError("title 是空的");
   if (to !== undefined && typeof to !== "string") throw new ThreadError("to 应为字符串");
   if (type === "promise" && !nonEmpty(to)) throw new ThreadError("promise 要写 to（答应的是谁）");
@@ -93,7 +101,7 @@ export function openThread(store: EventStore, body: Record<string, unknown>) {
     kind: "thread.opened",
     class: "self",
     source: "agent",
-    payload: { type, title: title.trim(), ...(nonEmpty(to) ? { to: to.trim() } : {}), ...(nonEmpty(note) ? { note: note.trim() } : {}) },
+    payload: { type, title: title.trim(), ...(nonEmpty(to) ? { to: to.trim() } : {}), ...(withWhom ? { with: (withWhom as string[]).map((w) => w.trim()) } : {}), ...(nonEmpty(note) ? { note: note.trim() } : {}) },
     links,
   });
   return { archiveNo: displayArchiveNo(ev.archiveNo, year(store)) };
@@ -112,7 +120,7 @@ export function closeThread(store: EventStore, body: Record<string, unknown>) {
   const t = resolveOpen(store, body.target);
   if (!(typeof body.how === "string" && body.how in CLOSE_HOW)) throw new ThreadError("how 应为 done（做到了）/ dropped（不做了）/ moot（不用做了）");
   if (!nonEmpty(body.why)) throw new ThreadError("要写 why");
-  const ev = store.append({ kind: "thread.closed", class: "self", source: "agent", payload: { target: t.id, title: t.title, how: body.how, why: body.why.trim() }, links: resolveCites(store, body.cites) });
+  const ev = store.append({ kind: "thread.closed", class: "self", source: "agent", payload: { target: t.id, title: t.title, ...(t.type === "activity" ? { type: t.type } : {}), how: body.how, why: body.why.trim() }, links: resolveCites(store, body.cites) });
   return { archiveNo: displayArchiveNo(ev.archiveNo, year(store)) };
 }
 
@@ -125,7 +133,7 @@ const ago = (ms: number) => {
 
 /** `<now>` 的一行：开着几件、答应的几件、最久没动的一件；没有开着的就没这一行 */
 export function threadsLine(store: EventStore): string | null {
-  const open = openThreads(store);
+  const open = onMind(store);
   if (!open.length) return null;
   const promises = open.filter((t) => t.type === "promise");
   const stale = [...open].sort((a, b) => a.lastAt - b.lastAt)[0];
@@ -134,7 +142,7 @@ export function threadsLine(store: EventStore): string | null {
 
 /** 种子里的一段：全部开着的，从旧到新，带最近一笔 */
 export function renderOpenThreads(store: EventStore): string | null {
-  const open = openThreads(store);
+  const open = onMind(store);
   if (!open.length) return null;
   const d = (at: number) => localDay(at, store.timeZone).slice(5);
   return [

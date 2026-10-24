@@ -530,7 +530,10 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     return b as Record<string, unknown>;
   };
   app.get("/v1/threads", (c) => {
-    const all = readThreads(store).map(({ id, ...t }) => t);
+    const types = c.req.query("type")?.split(",").filter(Boolean);
+    const all = readThreads(store)
+      .filter((t) => !types?.length || types.includes(t.type))
+      .map(({ id, ...t }) => t);
     return c.json({ open: all.filter((t) => !t.closed), ...(c.req.query("all") === "1" ? { closed: all.filter((t) => t.closed) } : {}) });
   });
   app.post("/v1/threads", async (c) => c.json(openThread(store, await obj(c))));

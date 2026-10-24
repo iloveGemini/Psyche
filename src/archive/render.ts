@@ -5,8 +5,9 @@
  * 纯函数、不调模型——投影重放时一字不差。
  */
 import type { PsycheEvent } from "../store/events.ts";
-// 合卷的说法（同 self/threads.ts 的 CLOSE_HOW；模板是纯函数，不引 self 层）
+// 合卷的说法（同 self/threads.ts 的 CLOSE_HOW，活动卷另一套见 m7.md §六；模板是纯函数，不引 self 层）
 const CLOSE_HOW = { done: "做到了", dropped: "不做了", moot: "不用做了" } as const;
+const CLOSE_HOW_ACTIVITY = { done: "结束了", dropped: "不接着了", moot: "不用接了" } as const;
 
 /** 按码点截，不把 emoji 切成半个代理对 */
 const cut = (s: string, n: number) => {
@@ -54,7 +55,7 @@ export function renderExperience(ev: PsycheEvent): string | null {
       // 10-18 起 schedule 给了 schedule 就是排（原 set_schedule，照旧原样记参数）
       if (/^mcp__psyche__schedule$/.test(p.name) && !p.args?.schedule) return "我看了看自己的作息";
       // 10-18 起 threads 带 op；开卷 / 记一笔 / 合卷本身就是 thread.* 事件，调用不再抄一遍
-      if (/^mcp__psyche__threads$/.test(p.name)) return !p.args?.op || p.args.op === "list" ? "我看了看还开着的事" : null;
+      if (/^mcp__psyche__threads$/.test(p.name)) return !p.args?.op || p.args.op === "list" ? (p.args?.type === "activity" ? "我翻了翻活动卷" : "我看了看还开着的事") : null;
       if (/^mcp__psyche__(open|note|close)_thread$/.test(p.name)) return null;
       // look 看到的、挂上的个签本身就是 percept.noticed（looked）/ mood.set
       if (/^mcp__psyche__(look|set_mood|player|play|stop|playlist|listen|listen_with|notice)$/.test(p.name)) return null;
@@ -130,11 +131,11 @@ export function renderExperience(ev: PsycheEvent): string | null {
     case "gist":
       return `我给 ${p.key} 写了梗概：${p.text}`;
     case "thread.opened":
-      return `我开了一卷${p.type === "promise" ? `（答应 ${p.to}）` : ""}：${p.title}${p.note ? `——${p.note}` : ""}`;
+      return `我开了一卷${p.type === "promise" ? `（答应 ${p.to}）` : p.type === "activity" ? `活动${p.with?.length ? `（和 ${p.with.join("、")}）` : ""}` : ""}：${p.title}${p.note ? `——${p.note}` : ""}`;
     case "thread.noted":
       return `我在「${p.title}」上记了一笔：${p.text}`;
     case "thread.closed":
-      return `我合上了「${p.title}」（${CLOSE_HOW[p.how as keyof typeof CLOSE_HOW] ?? p.how}）：${p.why}`;
+      return `我合上了「${p.title}」（${(p.type === "activity" ? CLOSE_HOW_ACTIVITY : CLOSE_HOW)[p.how as keyof typeof CLOSE_HOW] ?? p.how}）：${p.why}`;
     case "focus.changed":
       return p.items.length ? `我眼下关注：${p.items.join("；")}` : "我清空了眼下的关注";
     case "loaded":
