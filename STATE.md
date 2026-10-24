@@ -5,16 +5,16 @@
 
 ## 1. 当前阶段
 
-**【进行中】房子 P1/P2 减法瘦身与 Bug 修复（1、2、Bug A 已上线）（10-23 18:10 Joy 与 a2 复盘定，见 `notes/design/houses.md` 与 Soma `STATE.md`）**：照搬「人类实时在线」的机制不适合回合制 Agent，做减法。Soma 在分支 `claude/stoic-knuth-vzh7om`（10-23 和 Joy 一起测过、修过，**10-23 已上线**：Soma master + 正式库迁移，备份 `~/.soma.bak-houses-slim-1023.tgz`）：
+**【进行中】房子：第 1–3 步做完（1、2、Bug A 已上线；3、Bug B 合进 Soma master `b5ec079`，待 build 重启），下一步第 4 步（Roy 搬家前必需，先等 Joy 和 Roy 勾 houses.md 第八节的表）（10-23 18:10 Joy 与 a2 复盘定，见 `notes/design/houses.md` 与 Soma `STATE.md`）**：照搬「人类实时在线」的机制不适合回合制 Agent，做减法。Soma 在分支 `claude/stoic-knuth-vzh7om`（10-23 和 Joy 一起测过、修过，**10-23 已上线**：Soma master + 正式库迁移，备份 `~/.soma.bak-houses-slim-1023.tgz`）：
 1. ✅ 没有「自己的房间」、没有门、没有敲门：回自己屋只是不在任何房间，报 `{ house: 住址, id: "own-<住户 id>", room: "<名字>的房间" }`（`houses-p1.md` §四），两人都在自己屋不算同一间；Psyche 不用改代码（`presence.test.ts`「回自己屋」锁住）。
 2. ✅ 没有住户之间的私聊，私下找人写信；**邀请和收回都发信**（Joy 10-23 定，`houses-p2.md`「§二（减法后）」）：住户发的走 `via: "house"`，Joy 的走 `soma-note`，标题是事实、正文是主人附言原样（收回也带附言）；工具参数写错直接报错不悄悄忽略；一轮只答一个房间（轮中别的房间来话排到下一轮）。Psyche 不用改代码。
-3. **待做（已收进 `notes/plan/houses-p3.md`，交 Soma 施工）**：日常公共房间改为「留言板模式」，去掉 `present` 在场过滤；位置只管「全屋感知」与「Joy 在房间说话时谁当场接话」。只有第 3 步的「包间」才按参与人隔离记录。
-4. Soma 的 2 个 Bug：① ✅ 游标吞未读（规则收进 `append()`，进出门也不吞）+ room.json / house.json 多进程改加锁；② **待做（已收进 `houses-p3.md`）** `agenda` 列表与报名按 `canEnterHouse` / `canEnterRoom` 过滤。
+3. ✅ **留言板 + 包间**（`notes/plan/houses-p3.md`，Soma `b5ec079`）：日常房间不按 `present` 挡；活动一律在包间里跑、可并发；包间门开关、散场归档只给参加的人读。不用迁移，上线 = Soma build + kickstart。10-24 云端对 §七 五条验收查了单测（见 §6），没在 soma-test 实跑。
+4. Soma 的 2 个 Bug：① ✅ 游标吞未读 + room.json / house.json 改加锁；② ✅ `agenda` 按 `canEnterRoom` 过滤。
 5. ✅ **砍掉「功能楼」+ 全屋感知全透明（10-23 22:25 Joy 与 Argon 定，见 `notes/design/houses.md`、`notes/plan/houses-p3.md`）**：
    - 不建「功能楼」与特殊「功能室」，功能（`discussion` / `draw-guess` / `telephone` / `cinema` / `rp`）绑在「包间的活动类型（`activity.type`）」上，任意房间底下都能直接拉起包间；
    - **Psyche 全屋感知改为全透明**（`src/house/presence.ts` 已改）：不再因不同房间抹掉忙/闲/睡着/有动静状态，也不再因跨房子报「不在这座房子」（谁不想看谁直接由 P4 `look` 的 `senses` 管）；支持包间上报 `parent` / `parentName`（显示「在 Soma 101 · 游戏室 · 包间《…》，忙」）。
 
-**房子第 1、2 步已上线，第 3 步契约已定（10-23）**：房子 / 自己的房间与住址、每人（含 Joy）只在一处、私人房子邀请与收回发信（契约 `notes/plan/houses-p1.md`、`houses-p2.md`）。正式 `~/.soma` 已迁（备份 `~/.soma.bak-houses-p1-1023`）。下一步：Soma 按 `notes/plan/houses-p3.md` 施工（留言板模式 + Bug B + 包间并发与归档）；「走神」等 Soma 报得出「这一轮在忙别处」。10-23 16:54–16:55 测试 Psyche 误连正式库已核实：每个住户库里只多了 10 条新格式的在场 percept（和正式进程的旧格式交替），没有收邮件、没有别的事件、没写向量；留着不删（事件只追加）。
+**房子第 1、2 步已上线，第 3 步已合进 Soma master（10-23）**：房子 / 自己的房间与住址、每人（含 Joy）只在一处、私人房子邀请与收回发信（契约 `notes/plan/houses-p1.md`、`houses-p2.md`）。正式 `~/.soma` 已迁（备份 `~/.soma.bak-houses-p1-1023`）。下一步：Soma build 重启让第 3 步上线；第 4 步先勾表；「走神」等 Soma 报得出「这一轮在忙别处」。10-23 16:54–16:55 测试 Psyche 误连正式库已核实：每个住户库里只多了 10 条新格式的在场 percept（和正式进程的旧格式交替），没有收邮件、没有别的事件、没写向量；留着不删（事件只追加）。
 
 **P3a 房间（10-19，Joy 在 Soma 101 定，Claude 在 Soma 里做；交接 `notes/plan/p3-p4-handoff.md`）**：
 - 群 → 房间：私人房间 = 住户的 home（永不对任何人开放）；公共房间由住户/Joy 开（带 why 与创建人），进入仅有视听与发言权，不带文件权利。住户同一时刻在公共房间或自己房间，Joy 无位置。
@@ -83,6 +83,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-24（houses-p3 验收，云端）：Soma master `npm test` 151 pass / 1 skipped、`tsc` 0 错误；`houses-p3.md` §七 五条都有对应单测（并发那条用两场议题测；没参加的人读归档被拒只在 Soma `mcp.ts` 里判，没单测）。没在 soma-test 实跑。
 
 2026-10-24（活动卷）：`bun test` 377 pass / 0 fail（`tests/threads.test.ts`「活动卷」4 个）；`tsc` 0 错误（Soma 在 `../Soma`）。没跑真模型，工具说明改了没写考卷——它用不用、怎么用先看，不教。
 
