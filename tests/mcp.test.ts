@@ -125,7 +125,7 @@ describe("MCP 工具 → REST", () => {
 
   test("recall：from/to 换成毫秒，带上 token", async () => {
     const rest = fakeRest(() => Response.json({ lines: [{ archiveNo: "10-14#12", at: T("2026-10-14T09:00:00+08:00"), kind: "message.in", text: "Joy：早" }] }));
-    const client = await connect({ url: "http://psyche.test/", token: "tk", fetch: rest.fetch });
+    const client = await connect({ url: "http://psyche.test/", token: "tk", fetch: rest.fetch, now: () => T("2026-10-14T20:00:00+08:00") });
     const r = await client.callTool({ name: "recall", arguments: { query: "早", from: "2026-10-14", to: "2026-10-14", limit: 5 } });
     const { url, method, auth } = rest.seen[0];
     expect(method).toBe("GET");
@@ -135,7 +135,7 @@ describe("MCP 工具 → REST", () => {
     expect(Number(url.searchParams.get("to"))).toBe(T("2026-10-15T00:00:00+08:00"));
     expect(url.searchParams.get("limit")).toBe("5");
     expect(auth).toBe("Bearer tk");
-    expect(textOf(r)).toBe("[10-14#12] 10-14 09:00 Joy：早");
+    expect(textOf(r)).toBe("[10-14#12] 今天上午 Joy：早"); // 回想只给大概（traces.md）
   });
 
   test("recall：时间看不懂，不发请求，告诉它怎么写", async () => {
@@ -148,10 +148,12 @@ describe("MCP 工具 → REST", () => {
   });
 
   test("detail：档号里的 # 要编码", async () => {
-    const rest = fakeRest(() => Response.json({ event: { kind: "message.in" }, links: [], referencedBy: [] }));
+    const rest = fakeRest(() => Response.json({ event: { kind: "message.in", at: T("2026-10-14T09:00:07+08:00") }, links: [], referencedBy: [] }));
     const client = await connect({ fetch: rest.fetch });
-    await client.callTool({ name: "detail", arguments: { archiveNo: "10-14#12" } });
+    const r = await client.callTool({ name: "detail", arguments: { archiveNo: "10-14#12" } });
     expect(rest.seen[0].url.pathname).toBe("/v1/archive/10-14%2312");
+    // 去查原件给确切时刻（traces.md）
+    expect(textOf(r).split("\n")[0]).toBe("原件时刻：2026-10-14 09:00:07（周三）");
   });
 
   test("detail：对真的 REST，含全宗的档号也取得到", async () => {
@@ -170,7 +172,7 @@ describe("MCP 工具 → REST", () => {
     expect(textOf(miss)).toBe("Psyche 拒绝了（404）：没有这个档号");
   });
 
-  test("hotwrite_segment：给提示词、upTo 和带档号的行；空段直说", async () => {
+  test("hotwrite_segment：给提示词、upTo 和带档号的行；眼前会话不带时刻，补写给时间流；空段直说", async () => {
     const seg = {
       session: "s1",
       upTo: "01J0000000000000000000000Z",
@@ -181,11 +183,16 @@ describe("MCP 工具 → REST", () => {
         { archiveNo: "10-14#13", at: T("2026-10-14T09:00:05+08:00"), text: "我说：早" },
       ],
     };
-    const client = await connect({ fetch: async () => Response.json(seg) });
+    const client = await connect({ fetch: async () => Response.json(seg), now: () => T("2026-10-15T08:00:00+08:00") });
     const out = textOf(await client.callTool({ name: "hotwrite_segment", arguments: {} }));
     expect(out).toContain("把这一段写成情节。");
     expect(out).toContain("upTo: 01J0000000000000000000000Z");
-    expect(out).toContain("[10-14#12] 10-14 09:00 Joy：早");
+    expect(out).toContain("<segment>\n[10-14#12] Joy：早\n[10-14#13] 我说：早\n</segment>");
+    const later = { ...seg, lines: [...seg.lines, { archiveNo: "10-14#14", at: T("2026-10-14T12:30:00+08:00"), kind: "notice", text: "我注意到：她今天起得早" }] };
+    const full = await connect({ fetch: async () => Response.json(later), now: () => T("2026-10-15T08:00:00+08:00") });
+    expect(textOf(await full.callTool({ name: "hotwrite_segment", arguments: { session: "s1" } }))).toContain(
+      "<segment>\n── 昨天上午 ──\n[10-14#12] Joy：早\n[10-14#13] 我说：早\n（隔了约 3 小时）\n── 昨天中午 ──\n[10-14#14] 〔10-14 12:30〕我注意到：她今天起得早\n</segment>",
+    );
 
     const empty = await connect({ fetch: async () => Response.json({ ...seg, upTo: null, lines: [] }) });
     expect(textOf(await empty.callTool({ name: "hotwrite_segment", arguments: {} }))).toContain("不用写");

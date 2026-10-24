@@ -42,7 +42,8 @@
  *   PSYCHE_MODE   asleep = 睡着的那段（只挂记忆整理用的工具）；缺省醒着
  */
 import { readFileSync } from "node:fs";
-import { parseTime as parseCoreTime } from "./core/time.ts";
+import { parseTime as parseCoreTime, vagueWhen, wallClock } from "./core/time.ts";
+import { whenFlow, whenLine, type WhenLine } from "./archive/when.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -61,6 +62,8 @@ export interface McpOptions {
   past?: { fonds: string; claimed: boolean }[];
   /** 测试时换成假的 */
   fetch?: (req: Request) => Promise<Response>;
+  /** 此刻（回想时的「今天 / 昨天」按它算）；测试时换成假的 */
+  now?: () => number;
 }
 
 export type Mode = "awake" | "asleep";
@@ -113,6 +116,13 @@ function shortTime(at: number, timeZone: string): string {
   return `${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
+/** 毫秒 → `YYYY-MM-DD HH:mm:ss（周X）`（detail 原件用：去查了才给确切的） */
+function fullTime(at: number, timeZone: string): string {
+  const w = wallClock(at, timeZone);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${w.year}-${p(w.month)}-${p(w.day)} ${p(w.hour)}:${p(w.minute)}:${p(w.second)}（${w.weekday}）`;
+}
+
 // ── REST 客户端 ──
 
 class RestError extends Error {}
@@ -122,6 +132,7 @@ const text = (s: string, isError = false): CallToolResult => ({ content: [{ type
 export function createPsycheMcp(opts: McpOptions = {}): McpServer {
   const base = (opts.url ?? "http://127.0.0.1:7450").replace(/\/+$/, "");
   const tz = opts.timeZone ?? "Asia/Shanghai";
+  const now = opts.now ?? Date.now;
   const doFetch = opts.fetch ?? ((req: Request) => fetch(req));
 
   async function call(method: "GET" | "POST", path: string, body?: unknown): Promise<any> {
@@ -163,7 +174,11 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       }
     };
 
-  const line = (l: { archiveNo: string; at: number; text: string }) => `[${l.archiveNo}] ${shortTime(l.at, tz)} ${l.text}`;
+  // 回想只给大概，留意过的给精确（notes/plan/traces.md）
+  const line = (l: WhenLine) => whenLine(l, now(), tz);
+  const flow = (ls: WhenLine[]) => whenFlow(ls, now(), tz);
+  /** 热写的段：眼前会话只给开头对档号、不带时刻（原话在上下文里）；全文按时间流 */
+  const segmentText = (ls: WhenLine[], brief: boolean) => (brief ? ls.map((l) => `[${l.archiveNo}] ${l.text}`) : flow(ls));
 
   const server = new McpServer({ name: "psyche", version: "0.1.0" });
   const on = new Set(toolsFor(opts.mode, opts.past));
@@ -175,7 +190,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     {
       description: [
         "在你的记忆里按内容找。找得到的是你经历过的事（对话、工具调用和结果……）、你自己写下的情节，以及你书架上整理过的条目（排在前面）。",
-        "每行带档号和时间；想看某一行的原件，用 detail。",
+        "每行带档号和大概的时候（今天上午、昨天深夜……）；想看某一行的原件和确切时刻，用 detail。",
         "from / to 可选：ISO 日期（2026-10-14）或时间（2026-10-14T09:30）；不带时区按本地时间。只给日期时，to 包含那一整天。",
       ].join("\n"),
       inputSchema: {
@@ -205,8 +220,10 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       inputSchema: { archiveNo: z.string().min(1).describe("档号，如 10-14#12") },
     },
     guard(async ({ archiveNo }) => {
-      const body = await call("GET", `/v1/archive/${encodeURIComponent(archiveNo.trim())}`);
-      return text(JSON.stringify(body, null, 2));
+      const body = (await call("GET", `/v1/archive/${encodeURIComponent(archiveNo.trim())}`)) as { event?: { at?: number } };
+      // 去查原件是付了成本的：给可读的确切时刻（原件里的 at 是毫秒数）
+      const at = body.event?.at;
+      return text([...(typeof at === "number" ? [`原件时刻：${fullTime(at, tz)}`] : []), JSON.stringify(body, null, 2)].join("\n"));
     }),
   );
 
@@ -231,12 +248,12 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         upTo: string | null;
         prompt: string;
         promptVersion: number;
-        lines: { archiveNo: string; at: number; text: string }[];
+        lines: WhenLine[];
         pinned?: { used: number; budget: number; entries: string[] };
       };
       if (seg.upTo === null || !seg.lines.length) return text("这一段没有还没写进记忆的经历，不用写。");
       const pin = seg.pinned ? [`常驻区：${seg.pinned.entries.length ? seg.pinned.entries.join("、") : "空的"}（${seg.pinned.used} / ${seg.pinned.budget} 字）`] : [];
-      return text([seg.prompt.trim(), "", `session: ${seg.session}`, `upTo: ${seg.upTo}`, `promptVersion: ${seg.promptVersion}`, ...pin, "", "<segment>", ...seg.lines.map(line), "</segment>"].join("\n"));
+      return text([seg.prompt.trim(), "", `session: ${seg.session}`, `upTo: ${seg.upTo}`, `promptVersion: ${seg.promptVersion}`, ...pin, "", "<segment>", ...segmentText(seg.lines, q === "?brief=1"), "</segment>"].join("\n"));
     }),
   );
 
@@ -307,7 +324,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       e.observe && `  怎么观察：${e.observe}`,
       e.watch?.length && `  留意：${e.watch.join("、")}`,
       e.track?.length && `  盯着：${e.track.join("、")}`,
-      `  印证 ${e.for} · 反例 ${e.against}${e.irrelevant ? ` · 判无关 ${e.irrelevant}` : ""}${e.lastEvidenceAt ? ` · 最近一次 ${shortTime(e.lastEvidenceAt, tz)}` : ""}`,
+      `  印证 ${e.for} · 反例 ${e.against}${e.irrelevant ? ` · 判无关 ${e.irrelevant}` : ""}${e.lastEvidenceAt ? ` · 最近一次 ${vagueWhen(e.lastEvidenceAt, now(), tz)}` : ""}`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -406,7 +423,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "</candidates>",
         "",
         "<material>",
-        ...m.material.flatMap((g) => [`── 会话 ${g.session ?? "（不在会话里）"}${g.harness ? `（在 ${g.harness}）` : ""} ──`, ...g.lines.map(line)]),
+        ...m.material.flatMap((g) => [`== 会话 ${g.session ?? "（不在会话里）"}${g.harness ? `（在 ${g.harness}）` : ""} ==`, ...flow(g.lines)]),
         "</material>",
       ].join("\n"),
     );

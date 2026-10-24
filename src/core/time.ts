@@ -82,3 +82,54 @@ export function clockOf(at: number, now: number, timeZone: string): string {
   const hm = `${pad(w.hour)}:${pad(w.minute)}`;
   return localDay(at, timeZone) === localDay(now, timeZone) ? hm : `${pad(w.month)}-${pad(w.day)} ${hm}`;
 }
+
+// ── 回想时只给大概（notes/plan/traces.md）：此刻准，回想糊；事件里的 at 不动 ──
+
+/** 时段：按自然日零点切，不跨零点回拨（与档号日期对齐） */
+const SLOTS: [number, string][] = [
+  [5, "凌晨"],
+  [8, "早上"],
+  [11, "上午"],
+  [13, "中午"],
+  [17, "下午"],
+  [19, "傍晚"],
+  [23, "晚上"],
+  [24, "深夜"],
+];
+const slotName = (hour: number) => SLOTS.find(([end]) => hour < end)![1];
+
+/** 自然日相差几天（a 比 b 早为正） */
+function daysBetween(a: number, b: number, timeZone: string): number {
+  const d = (t: number) => Date.parse(`${localDay(t, timeZone)}T00:00:00Z`);
+  return Math.round((d(b) - d(a)) / 86_400_000);
+}
+
+/** 回想时的时刻：今天上午 / 昨天深夜 / 前天下午 / 10-21（周三）晚上 / 10-13 */
+export function vagueWhen(at: number, now: number, timeZone: string): string {
+  const w = wallClock(at, timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ago = Math.max(0, daysBetween(at, now, timeZone));
+  const slot = slotName(w.hour);
+  if (ago === 0) return `今天${slot}`;
+  if (ago === 1) return `昨天${slot}`;
+  if (ago === 2) return `前天${slot}`;
+  if (ago <= 6) return `${pad(w.month)}-${pad(w.day)}（${w.weekday}）${slot}`;
+  return w.year === wallClock(now, timeZone).year ? `${pad(w.month)}-${pad(w.day)}` : `${w.year}-${pad(w.month)}-${pad(w.day)}`;
+}
+
+/** 相邻两条之间的体感停顿；不到 10 分钟不说 */
+export function gapHint(ms: number): string | null {
+  const MIN = 60_000;
+  if (ms < 10 * MIN) return null;
+  if (ms < 30 * MIN) return "（过了一会儿）";
+  if (ms < 60 * MIN) return "（过了半个多小时）";
+  if (ms < 24 * 60 * MIN) return `（隔了约 ${Math.max(1, Math.round(ms / (60 * MIN)))} 小时）`;
+  return `（隔了约 ${Math.max(1, Math.round(ms / (24 * 60 * MIN)))} 天）`;
+}
+
+/** 精确时刻 `MM-DD HH:mm`（留意过的、去查原件的才给） */
+export function exactWhen(at: number, timeZone: string): string {
+  const w = wallClock(at, timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(w.month)}-${pad(w.day)} ${pad(w.hour)}:${pad(w.minute)}`;
+}

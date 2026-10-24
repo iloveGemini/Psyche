@@ -18,6 +18,7 @@ import { harnessOf } from "../catalog/coldwrite.ts";
 import { keywords } from "../core/words.ts";
 import { envNow, envOf, envSimilarity, type Env } from "../perception/env.ts";
 import { NOT_PLACE_SQL } from "../channel/inbox.ts";
+import { whenFlow, whenLine } from "../archive/when.ts";
 export { keywords };
 
 /** 各项权重与阈值：都在这一处，用考卷调 */
@@ -70,11 +71,6 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const SLOTS = ["凌晨", "上午", "下午", "晚上"];
 const slotOf = (at: number, tz: string) => Math.floor(wallClock(at, tz).hour / 6);
-const pad = (n: number) => String(n).padStart(2, "0");
-const stamp = (at: number, tz: string) => {
-  const w = wallClock(at, tz);
-  return `${pad(w.month)}-${pad(w.day)} ${pad(w.hour)}:${pad(w.minute)}`;
-};
 const ago = (ms: number) => (ms < HOUR ? `${Math.round(ms / 60_000)} 分钟` : ms < 2 * DAY ? `${Math.round(ms / HOUR)} 小时` : `${Math.round(ms / DAY)} 天`);
 
 /**
@@ -276,7 +272,7 @@ function hunches(c: Ctx): Surfaced[] {
     out.push({
       source: "hunch",
       ref: `hunch:${who}:${localDay(c.now, tz)}:${slot}`,
-      text: `${who}：最近 ${days.size} 天里有 ${inSlot.size} 天${SLOTS[slot]}来过；今天${SLOTS[slot]}还没来；上一条在 ${ago(c.now - last)}前（${stamp(last, tz)}）`,
+      text: `${who}：最近 ${days.size} 天里有 ${inSlot.size} 天${SLOTS[slot]}来过；今天${SLOTS[slot]}还没来；上一条在 ${ago(c.now - last)}前`,
       score: 1,
       parts: { share },
     });
@@ -353,7 +349,8 @@ export async function surface(
     lastTime.push({
       source: "recall",
       ref: tail.at(-1)!.event_id,
-      text: tail.map((r) => `[${displayArchiveNo(r.archive_no, year)}] ${stamp(r.at, store.timeZone)} ${r.text}`).join("\n"),
+      // 回想只给大概（notes/plan/traces.md）：按时间顺序的一段，用时间流
+      text: whenFlow(tail.map((r) => ({ archiveNo: displayArchiveNo(r.archive_no, year), at: r.at, text: r.text })), c.now, store.timeZone).join("\n"),
       score: 1,
       parts: { lastTime: 1 },
     });
@@ -385,7 +382,7 @@ export async function surface(
       scored.push({
         source: "recall",
         ref: row.event_id,
-        text: `[${displayArchiveNo(row.archive_no, year)}] ${stamp(row.at, store.timeZone)} ${row.text}`,
+        text: whenLine({ archiveNo: displayArchiveNo(row.archive_no, year), at: row.at, text: row.text, kind: row.kind }, c.now, store.timeZone),
         score: Object.values(parts).reduce((s, x) => s + x, 0),
         parts,
       });
