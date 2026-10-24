@@ -285,12 +285,15 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     return c.json(writeGist(store, body, typeof body.promptVersion === "number" ? body.promptVersion : readPrompt("gist.md", promptsDir).version));
   });
 
-  // 接着往下过：Soma 换会话时新会话的开头（梗概 + 最近的情节）。since = 接在后面的原话从哪一刻起；
+  // 接着往下过：Soma 换会话时新会话的开头（梗概 + 最近的情节）。since = 接在后面的原话从哪一刻起，tailSession = 原话是哪段会话的；
   // 带 session / seed=1 才记下这段种子放了哪些情节（浮现跳过它们，m1.md §五）
   app.get("/v1/continuity", (c) => {
     const raw = c.req.query("since");
     const since = raw ? (/^\d+$/.test(raw) ? Number(raw) : Date.parse(raw)) : undefined;
-    const seed = seedContinuity(store, undefined, { since: since !== undefined && Number.isFinite(since) ? since : undefined });
+    const seed = seedContinuity(store, undefined, {
+      since: since !== undefined && Number.isFinite(since) ? since : undefined,
+      tailSession: c.req.query("tailSession") || undefined,
+    });
     const session = c.req.query("session") || undefined;
     if (session || c.req.query("seed") === "1")
       store.append({

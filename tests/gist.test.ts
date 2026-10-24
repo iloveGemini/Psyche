@@ -170,6 +170,20 @@ describe("接着往下过", () => {
     expect(JSON.parse(row.payload)).toEqual({ episodes: seed.episodes, since: T("2026-10-16T07:30:00"), session: "new" });
   });
 
+  test("since 去重只算原话那段会话写的（10-24）：同一时段在别处写的照样放", async () => {
+    const h = setup();
+    const ep = (at: string, text: string, session: string) =>
+      h.store.append({ kind: "episode", class: "self", source: "agent", at: T(at), payload: { text, session } });
+    ep("2026-10-16T08:00:00", "原话里那段", "old");
+    ep("2026-10-16T08:30:00", "工位上写的", "cc");
+    const seed = seedContinuity(h.store, undefined, { since: T("2026-10-16T07:30:00"), tailSession: "old" });
+    expect(seed.text).not.toContain("原话里那段");
+    expect(seed.text).toContain("工位上写的");
+    const r = await h.get(`/v1/continuity?since=${encodeURIComponent("2026-10-16T07:30:00+08:00")}&tailSession=old`);
+    expect(r.text).toContain("工位上写的");
+    expect(r.text).not.toContain("原话里那段");
+  });
+
   test("什么都没有：null", () => expect(renderContinuity(setup().store)).toBeNull());
 });
 

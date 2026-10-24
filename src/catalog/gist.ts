@@ -94,19 +94,21 @@ export interface EpisodeLine {
   at: number;
   day: string;
   text: string;
+  /** 写它的那段会话 */
+  session?: string;
 }
 
 /** 现行的情节（改写过的取最新），按发生时间排 */
 export function currentEpisodes(store: EventStore, sinceDay?: string): EpisodeLine[] {
   const rows = store.db
     .query(
-      `SELECT id, at, json_extract(payload, '$.text') AS text FROM events
+      `SELECT id, at, json_extract(payload, '$.text') AS text, json_extract(payload, '$.session') AS session FROM events
        WHERE kind = 'episode' AND fonds = '' AND id NOT IN (SELECT to_id FROM links WHERE rel = 'revises')
        ORDER BY at, id`,
     )
-    .all() as { id: string; at: number; text: string }[];
+    .all() as { id: string; at: number; text: string; session: string | null }[];
   return rows
-    .map((r) => ({ ...r, day: localDay(r.at, store.timeZone) }))
+    .map(({ session, ...r }) => ({ ...r, day: localDay(r.at, store.timeZone), ...(session ? { session } : {}) }))
     .filter((r) => !sinceDay || r.day >= sinceDay);
 }
 

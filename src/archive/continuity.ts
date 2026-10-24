@@ -64,12 +64,16 @@ export function renderCatalog(store: EventStore): string | null {
   return ["【馆藏与书架】", archiveLine, shelfLine].join("\n");
 }
 
-export function renderContinuity(store: EventStore, limits = CONTINUITY, opts: { since?: number } = {}): string | null {
+export function renderContinuity(store: EventStore, limits = CONTINUITY, opts: { since?: number; tailSession?: string } = {}): string | null {
   return seedContinuity(store, limits, opts).text;
 }
 
 /** 种子正文 + 它让这段会话已经看见的情节（放了的 + 因 since 在原话里的），浮现据此跳过 */
-export function seedContinuity(store: EventStore, limits = CONTINUITY, opts: { since?: number } = {}): { text: string | null; episodes: string[] } {
+export function seedContinuity(
+  store: EventStore,
+  limits = CONTINUITY,
+  opts: { since?: number; tailSession?: string } = {},
+): { text: string | null; episodes: string[] } {
   const gists = readGists(store);
   const days = gists.filter((g) => g.span === "day").slice(-limits.days);
   const oldestDay = days[0]?.key;
@@ -80,8 +84,12 @@ export function seedContinuity(store: EventStore, limits = CONTINUITY, opts: { s
   // 最近的情节：最后一条天梗概之后的天（今天、还没写梗概的昨天……），从新往旧取到预算
   const lastGistDay = gists.filter((g) => g.span === "day").at(-1)?.key;
   const after = currentEpisodes(store).filter((e) => !lastGistDay || e.day > lastGistDay);
-  // 上报的时刻和 transcript 里的差几秒（先报再发）：原话第一行引的那条情节也算在原话里
-  const inTail = opts.since === undefined ? [] : after.filter((e) => e.at >= opts.since! - SINCE_SLACK_MS);
+  // 上报的时刻和 transcript 里的差几秒（先报再发）：原话第一行引的那条情节也算在原话里。
+  // 给了 tailSession 只算那段会话写的：别处（工位）同一时段写的不在原话里，照样放（10-24）
+  const inTail =
+    opts.since === undefined
+      ? []
+      : after.filter((e) => e.at >= opts.since! - SINCE_SLACK_MS && (!opts.tailSession || e.session === opts.tailSession));
   const recent = after.filter((e) => !inTail.includes(e));
   const kept: typeof recent = [];
   let used = 0;
