@@ -1,7 +1,7 @@
 # MCP 服务的 manifest（契约 v0）
 
 > 2026-10-23 起草。为什么这么分：`notes/design/lib-vs-harness.md`「加功能放哪」第 4 步。
-> 状态：**只有契约**。目前 `mcp/` 下还没有服务，Soma 和 Roxy 也还不会读 manifest，第一个服务搬进来时一起做。
+> 状态：10-24 第一个服务 `mcp/cinema`（独立 git 仓库，Psyche 的 .gitignore 忽略它），Soma 读 manifest 挂服务（`lib/soma/services.ts`）。
 
 ## 〇、放哪
 
@@ -32,7 +32,8 @@ Psyche/
   // 或者 "start": { "url": "http://127.0.0.1:4182/mcp" }  // 外部 app 自己开的 HTTP MCP
   "health": { "url": "http://127.0.0.1:4182/api/health", "timeoutMs": 1500 },
   // 或者 { "command": "python3", "args": ["observer/worker.py", "health"] }
-  "scope": "room",                       // house | resident | room，见 §四
+  "scope": "activity",                   // house | resident | room | activity，见 §四
+  "activity": "cinema",                  // scope = activity 时：包间活动类型（Soma agenda TEMPLATES）
   "rooms": ["影音室"],                    // scope = room 时
   "percepts": [{ "sensor": "cinema", "form": "block", "maxChars": 4000 }],
   "media": { "kinds": ["image", "audio"], "fallback": "文字转写（字幕 + 画面描述）" },
@@ -71,6 +72,7 @@ Psyche/
 | `house` | 全屋每个住户默认都挂 |
 | `resident` | 默认不挂，住户的配置里点名的才挂（Soma `identity.json`、Roxy `mcp.json`） |
 | `room` | 能进 `rooms` 所在的那座房子就挂；人不在那间房（或它的包间）时，工具拒绝并说清楚去哪用（`houses.md` 第六节） |
+| `activity` | 全屋都挂（工具列表常驻，缓存不变）；调用时人不在 `activity.type` 等于 manifest `activity` 的包间里，就拒绝并说「先在房间里开个这种包间」（`houses.md` 第六节）。10-24 起影音室用这个 |
 
 - **挂哪些在每段会话开始时定**，不在会话中途开关：工具列表一变，缓存要整个重写。外部 app 开关、门禁变了，都等下一段生效；进出房间不影响挂载。
 - 健康检查没过就不挂，不报错给他；地方的系统日志里记一笔。
@@ -87,7 +89,7 @@ Psyche/
 
 ## 六、还没做
 
-1. `mcp/` 下的第一个服务（候选：影音室，从 `~/workspace/MCP for Roxy/open-watch-cinema` 搬适配层）。
+1. ~~第一个服务~~ ✅ 10-24 `mcp/cinema`。
 2. percept 的 `block` 递法。
-3. Soma 读 manifest 挂服务（claude-sdk 身体现在只固定挂 `psyche` / `soma`）。Roxy 冻结，不再接。
+3. ✅ 10-24 Soma 读 manifest 挂服务（`lib/soma/services.ts`，claude-sdk / pi 两种身体）；只支持 stdio `start.command`，`start.url` 等第一个 HTTP 服务再做。Roxy 冻结，不再接。
 4. 删掉 Psyche、Soma 里各自的音乐代码（Roxy 冻结，不动），换成 `mcp/music`（每人一台还是全屋共用，Joy 还没定）。

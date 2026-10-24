@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-24
+> 最后更新：2026-10-24（影音室包间）
 
 ## 1. 当前阶段
 
@@ -16,7 +16,7 @@
    - Roy 住户与独栋房子：`~/.soma/agents/roy/`（pi 身体、预填充模板、历史 59 卷生活线接续当前活跃会话），私人房子 `~/.soma/houses/roxy/` 及《书房》（`shufang`）；清理公共客厅残留。
    - 服务切换：Psyche `agents.json` 路由切至 Soma 30151；停用卸载旧 Roxy 独立守护进程（端口 8800）；`/v1/house` 正确显示 Roy 在「Roxy · 书房」。
 
-**房子第 1–5 步已上线（10-24）**：房子 / 自己的房间与住址、每人（含 Joy）只在一处、私人房子邀请与收回发信、留言板 + 包间、Roy 搬入独栋 Roxy 接续生活线。正式 `~/.soma` 与生活线已平滑接续。下一步：第 6 步影音室包间化（`mcp/cinema` 迁入 `Psyche/mcp/`，适配 percept `block` 格式）；Roy 在 Soma 稳定运行一周后归档 `~/workspace/Roxy`（第 7 步）。
+**房子第 1–5 步已上线（10-24）**：房子 / 自己的房间与住址、每人（含 Joy）只在一处、私人房子邀请与收回发信、留言板 + 包间、Roy 搬入独栋 Roxy 接续生活线。正式 `~/.soma` 与生活线已平滑接续。第 6 步影音室包间化 10-24 做完未上线（`mcp/cinema` 独立仓库、Psyche 忽略；Soma 读 manifest 挂服务 + `cinema` 包间，见 Soma STATE；percept `block` 用不上了，没做）；Roy 在 Soma 稳定运行一周后归档 `~/workspace/Roxy`（第 7 步）。
 
 **P3a 房间（10-19，Joy 在 Soma 101 定，Claude 在 Soma 里做；交接 `notes/plan/p3-p4-handoff.md`）**：
 - 群 → 房间：私人房间 = 住户的 home（永不对任何人开放）；公共房间由住户/Joy 开（带 why 与创建人），进入仅有视听与发言权，不带文件权利。住户同一时刻在公共房间或自己房间，Joy 无位置。
@@ -54,7 +54,7 @@
 - 翻出的记忆（recall / detail）不计入新经历，防止记忆自我递归复制
 - 家 = Soma，一条连续生活线；Psyche 不跑大模型，仅留向量一个外部服务 → `notes/design/lib-vs-harness.md`
 - **只留 Soma 一个 harness**（10-23 Joy 和 Roy 定，方案 v1 待细化）：房子（public / private，谁都能造）→ 房间（门 open / closed，谁都能开，一个文件夹）→ 包间（临时，挂一个活动）；房间只是对话场所、和文件无关；每个人（含 Joy）同一时刻只在一处；私聊归两个人，房间的话归当时在场的人；活动记录归参加的人（包间文件夹）；感知范围按位置（同房间粗状态 / 同房子在哪间 / 不同房子只知不在）；房间不再是 cwd；Roxy 冻结，Roy 搬来 → `notes/design/houses.md`。加功能先走「加功能放哪」→ `notes/design/lib-vs-harness.md`
-- 他主动用的工具做成独立 MCP 服务，放 `mcp/<名字>/`，按送达类（纯工具 / 递 / 叫醒 / 媒体）和运行类（同栈 / 自带依赖 / 外部 app）分；要递的报 percept 由 Psyche 汇总进 `<now>`；`src/` 不 import `mcp/`（`tests/boundary.test.ts`）→ `notes/plan/mcp-manifest.md`（只有契约，还没有服务）
+- 他主动用的工具做成独立 MCP 服务，放 `mcp/<名字>/`，按送达类（纯工具 / 递 / 叫醒 / 媒体）和运行类（同栈 / 自带依赖 / 外部 app）分；要递的报 percept 由 Psyche 汇总进 `<now>`；`src/` 不 import `mcp/`（`tests/boundary.test.ts`）→ `notes/plan/mcp-manifest.md`（10-24 第一个服务 `mcp/cinema`，`scope: "activity"`）
 
 ## 3. 未完成与下一步
 
@@ -65,7 +65,7 @@
 5. **痕迹与时间感**（10-24，设计 `notes/design/traces.md`，契约 `notes/plan/traces.md`）：✅ 施工完：回想出口（MCP recall / 热写全文 / 冷写材料 / 浮现；Soma 种子末尾原话）的时刻按远近给时段 / 日期 + 体感停顿，`detail` 给可读的「原件时刻」，notice / look 带精确；`src/core/time.ts` `vagueWhen` / `gapHint`、`src/archive/when.ts`。**生效情况**：MCP 部分磁盘上已对新会话生效（Soma 从本仓拉起 `src/mcp.ts`）；浮现等 Psyche 重启；种子末尾原话等 Soma build 重启。**待做**：手动跑考卷 `evals/time-sense/`（花额度），过了再重启两边。
 6. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 5. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
-6. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：第一个服务（候选影音室）、percept 的 `block` 递法、Soma / Roxy 读 manifest 挂服务；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
+6. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：✅ 10-24 影音室 + Soma 读 manifest（待实测：开着影院跑一局真的）；percept `block` 递法等真有需要再做；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
 7. **记忆与检索边界调优**：
    - 情节晚于冷写落库时，按引用的原行去重候选证据。
    - 线索全段输入时常见词 IDF 顶满导致的字面打分饱和（`lex 0.8`）微调。

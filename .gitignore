@@ -10,3 +10,7 @@ evals/time-sense/out/
 evals/chat-import/out/
 notes/.DS_Store
 letters/
+
+# 独立仓库的 MCP 服务（各自管 git）
+mcp/cinema/
+.DS_Store
