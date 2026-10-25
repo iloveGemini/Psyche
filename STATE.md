@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-24（影音室包间）
+> 最后更新：2026-10-25（单人观影）
 
 ## 1. 当前阶段
 
@@ -65,7 +65,7 @@
 5. **痕迹与时间感**（10-24，设计 `notes/design/traces.md`，契约 `notes/plan/traces.md`）：✅ 施工完：回想出口（MCP recall / 热写全文 / 冷写材料 / 浮现；Soma 种子末尾原话）的时刻按远近给时段 / 日期 + 体感停顿，`detail` 给可读的「原件时刻」，notice / look 带精确；`src/core/time.ts` `vagueWhen` / `gapHint`、`src/archive/when.ts`。**生效情况**：MCP 部分磁盘上已对新会话生效（Soma 从本仓拉起 `src/mcp.ts`）；浮现等 Psyche 重启；种子末尾原话等 Soma build 重启。**待做**：手动跑考卷 `evals/time-sense/`（花额度），过了再重启两边。
 6. **P0–P2 补录**：梳理 10-19 前期沉淀的基建备忘补充至文档。
 5. **正式库上线前决议**：确定正式环境向量模型方案（硅基流动在线 API vs 本地 WeMM 等本地嵌入模型）。
-6. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：✅ 10-24 影音室 + Soma 读 manifest；10-24 包间改成每轮带 `<movie>`、只露 3 个工具（`OPEN_WATCH_CINEMA_TOOLS`），待实测。单人观影草案 `notes/plan/cinema-solo.md`，等 Joy 定 §五；percept `block` 递法等真有需要再做；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
+6. **MCP 服务落地**（`notes/plan/mcp-manifest.md` §六）：✅ 10-24 影音室 + Soma 读 manifest；10-24 包间改成每轮带 `<movie>`、只露 3 个工具（`OPEN_WATCH_CINEMA_TOOLS`），待实测。10-25 单人观影（`notes/plan/cinema-solo.md`，§五 Joy 已定：不设上限、片尾只说放完、进度露给 Joy）做完：影院放映单 + 4 个 `cinema_watch_*`/`my_films` 工具 + 共用三工具可不传 roomId；manifest 按工具分 scope（契约 §四）；Soma 私聊列表露「在看《…》n/m 场」。测试影院实例上我看了《记忆碎片》前 6 段、标台词、重看都通；**正式影院（4182）要重启才有新接口**，cinema 仓库改动未提交（Joy 的仓库）；没跑真住户一局；新片源叙事轨生成失败，现在按 3 分钟切、没有说话人。percept `block` 递法等真有需要再做；音乐从 Psyche / Soma / Roxy 删掉换成 `mcp/music`（每人一台还是全屋共用 AiraMusic，Joy 未定）。
 7. **记忆与检索边界调优**：
    - 情节晚于冷写落库时，按引用的原行去重候选证据。
    - 线索全段输入时常见词 IDF 顶满导致的字面打分饱和（`lex 0.8`）微调。

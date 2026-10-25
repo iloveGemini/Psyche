@@ -35,6 +35,8 @@ Psyche/
   "scope": "activity",                   // house | resident | room | activity，见 §四
   "activity": "cinema",                  // scope = activity 时：包间活动类型（Soma agenda TEMPLATES）
   "rooms": ["影音室"],                    // scope = room 时
+  "tools": { "cinema_watch_*": "house" }, // 可选：按工具改 scope（名字或「前缀*」），没列的用上面的 scope
+  "notInActivity": ["cinema_watch_*"],    // 可选：人在 activity 包间里时拒掉的工具（包间里一起看，别单开）
   "percepts": [{ "sensor": "cinema", "form": "block", "maxChars": 4000 }],
   "media": { "kinds": ["image", "audio"], "fallback": "文字转写（字幕 + 画面描述）" },
   "secrets": ["~/.psyche/secrets/cinema.json"]  // 密钥从文件读，不进环境变量
@@ -74,6 +76,7 @@ Psyche/
 | `room` | 能进 `rooms` 所在的那座房子就挂；人不在那间房（或它的包间）时，工具拒绝并说清楚去哪用（`houses.md` 第六节） |
 | `activity` | 全屋都挂（工具列表常驻，缓存不变）；调用时人不在 `activity.type` 等于 manifest `activity` 的包间里，就拒绝并说「先在房间里开个这种包间」（`houses.md` 第六节）。10-24 起影音室用这个 |
 
+- **按工具分**（10-25，单人观影）：`tools` 把个别工具改成别的 scope，比如影院整体是 `activity`，单人观影的几个工具是 `house`；`notInActivity` 列的工具在那种包间里调用时拒绝。工具列表照样常驻，只在调用时拦。
 - **挂哪些在每段会话开始时定**，不在会话中途开关：工具列表一变，缓存要整个重写。外部 app 开关、门禁变了，都等下一段生效；进出房间不影响挂载。
 - 健康检查没过就不挂，不报错给他；地方的系统日志里记一笔。
 
