@@ -1,0 +1,10 @@
+{
+  "name": "moments",
+  "description": "朋友圈：全屋住户和 Joy 发帖、看帖、评论",
+  "delivery": ["wake", "media"],
+  "runtime": "external",
+  "start": { "command": "bun", "args": ["adapter.ts"] },
+  "health": { "url": "http://127.0.0.1:4190/api/health", "timeoutMs": 1500 },
+  "scope": "house",
+  "media": { "kinds": ["image"] }
+}

@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-27（`<now>` → `<moment>`，状态没变不重报）
+> 最后更新：2026-10-27（朋友圈施工完未上线；`<now>` → `<moment>`，状态没变不重报）
 
 ## 1. 当前阶段
 
@@ -59,6 +59,8 @@
 
 ## 3. 未完成与下一步
 
+0. **朋友圈**（`notes/plan/moments.md`，10-27 施工完，**未上线**）：`mcp/moments/`（常驻 HTTP `server.ts` 127.0.0.1:4190，数据 `~/.soma/moments/`；stdio 适配层 `adapter.ts` 六个 `moments_*` 工具；manifest `scope: house`、`delivery: [wake, media]`），图用 sips 压（原图 2048 / 缩略 512）。Psyche 加 `POST /v1/mail/notify`（m6.md §九：发件人 = token 的住户、只进收件箱、不记 `mail.out`）和来信 `quiet`（不叫醒，`mailCandidates` 跳过；`/v1/mail/in` 也认）。Soma 分支 `claude/moments`（worktree `../Soma-moments`）：`/moments` 页 + `/api/moments/*` 转发、Joy 评论的信由 Soma 投。**上线要**：合 Psyche、重启正式 Psyche；launchd 起 moments 服务（README 有 plist 写法）；Soma 合并 + build + kickstart，新会话才挂得上工具。**待 Joy 定**：端口 4190、入口（独立页 + 左栏一条，等 UI 重构并进 `MomentsStage`）、feed 10 条 / 缩略 512（已同意）。已知：适配层读图不限路径（跑在沙盒外，住户能发自己读不到的文件）——Soma 起服务时没传 home，要限得在 `services.ts` 加。
+
 1. **P3b 工具支持**：✅ 10-24 已上线（Soma MCP `share`、`ShareCard` 折叠与纸张阅读、已读追踪 `given.json`、notice 唤醒与 Psyche percept 联动）。
 2. **Mac 感知**（m8.md §6.5）：✅ 10-23 上线：launchd `com.joy.psyche-mac`（`feed.ts` → 正式 7470，token 用 `~/.soma/tokens/claude.token`，日志 `~/.psyche/logs/mac-feed.log`）；开关在 dashboard（10-23 Joy 只给 roy 开了 desk / app / screen）。`look_at_screen` 等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
 3. **没说出口的话**（m1.md §3.1）：✅ 10-23 上线（正式 Psyche 先重启，Soma master `152e59d` build 重启）。下一步看他们用不用、怎么用，不教。
@@ -86,6 +88,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-27（朋友圈）：Psyche `bun test` 390 pass / 0 fail（`tests/moments.test.ts` 10 个、`channel.test.ts` 加 notify / quiet 3 个）、`tsc` 只剩 worktree 里 `scripts/rename-resident.ts` 找不到 `../../Soma`（路径问题，主工作区没有）；Soma `npm test` 174 pass、`tsc` 0 错误。§七在 test 库**副本**（Soma 地址指空端口）+ 副本 moments 服务上跑：a1 经真 stdio 适配层发带图帖 → a2 feed 有缩略图块 → a2 评论 → a1 收件箱一封 `via: moments`（`quiet`）、两边 `mail.out` 条数不变 → a1 回复 → a2 收到 → a1 删帖 → 两边 feed 空；Soma 页（worktree `next dev --webpack`，SOMA_HOME 也是 scratch）上 Joy 发帖、评论 a1 的帖 → a1 收到 Joy 的信（`quiet`）、删帖 / 改简介 / 图片转发都通。「没被叫醒」副本里 a1 本来关着 `wakeOn.mail`，靠单测证（缺省开时 quiet 信不进叫醒候选）。没跑真模型。
 
 2026-10-27（moment）：Psyche `bun test` 465 pass / 0 fail、`tsc` 0 错误；Soma `npm test` 171 pass、`tsc` 0 错误。test 库**副本**（Soma 推送指向空端口）起在 7451 取 a1 三轮：首轮全报；第二轮只剩时间 + 上次说话（3 天前 → 刚刚）；第三轮额度跨 50%、上下文跨 50% 才报。没跑真模型。
 

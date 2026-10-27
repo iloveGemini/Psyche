@@ -543,6 +543,51 @@ describe("住户之间写信（m6.md §八）", () => {
   });
 });
 
+describe("服务替住户递信（moments.md §四）", () => {
+  function house() {
+    const a1 = setup();
+    const a2 = setup();
+    const storeOf = (id: string) => (id === "a1" ? a1.store : id === "a2" ? a2.store : undefined);
+    const appOf = (h: H, id: string) => createApp({ store: h.store, projections: new Projections(h.store), storeOf, selfId: id, residentIds: () => ["a1", "a2"] });
+    const notify = async (h: H, id: string, body: unknown) => {
+      const r = await appOf(h, id).request("/v1/mail/notify", { method: "POST", headers: JSON_H, body: JSON.stringify(body) });
+      return { status: r.status, j: (await r.json()) as Record<string, any> };
+    };
+    return { a1, a2, notify };
+  }
+
+  test("发件人 = token 的住户、只进收件人收件箱、不记 mail.out、ext 幂等；对方 <now> 报有信", async () => {
+    const { a1, a2, notify } = house();
+    const letter = { to: "a1", subject: "评论了你的帖子", text: "好看\n——「今天的云」", via: "moments", ext: "c1" };
+    const r = await notify(a2, "a2", letter);
+    expect(r.status).toBe(200);
+    expect((await notify(a2, "a2", letter)).j.id).toBe(r.j.id);
+    const got = a1.store.list({ kinds: ["mail.in"], fonds: "", limit: 10 });
+    expect(got.map((e) => e.payload)).toEqual([{ from: "a2", subject: "评论了你的帖子", text: "好看\n——「今天的云」", via: "moments", quiet: true, ext: "c1" }]);
+    expect(a2.store.list({ kinds: ["mail.out"], limit: 10 })).toHaveLength(0);
+    expect(a2.store.list({ kinds: ["mail.in"], limit: 10 })).toHaveLength(0);
+    expect(await a1.now()).toContain("来信（a2 · 朋友圈");
+    // 不叫醒（moments.md §一）：睡着时不因它醒
+    expect(mailCandidates(a1.store, factsNow(a1.store, null))).toEqual([]);
+  });
+
+  test("/v1/mail/in 也认 quiet（Soma 替 Joy 递朋友圈的信）；quiet 和 urgent 不能一起", async () => {
+    const h = setup();
+    expect((await h.post("/v1/mail/in", { from: "Joy", text: "好看", via: "moments", quiet: true, ext: "c9" })).status).toBe(200);
+    expect(mailCandidates(h.store, factsNow(h.store, null))).toEqual([]);
+    expect((await h.post("/v1/mail/in", { from: "Joy", text: "x", via: "moments", quiet: true, urgent: true })).status).toBe(400);
+  });
+
+  test("闸：写给自己、屋里没有的人、冒用 house / soma-note / email、发件人带不进来、不能标急", async () => {
+    const { a1, a2, notify } = house();
+    expect((await notify(a1, "a1", { to: "a1", text: "x", via: "moments" })).status).toBe(400);
+    expect((await notify(a1, "a1", { to: "a3", text: "x", via: "moments" })).status).toBe(400);
+    for (const via of ["house", "soma-note", "email"]) expect((await notify(a1, "a1", { to: "a2", text: "x", via })).status).toBe(400);
+    expect((await notify(a1, "a1", { to: "a2", text: "x", via: "moments", from: "Joy", urgent: true })).status).toBe(200);
+    expect(a2.store.list({ kinds: ["mail.in"], fonds: "", limit: 10 }).map((e) => e.payload)).toEqual([{ from: "a1", text: "x", via: "moments", quiet: true }]);
+  });
+});
+
 describe("房子的一个邮箱按 @ 分（soma2.md §8.2）", () => {
   const house = async () => {
     const a1 = setup();

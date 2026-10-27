@@ -2,6 +2,7 @@
  * 通道的口子（notes/plan/m6.md §一 §五）：来信、写信、翻开、来往的信、在哪、通道设置。
  *
  * - 来信（POST /v1/mail/in）：通道交进来，`mail.in` 不挂处境（信不在哪段对话里）。外部消息 id 做幂等。
+ *   `quiet` = 不叫醒（服务替人递的信，m6.md §九）：醒着照常报有信，睡着不因它醒。
  * - 写信（POST /v1/mail/out）：给登记过的人、全屋别的住户（m6.md §八），或给自己（交接信）。系统补记写信处 from: { harness, session }。
  *   回她的信挂 replyTo 不算额度；主动写给人的每封算 1 次，和它约的醒同一份额度，用完拒。
  * - 翻开（POST /v1/mail/open）：给全文，没读过的记 `mail.read`（它的动作，m6.md §〇.2）。
@@ -64,20 +65,22 @@ export function setChannels(store: EventStore, patch: Record<string, unknown>, b
 // ── 来信 ──
 
 export function receiveMail(store: EventStore, body: Record<string, unknown>): { id: string; archiveNo: string } {
-  const { from, text, via, subject, urgent, ext } = body;
+  const { from, text, via, subject, urgent, ext, quiet } = body;
   if (!nonEmpty(from)) throw new MailError("from 是空的");
   if (!nonEmpty(text)) throw new MailError("text 是空的");
   if (!nonEmpty(via)) throw new MailError("via 是空的（经哪个通道来的）");
   if (subject !== undefined && typeof subject !== "string") throw new MailError("subject 应为字符串");
   if (urgent !== undefined && typeof urgent !== "boolean") throw new MailError("urgent 应为 true / false");
   if (ext !== undefined && !nonEmpty(ext)) throw new MailError("ext 应为非空字符串");
+  if (quiet !== undefined && typeof quiet !== "boolean") throw new MailError("quiet 应为 true / false");
+  if (quiet && urgent) throw new MailError("quiet 和 urgent 不能一起");
   const ev = store.append({
     kind: "mail.in",
     class: "experience",
     source: via,
     situation: null,
     idem: ext ? `${via}:${ext}` : undefined,
-    payload: { from: from.trim(), text, via, ...(nonEmpty(subject) ? { subject: subject.trim() } : {}), ...(urgent ? { urgent: true } : {}), ...(ext ? { ext } : {}) },
+    payload: { from: from.trim(), text, via, ...(nonEmpty(subject) ? { subject: subject.trim() } : {}), ...(urgent ? { urgent: true } : {}), ...(quiet ? { quiet: true } : {}), ...(ext ? { ext } : {}) },
   });
   return { id: ev.id, archiveNo: show(store, ev) };
 }

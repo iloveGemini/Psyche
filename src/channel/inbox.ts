@@ -231,7 +231,8 @@ export function mailCandidates(store: EventStore, f: Facts): MailCandidate[] {
   const rules = currentDnd(store);
   const on = wakeOnMail(store);
   return unreadMail(store)
-    .filter((m) => !noticed.has(m.ev.id))
+    // quiet 的信（服务替人递的，m6.md §九）不叫醒：醒着时照常在 <moment> 里报
+    .filter((m) => !noticed.has(m.ev.id) && !(m.ev.payload as { quiet?: boolean }).quiet)
     .map((m): MailCandidate => {
       if (held(rules, f, m)) return { by: "mail", key: `mail:${m.ev.id}:dnd`, hold: "dnd", mail: m.ev.id };
       if (!on) return { by: "mail", key: `mail:${m.ev.id}:off`, hold: "off", mail: m.ev.id };

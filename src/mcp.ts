@@ -946,7 +946,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     text?: string;
     delivery?: { via: string; ok: boolean; error?: string }[];
   }
-  const VIA: Record<string, string> = { "soma-note": "留言", email: "邮件" };
+  const VIA: Record<string, string> = { "soma-note": "留言", email: "邮件", house: "全屋", moments: "朋友圈" };
   const head = (m: MailView) => {
     const t = shortTime(m.at, tz);
     if (m.dir === "in") return `[${m.archiveNo}] ${t} 来信 · ${m.from}，经${VIA[m.via ?? ""] ?? m.via}${m.urgent ? " · 急" : ""}${m.subject ? `《${m.subject}》` : ""}`;

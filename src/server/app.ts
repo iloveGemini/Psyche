@@ -32,7 +32,7 @@ import { getSettings, ScheduleError, setSchedule, setSettings, writeDiary, readS
 import { deliverDue, nextWake, heartbeatNext, renderJustHappened, scheduleItem, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
 import { composePrompt, currentName, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfError, selfVersion } from "../self/self.ts";
 import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../channel/inbox.ts";
-import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
+import { CHANNELS, getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
 import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, readGists, writeGist } from "../catalog/gist.ts";
 import { renderContinuity, seedContinuity } from "../archive/continuity.ts";
@@ -661,6 +661,15 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
       }
     } else if (p.to !== "self") outbox?.(ev);
     return c.json(r);
+  });
+  // 服务替住户递的信（moments.md §四）：发件人 = token 对应的住户，只进收件人的收件箱，不记 mail.out——
+  // 他那边的经历里已经有他调的那次工具（比如 moments_comment）
+  app.post("/v1/mail/notify", async (c) => {
+    const { to, ...rest } = await body(c);
+    const housemates = (residentIds?.() ?? []).filter((id) => id !== selfId && storeOf?.(id));
+    if (typeof to !== "string" || !housemates.includes(to)) throw new MailError(`to 要是全屋别的住户：${housemates.join("、") || "（屋里没别人）"}`);
+    if (typeof rest.via !== "string" || ["house", ...CHANNELS].includes(rest.via)) throw new MailError(`via 写服务名（如 moments），不能是 house / ${CHANNELS.join(" / ")}`);
+    return c.json(receiveMail(storeOf!(to)!, { ...rest, from: selfId, urgent: undefined, quiet: true }));
   });
   app.get("/v1/mail", (c) => c.json(listMail(store, num(c.req.query("days")) ?? 7, c.req.query("full") === "1")));
   app.post("/v1/mail/open", async (c) => c.json(openMail(store, (await body(c)).refs)));
