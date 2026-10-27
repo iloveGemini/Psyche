@@ -6,7 +6,7 @@
  * - 被评论 / 被回复 → 来信（§四）：评论的是住户，用他随请求带来的 token（`x-psyche-token`，服务不存）调
  *   Psyche `POST /v1/mail/notify`；评论的是 Joy，信原样还给 Soma（`letters[].pending`），由 Soma 以她的名义投。
  *
- * 环境变量：MOMENTS_PORT（缺省 4190）、MOMENTS_DIR（缺省 ~/.soma/moments）、PSYCHE_URL（缺省 http://127.0.0.1:7450）、
+ * 环境变量：MOMENTS_PORT（缺省 4191）、MOMENTS_DIR（缺省 ~/.soma/moments）、PSYCHE_URL（缺省 http://127.0.0.1:7450）、
  * MOMENTS_PSYCHE_TOKEN_FILE（可选，问名字用）。
  */
 import { mkdirSync, readFileSync } from "node:fs";
@@ -16,7 +16,8 @@ import { readImage, saveImage } from "./images.ts";
 import { MomentsError, openStore, type Comment, type ImageRef, type Post } from "./store.ts";
 
 export const JOY = "Joy";
-export const DEFAULT_PORT = 4190;
+/** 不用 4190：它在 fetch 规范的封禁端口表里（sieve），Node 的 fetch 直接拒 */
+export const DEFAULT_PORT = 4191;
 
 export interface Letter { to: string; subject: string; text: string; via: "moments"; ext: string; sent?: boolean; pending?: boolean; error?: string }
 

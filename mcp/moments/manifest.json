@@ -4,7 +4,7 @@
   "delivery": ["wake", "media"],
   "runtime": "external",
   "start": { "command": "bun", "args": ["adapter.ts"] },
-  "health": { "url": "http://127.0.0.1:4190/api/health", "timeoutMs": 1500 },
+  "health": { "url": "http://127.0.0.1:4191/api/health", "timeoutMs": 1500 },
   "scope": "house",
   "media": { "kinds": ["image"] }
 }

@@ -4,7 +4,7 @@
  * - 工具说明只写机制（能做什么、谁看得到、被评论会来信），不教怎么发、发什么。
  * - 图直接进这一轮：翻朋友圈给缩略（长边 512），看一条给原图（长边 2048）。
  *
- * 环境变量：PSYCHE_AGENT（他是谁）、PSYCHE_TOKEN_FILE / PSYCHE_TOKEN（递信用，随请求带给服务）、MOMENTS_URL（缺省 http://127.0.0.1:4190）。
+ * 环境变量：PSYCHE_AGENT（他是谁）、PSYCHE_TOKEN_FILE / PSYCHE_TOKEN（递信用，随请求带给服务）、MOMENTS_URL（缺省 http://127.0.0.1:4191）。
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -45,7 +45,7 @@ export interface AdapterOpts {
 }
 
 export function createServer(opts: AdapterOpts = {}) {
-  const base = (opts.url ?? process.env.MOMENTS_URL ?? "http://127.0.0.1:4190").replace(/\/$/, "");
+  const base = (opts.url ?? process.env.MOMENTS_URL ?? "http://127.0.0.1:4191").replace(/\/$/, "");
   const agent = opts.agent ?? process.env.PSYCHE_AGENT ?? "";
   const fetchImpl = opts.fetchImpl ?? fetch;
   const tok = opts.token ?? token;

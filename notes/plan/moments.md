@@ -63,5 +63,5 @@
 
 ## 八、还没定
 
-- 端口、Soma 页面放在哪个入口。（见 notes/plan/soma-ui-refactor.md 同步施工）→ 先按：服务 127.0.0.1:4190；Soma 独立页 `/moments`，左栏顶上一个「✦ 朋友圈」入口，等 UI 重构再并进 `MomentsStage`。
+- 端口、Soma 页面放在哪个入口。（见 notes/plan/soma-ui-refactor.md 同步施工）→ 先按：服务 127.0.0.1:4191；Soma 独立页 `/moments`，左栏顶上一个「✦ 朋友圈」入口，等 UI 重构再并进 `MomentsStage`。
 - feed 一次给几条、缩略多大（先 10 条、长边 512，看他们用起来再调）。-> 同意
