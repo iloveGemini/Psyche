@@ -124,3 +124,20 @@ export function parseTranscript(text: string, session: string, done: ReadonlySet
 
 /** 斜杠命令、Claude Code 自己塞进来的东西：报，但不取 <now>（没有在跟它说话） */
 export const isCommand = (prompt: string) => /^\s*\//.test(prompt) || /^\s*<(command-name|local-command-|bash-)/.test(prompt);
+
+/** 上下文用了多少（moment 的「上下文」）：最后一条主线回复的输入 token（含缓存读写）；读不出返回 undefined */
+export function contextUsed(text: string): number | undefined {
+  const lines = text.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes('"usage"')) continue;
+    try {
+      const e = JSON.parse(lines[i]) as { type?: string; isSidechain?: boolean; message?: { usage?: Record<string, number> } };
+      const u = e.message?.usage;
+      if (e.type !== "assistant" || e.isSidechain || !u) continue;
+      return (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+    } catch {
+      // 半行：跳过
+    }
+  }
+  return undefined;
+}

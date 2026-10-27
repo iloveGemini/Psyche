@@ -91,8 +91,8 @@ describe("开、记、合", () => {
   });
 });
 
-describe("<now> 与种子", () => {
-  test("<now>：没有开着的就没这一行；有的话报件数、答应的件数、最久没动的", async () => {
+describe("<moment> 与种子", () => {
+  test("<moment>：没有开着的就没这一行；有的话报件数、答应的件数、最久没动的", async () => {
     const h = setup();
     h.her("在吗");
     expect(await h.now()).not.toContain("还开着的事");

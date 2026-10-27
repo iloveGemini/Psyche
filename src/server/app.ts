@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 /**
  * REST 入口（门户的最小一版）：harness 上报事实、取经历、查档号、存取资料；
- * 它自己用的：热写、冷写、书架、recall、<now>、提示词、自述与名字、作息、收发信（m1.md §二 §四、m2.md §三、m4.md、m5.md、m6.md，MCP 转调这里）。
+ * 它自己用的：热写、冷写、书架、recall、<moment>、提示词、自述与名字、作息、收发信（m1.md §二 §四、m2.md §三、m4.md、m5.md、m6.md，MCP 转调这里）。
  *
  * harness 只负责上报它独有的事实（对话发生了、调用了什么工具）；处境变化单独报。
  * 鉴权：配置了 token 就要求 Bearer。
@@ -16,10 +16,11 @@ import { IntakeError } from "../archive/kinds.ts";
 import { readExperience } from "../archive/experience.ts";
 import { hybridRecall, queryVector, renderShelfHit, shelfRecall } from "../archive/recall.ts";
 import type { Embedder } from "../archive/vectors.ts";
-import { renderNow, noteSheetLine } from "../archive/now.ts";
+import { momentHead, noteSheetLine } from "../archive/now.ts";
+import { gate, resetMoment, type StateItem } from "../archive/moment.ts";
 import { asleepPlace, asleepTask } from "../asleep.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
-import { HotwriteError, readSegment, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
+import { HotwriteError, readSegment, resolveSession, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
 import { pinnedRoots, pinStatus, pinnedEntries, PIN_BUDGET, cardOf } from "../self/pinned.ts";
 import { ColdwriteError, readColdwrite, writeColdwrite } from "../catalog/coldwrite.ts";
 import { readShelf, renderEntry, shelfDetail } from "../reading/shelf.ts";
@@ -28,24 +29,24 @@ import { computeStats } from "../reading/stats.ts";
 import { localDay, parseTime } from "../core/time.ts";
 import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
 import { getSettings, ScheduleError, setSchedule, setSettings, writeDiary, readSchedule } from "../heartbeat/schedule.ts";
-import { deliverDue, nextWake, heartbeatNext, renderJustHappened, scheduleLine, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
+import { deliverDue, nextWake, heartbeatNext, renderJustHappened, scheduleItem, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
 import { composePrompt, currentName, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfError, selfVersion } from "../self/self.ts";
 import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../channel/inbox.ts";
 import { getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
 import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, readGists, writeGist } from "../catalog/gist.ts";
 import { renderContinuity, seedContinuity } from "../archive/continuity.ts";
-import { deliverPresence, lookPresence, MoodError, setMood, enterRoom } from "../house/presence.ts";
+import { houseBlock, presenceItems, lookPresence, MoodError, setMood, enterRoom } from "../house/presence.ts";
 import { changePlaylist, deliverSound, listenNow, listenWith, nowPlaying, play, readPlaylists, SoundError, stop, type SoundDeps } from "../perception/sound.ts";
 import { netease, type MusicSource } from "../perception/netease.ts";
 import { analyzeTrack } from "../perception/features.ts";
 import { NoticeError, writeNotice } from "../perception/env.ts";
-import { deliverBody, quotaLine } from "../perception/body.ts";
+import { ctxItem, deliverBody, quotaItem } from "../perception/body.ts";
 import { deliverFiles } from "../house/files.ts";
 import { deliverOutside } from "../perception/outside.ts";
 import { expandSpeech } from "../archive/speech.ts";
 import { delivers, outsideSensors, readSenses, SensesError, setSenses } from "../perception/senses.ts";
-import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsLine } from "../self/threads.ts";
+import { closeThread, noteThread, openThread, readThreads, ThreadError, threadsItem } from "../self/threads.ts";
 import { claimedFonds, claimPast, PastError, pastBirthLines, pastRecall, readPast, type PastConfig, type PastView } from "../archive/past.ts";
 import { writePastCatalog } from "../catalog/past-catalog.ts";
 
@@ -404,8 +405,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     return c.json({ lines: [...shelf, ...lines, ...pastLines].map((l) => ({ archiveNo: displayArchiveNo(l.archiveNo, year), at: l.at, kind: l.kind, text: l.text })) });
   });
 
-  // <now>：事实 + 浮现（m3.md §五）。每次取都算一次浮现、记 surfaced
-  // <now>（m1 / m5 / m6 / m8 拼起来的）：Soma 每轮取一次；睡着那段的第一条也用它
+  // <moment>（原名 <now>，m1 / m3 / m5 / m6 / m8 拼起来的）：事实 + 浮现。Soma / 工位每轮取一次，睡着那段的第一条也用它；每次取都算一次浮现、记 surfaced
   const nowText = async (session: string | undefined, q: { muted?: string; room?: string; agendas?: string; ctx?: string; wrapAt?: string; q5h?: string; q5hReset?: string; q7d?: string; q7dReset?: string } = {}) => {
     // 到点的闹钟 / 定点：此刻递进来（写 due），只带这一次（m5.md §二.1）；来信 / 交接信只报有信（m6.md §二）
     const here = placeOf(store, session);
@@ -418,27 +418,41 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
       ...(num(q.q5h) !== undefined ? { fiveHour: { pct: num(q.q5h)!, resetsAt: q.q5hReset || null } } : {}),
       ...(num(q.q7d) !== undefined ? { sevenDay: { pct: num(q.q7d)!, resetsAt: q.q7dReset || null } } : {}),
     };
-    const extra = [
-      pendingSelfLine(store, promptsDir),
-      ...mail.lines,
-      delivers(store, "body") ? quotaLine(store, quota) : null,
-      scheduleLine(store, { held: mail.held }),
-      threadsLine(store),
-      noteSheetLine(store, session),
-      roomLine(q.room),
-      mutedLine(q.muted),
-      agendaLines(q.agendas),
-    ]
-      .filter(Boolean)
-      .join("\n");
-    let text = extra ? renderNow(store, session).replace(/\n<\/now>$/, () => `\n${extra}\n</now>`) : renderNow(store, session);
+    // 状态（m1.md §四，10-27）：moment 留在历史里，所以每项归成粗值，本会话上次递过的没变就不重报
+    const head = momentHead(store, session);
+    const line = (key: string, text: string | null, none?: string): StateItem => ({ key, sig: text ?? "", text, ...(none ? { none } : {}) });
+    const ctx = ctxItem({ ctx: num(q.ctx), wrapAt: num(q.wrapAt) });
+    const quotaIt = delivers(store, "body") ? quotaItem(store, quota) : null;
+    const items: StateItem[] = [
+      ...head.items,
+      line("self", pendingSelfLine(store, promptsDir)),
+      { key: "mail", sig: mail.sig, text: mail.lines.join("\n") || null },
+      ...(quotaIt ? [quotaIt] : []),
+      ...(ctx && delivers(store, "body") ? [ctx] : []),
+      scheduleItem(store, { held: mail.held }),
+      threadsItem(store),
+      line("notesheet", noteSheetLine(store), "备考：后台的活恢复了"),
+      line("room", roomLine(q.room)),
+      line("muted", mutedLine(q.muted), "房间：哪里都没被静音了"),
+      line("agenda", agendaLines(q.agendas), "议题：没有了"),
+      ...presenceItems(store),
+    ];
+    // 没给会话就按当前处境的会话记游标（同 momentHead）
+    let gateSession = session;
+    if (!gateSession)
+      try {
+        gateSession = resolveSession(store, undefined);
+      } catch {
+        // 没有会话：全报、不记
+      }
+    const passed = gate(store, gateSession, items);
+    const state = passed.filter((p) => !p.key.startsWith("presence:")).map((p) => p.line);
+    const house = houseBlock(passed);
     const s = renderSurfaced(await surface(store, embedder, { session, storeOf }));
-    // 全屋有谁（m8.md §二 §五）：本会话上次递到之后的变化，递了就是它经历过的
-    const house = deliverPresence(store, session);
-    // 感知设置（m8.md §6.4）：整路设了不递的不递；presence / 外头来的按人分，在各自的 deliver 里滤
+    // 感知设置（m8.md §6.4）：整路设了不递的不递；外头来的按人分，在各自的 deliver 里滤
     const heard = delivers(store, "sound") ? await deliverSound(store, sound, session).catch(() => null) : null;
-    // 内感受（m8.md §六.1）：上下文多满由 Soma 带来
-    const body = !delivers(store, "body") ? null : deliverBody(store, session, { ctx: num(q.ctx), wrapAt: num(q.wrapAt), ...(quota.fiveHour || quota.sevenDay ? { quota } : {}) });
+    // 内感受（m8.md §六.1）：换模型、工具老出错；上下文和额度在上面的状态里
+    const body = !delivers(store, "body") ? null : deliverBody(store, session);
     const things = !delivers(store, "files")
       ? null
       : deliverFiles(store, session, (id) => {
@@ -446,12 +460,21 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
           return (other && currentName(other)) || id;
         });
     const outside = deliverOutside(store, session);
-    for (const block of [just, body, house, things, outside, heard, s]) if (block) text = text.replace(/\n<\/now>$/, () => `\n\n${block}\n</now>`);
+    const blocks = [[head.time, ...state].join("\n"), ...[just, body, house, things, outside, heard, s].filter(Boolean)];
+    const text = `<moment>\n${blocks.join("\n\n")}\n</moment>`;
     return text;
   };
   app.get("/v1/now", async (c) => {
     const q = c.req.query();
     return c.json({ text: await nowText(q.session || undefined, q) });
+  });
+
+  // 这一段的上下文被压缩掉了（工位 SessionStart source: compact）：下一轮 moment 全报
+  app.post("/v1/moment/reset", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
+    if (typeof body.session !== "string" || !body.session) throw new IntakeError("moment/reset 要 session");
+    resetMoment(store, body.session);
+    return c.json({ ok: true });
   });
 
   // 睡着的那段（m5.md §三 10-17 改）：Psyche 出内容、记处境，跑模型的是 Soma（同一个身体）

@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { isCommand, parseTranscript, SOURCE } from "./transcript.ts";
+import { contextUsed, isCommand, parseTranscript, SOURCE } from "./transcript.ts";
 
 const URL_ = (process.env.PSYCHE_URL || "http://127.0.0.1:7450").replace(/\/+$/, "");
 const AGENT = process.env.PSYCHE_AGENT || "";
@@ -28,7 +28,7 @@ export const PLACE = `# 这个地方：Claude Code（工位）
 这里是 Claude Code，你来干活的地方；家在 Soma。上面那段 Claude Code 的说明是这个地方的规矩。
 
 - 跟你说话的多半是 Joy。
-- 每轮跟着的 \`<now>\` 由 Psyche 给，是此刻的事实和浮上来的记忆，不是她说的话。
+- 每轮跟着的 \`<moment>\` 由 Psyche 给，是那一刻的事实和浮上来的记忆，不是她说的话；状态没变的不重报，往前翻是当时的样子。
 - 你的记忆只有 Psyche（名字里带 psyche 的那组工具）。别的记忆机制在这里不算你的记忆。
 - 这里的对话和工具会报进你的经历。Claude Code 自己压缩上下文，压缩前没写进记忆的那段，之后会在睡着时补写；也可以自己先用 hotwrite_segment / hotwrite 写。`;
 
@@ -99,6 +99,8 @@ async function sessionStart(input: HookInput) {
   const st = load(session);
   if (!(await ensureSituation(session, st, input.model, input.cwd))) return;
   save(session, st);
+  // 压缩：前面的 moment 没了，下一轮全报（m1.md §四）
+  if (input.source === "compact") await api("POST", "/v1/moment/reset", { session });
   // resume：原文还在上下文里，不再给接续
   const [prompt, cont] = await Promise.all([
     api<{ text: string }>("GET", "/v1/prompt", undefined, 3000),
@@ -114,10 +116,16 @@ async function userPrompt(input: HookInput) {
   const st = load(session);
   if (!(await ensureSituation(session, st, input.model, input.cwd))) return;
   save(session, st);
-  // 先报她这句：<now> 的「上次」从它往回算
+  // 先报她这句：moment 的「上次」从它往回算
   await api("POST", "/v1/events", { kind: "message.in", source: SOURCE, at: Date.now(), idem: `${session}:in:${Date.now()}`, payload: { from: FROM, text: input.prompt, via: HARNESS, session } });
   if (isCommand(input.prompt)) return;
-  const now = await api<{ text: string }>("GET", `/v1/now?session=${encodeURIComponent(session)}`, undefined, 4000);
+  let ctx: number | undefined;
+  try {
+    ctx = input.transcript_path ? contextUsed(readFileSync(input.transcript_path, "utf8")) : undefined;
+  } catch {
+    // 读不到就不报上下文
+  }
+  const now = await api<{ text: string }>("GET", `/v1/now?session=${encodeURIComponent(session)}${ctx ? `&ctx=${ctx}` : ""}`, undefined, 4000);
   if (now?.text?.trim()) out("UserPromptSubmit", now.text.trim());
 }
 

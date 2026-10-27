@@ -446,7 +446,7 @@ describe("定点", () => {
   });
 });
 
-describe("<now> 与账本", () => {
+describe("<moment> 与账本", () => {
   test("作息一行：下次、额度；没写作息不出现", async () => {
     const h = setup();
     quietSince(h, "2026-10-15T08:00:00");
@@ -481,7 +481,7 @@ describe("睡着那段的口子（10-17：Psyche 出内容，Soma 跑）", () =>
     h.pass(4 * HOUR);
     const r = await h.ok("/v1/asleep/start", { by: "catchup", session: "S1", model: "gemini-4-argon" });
     expect(r.system).toContain("这是睡着的时候");
-    expect(r.first).toContain("<now>");
+    expect(r.first).toContain("<moment>");
     expect(r.first).toContain("会话 S1 还有 1 条没写进记忆");
     const sit = h.store.list({ kinds: ["situation"] }).at(-1)!;
     expect(sit.payload).toMatchObject({ harness: "sleep", session: r.session, model: "gemini-4-argon" });

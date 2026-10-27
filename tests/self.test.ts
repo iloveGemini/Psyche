@@ -196,7 +196,7 @@ describe("和别处的接线", () => {
     expect(texts).toContain("我给自己取名「阿一」");
   });
 
-  test("<now>：这次会话用的版本比现行旧，才报一行", async () => {
+  test("<moment>：这次会话用的版本比现行旧，才报一行", async () => {
     const { store, get, post, her, no } = setup();
     expect((await get("/v1/now")).text).not.toContain("自述");
     await post("/v1/self/prompt", { text: "一", why: "w", cites: [no(her("x"))], baseVersion: 0 });

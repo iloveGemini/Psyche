@@ -10,6 +10,7 @@ import type { EventStore, PsycheEvent } from "../store/events.ts";
 import { displayArchiveNo } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
 import { ownSince } from "./self.ts";
+import type { StateItem } from "../archive/moment.ts";
 
 export class ThreadError extends Error {}
 
@@ -138,6 +139,12 @@ export function threadsLine(store: EventStore): string | null {
   const promises = open.filter((t) => t.type === "promise");
   const stale = [...open].sort((a, b) => a.lastAt - b.lastAt)[0];
   return `还开着的事：${open.length} 件${promises.length ? `（答应别人的 ${promises.length} 件）` : ""}；最久没动：「${stale.title}」，${ago(store.now() - stale.lastAt)}`;
+}
+
+/** 还开着的事（moment 的一项）：开了或合上了一件才重报；「最久没动 X 前」变了不算 */
+export function threadsItem(store: EventStore): StateItem {
+  const open = onMind(store);
+  return { key: "threads", sig: open.map((t) => t.id).sort().join(","), text: threadsLine(store), none: "还开着的事：没有了" };
 }
 
 /** 种子里的一段：全部开着的，从旧到新，带最近一笔 */

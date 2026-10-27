@@ -15,7 +15,7 @@ import { currentName, ownSince } from "../self/self.ts";
 import { clockOf } from "../core/time.ts";
 import { resolveSession } from "../catalog/hotwrite.ts";
 import { delivers, records } from "../perception/senses.ts";
-import { deliveries, recordDelivery } from "../perception/delivered.ts";
+import { gate, type StateItem } from "../archive/moment.ts";
 
 export type State = "busy" | "idle" | "asleep" | "offline";
 export const STATE_NAME: Record<State, string> = { busy: "忙", idle: "闲", asleep: "睡着", offline: "离线" };
@@ -309,72 +309,41 @@ export function describe(subject: string, name: string, v: Perceived): string {
   return `${who}：${where}${STATE_NAME[v.state]}${away}${mood}`;
 }
 
-/** 一个对象一段时间里的变化压成一行：只变一次就说变成了什么；变了几次说首尾和次数 */
-function changeLine(evs: PsycheEvent[], tz: string, at: number): string {
-  const last = evs.at(-1)!.payload as { subject: string; name: string; value: Perceived };
-  const now = describe(last.subject, last.name, last.value);
-  return evs.length === 1 ? `${now}（${clockOf(evs[0].at, at, tz)}）` : `${now}（${clockOf(evs[0].at, at, tz)} 起变了 ${evs.length} 次）`;
+/** 粗值：位置、在不在线、个签；忙 ↔ 闲、有动静 ↔ 没动静不算变（10-27，m8.md §二） */
+function coarse(v: Perceived): string {
+  const { state, active, ...rest } = v as Perceived & { state?: string; active?: boolean };
+  void active;
+  const online = state === undefined ? undefined : state === "busy" || state === "idle" ? "on" : state;
+  return JSON.stringify({ ...rest, ...(online ? { online } : {}) });
 }
 
-/** 递过（和 look 过）的全屋那几行（声音的另算，sound.ts） */
-const noticedIn = (store: EventStore, session: string | undefined) => deliveries(store, "presence").filter((d) => d.session === session);
-
 /**
- * <now> 的「这段时间全屋」：本会话上次递到之后的变化。本会话还没递过 = 首轮：给全貌 + 上一会话以来的次数。
- * 递了就记 percept.delivered（不进经历）；没东西可报返回 null、不记。
+ * moment 的「全屋」（m8.md §二 §五，10-27 并进状态闸）：每人一项，位置 / 上线下线 / 个签变了才报一行，带变的时刻。
+ * 只给他设了「看」的人（m8.md §6.4）。
  */
-export function deliverPresence(store: EventStore, session: string | undefined): string | null {
+export function presenceItems(store: EventStore): StateItem[] {
   const tz = store.timeZone;
-  const mine = noticedIn(store, session);
-  // 只递他设了「看」的人（m8.md §6.4）
-  const shown = (subject: string) => delivers(store, "presence", subject);
-  const all = store
-    .list({ kinds: ["percept"], fonds: "", limit: 100_000 })
-    .filter((e) => (e.payload as { sensor: string }).sensor === "presence" && shown((e.payload as { subject: string }).subject));
-  let text: string;
-  let refs: string[];
-  if (mine.length) {
-    // 按入库次序比（同一毫秒里先记的变化、后递的那一下也分得清）
-    const since = mine.at(-1)!.id;
-    const fresh = all.filter((e) => e.id > since);
-    if (!fresh.length) return null;
-    const by = new Map<string, PsycheEvent[]>();
-    for (const e of fresh) {
-      const k = (e.payload as { subject: string }).subject;
-      by.set(k, [...(by.get(k) ?? []), e]);
-    }
-    text = ["这段时间全屋：", ...[...by.values()].map((evs) => `- ${changeLine(evs, tz, store.now())}`)].join("\n");
-    refs = fresh.map((e) => e.id);
-  } else {
-    const current = new Map([...lastSeenPresence(store)].filter(([k]) => shown(k)));
-    if (!current.size) return null;
-    // 上一次递到（任何会话）之后变过几次
-    const anyNoticed = deliveries(store, "presence").at(-1);
-    const since = anyNoticed?.id;
-    const nameOf = (k: string) => (current.get(k)?.ev.payload as { name?: string } | undefined)?.name ?? k;
-    const counts = since === undefined ? [] : [...countBy(all.filter((e) => e.id > since))].map(([k, n]) => `${nameOf(k)} 变过 ${n} 次`);
-    text = [
-      "全屋：",
-      ...[...current.entries()].map(([k, { value, ev }]) => `- ${describe(k, (ev.payload as { name: string }).name, value)}`),
-      ...(counts.length ? [`（上次之后：${counts.join("，")}）`] : []),
-    ].join("\n");
-    refs = [...current.values()].map((c) => c.ev.id);
-  }
-  recordDelivery(store, "presence", session, { refs, text });
-  return text;
+  const now = store.now();
+  const current = [...lastSeenPresence(store)].filter(([k]) => delivers(store, "presence", k));
+  return current.map(([k, { value, ev }]) => {
+    const text = `- ${describe(k, (ev.payload as { name: string }).name, value)}`;
+    return { key: `presence:${k}`, sig: coarse(value), text, later: `${text}（${clockOf(ev.at, now, tz)}）` };
+  });
+}
+
+/** 过了闸的全屋几行拼成一块：首轮「全屋：」，之后「全屋有变：」 */
+export function houseBlock(passed: { key: string; line: string; first: boolean }[]): string | null {
+  const people = passed.filter((p) => p.key.startsWith("presence:"));
+  return people.length ? [people[0].first ? "全屋：" : "全屋有变：", ...people.map((p) => p.line)].join("\n") : null;
+}
+
+/** 只让全屋过闸（look 之后、测试）；moment 里全屋和别的状态一起过闸 */
+export function presenceBlock(store: EventStore, session: string | undefined): string | null {
+  return houseBlock(gate(store, session, presenceItems(store)));
 }
 
 /** look 看到的挂在它所在会话的处境上：热写这一段时写得到 */
 const sitOf = (store: EventStore, session: string | undefined) => (session ? store.situationOfSession(session, store.now()) : null) ?? undefined;
-
-function countBy(evs: PsycheEvent[]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const e of evs) {
-    const k = (e.payload as { subject: string }).subject;
-    m.set(k, (m.get(k) ?? 0) + 1);
-  }
-  return m;
-}
 
 /** look：此刻全屋的全貌（每个对象最后记下的、他能感知到的那一面）。记一条 looked 的 percept.noticed，不另记 percept，不动 <now> 的变化判定 */
 export function lookPresence(store: EventStore, session: string | undefined): string {
@@ -391,5 +360,7 @@ export function lookPresence(store: EventStore, session: string | undefined): st
     ? ["全屋：", ...[...current.entries()].map(([k, { value, ev }]) => `- ${describe(k, (ev.payload as { name: string }).name, value)}`)].join("\n")
     : "全屋还没看到别人。";
   store.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: sitOf(store, session), payload: { sensor: "presence", refs: [...current.values()].map((c) => c.ev.id), text, looked: true, ...(session ? { session } : {}) } });
+  // 看过的，moment 不再重报（m8.md §二）
+  gate(store, session, presenceItems(store));
   return text;
 }

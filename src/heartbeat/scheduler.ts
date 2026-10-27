@@ -18,6 +18,7 @@ import { bornRecord, currentSelf, ownSince } from "../self/self.ts";
 import { alarmKey, dailyKey, firedKeys, getSettings, readSchedule, type Settings } from "./schedule.ts";
 import { factsNow, lastActive, mailCandidates, NOT_PLACE_SQL } from "../channel/inbox.ts";
 import { pendingGists } from "../catalog/gist.ts";
+import type { StateItem } from "../archive/moment.ts";
 import { coldCursor } from "../catalog/coldwrite.ts";
 
 export const AWAKE_MS = 30 * 60_000;
@@ -403,6 +404,25 @@ export function scheduleLine(store: EventStore, opts: { held?: number } = {}): s
   if (cur?.schedule.heartbeat && !settings.heartbeat) parts.push("心跳暂未开放，写了不生效");
   if (settings.paused) parts.push("暂停中：不叫醒");
   return `作息：${parts.join(" · ")}`;
+}
+
+/** 作息（moment 的一项）：下次醒的那项换了、暂停 / 恢复、勿扰挡着的信数变了，或唤醒额度剩 ≤ 3 才重报；1/20 → 2/20 不算 */
+export function scheduleItem(store: EventStore, opts: { held?: number } = {}): StateItem {
+  const text = scheduleLine(store, opts);
+  if (!text) return { key: "schedule", sig: "" };
+  const cur = readSchedule(store);
+  const settings = getSettings(store);
+  const b = budgetToday(store);
+  const left = settings.wakeBudget - b.used;
+  const sig = [
+    nextWake(store)?.key ?? "-",
+    cur?.schedule.wakeOn.mail ? "" : "nomail",
+    opts.held ?? 0,
+    cur?.schedule.heartbeat && !settings.heartbeat ? "hb" : "",
+    settings.paused ? "paused" : "",
+    left <= 3 ? `left${Math.max(0, left)}` : "",
+  ].join("|");
+  return { key: "schedule", sig, text };
 }
 
 // ── 唤醒账本（给 Joy 看） ──

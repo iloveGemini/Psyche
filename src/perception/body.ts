@@ -1,16 +1,15 @@
 /**
  * 内感受（m8.md §六.1）：只读出它身上真实的处境，不模拟（body.md 搁置时留下的那条）。
  *
- * - 上下文多满：Soma 每轮带来（ctx 已用、wrapAt 到多少会收尾换一段）。过半 / 快满了 / 马上收尾 三档，跨档才说。
+ * - 上下文多满、订阅额度：10-27 并进 moment 的状态闸（ctxItem / quotaItem，m1.md §四），跨档才报，这里不再说。
  * - 换了模型：这段会话的模型和上一段不一样，首轮说一次。
  * - 工具老出错：本会话最近 30 分钟里出错 ≥ 3 次才说，出错次数跨档（3 / 6 / 10）再说。
- * - 订阅额度（10-17）：Soma 带来 claude.ai 登录的 5 小时 / 7 天窗口用了多少（只有走订阅的身体有）。50 / 75 / 90% 跨档才说；
- *   跟会话无关、跟窗口走：同一个窗口（重置时刻相同）说过的档不再说，换了窗口从头算。全屋同一个登录的人共用。
- * 唤醒额度、还没写进记忆的条数，<now> 别处已有，不重复。
+ * 唤醒额度在 moment 的作息那项，不重复。
  * 递一次记系统日志 percept.delivered（sensor = body），不进经历（m8.md §五）；档位记在里面，下一轮按它判跨没跨档。
  */
 import type { EventStore } from "../store/events.ts";
-import { deliveries, lastDelivery, recordDelivery } from "./delivered.ts";
+import { lastDelivery, recordDelivery } from "./delivered.ts";
+import { bandOf, type StateItem } from "../archive/moment.ts";
 
 export interface BodyInput {
   /** 已用 token */
@@ -27,24 +26,12 @@ interface QuotaWindow {
 }
 
 interface Levels {
-  ctx: number;
   tools: number;
   model?: string;
-  /** 额度：每个窗口说到了第几档、是哪个窗口（重置时刻） */
-  quota?: Partial<Record<"fiveHour" | "sevenDay", { band: number; resetsAt: string | null }>>;
 }
 
 const QUOTA_BANDS = [50, 75, 90];
 const QUOTA_NAME = { fiveHour: "5 小时窗口", sevenDay: "本周" } as const;
-
-/** 额度上次说到哪：跟窗口走，不跟会话（换一段不重报） */
-function lastQuota(store: EventStore): Levels["quota"] {
-  for (const d of deliveries(store, "body").reverse()) {
-    const levels = d.levels as Levels | undefined;
-    if (levels?.quota) return levels.quota;
-  }
-  return undefined;
-}
 
 function resetLabel(iso: string | null, tz: string): string {
   if (!iso) return "";
@@ -55,9 +42,10 @@ function resetLabel(iso: string | null, tz: string): string {
   return `，${g("month")}-${g("day")} ${g("hour")}:${g("minute")} 重置`;
 }
 
-const CTX_BANDS = [0.5, 0.75, 0.9];
+const CTX_BANDS = [0.25, 0.5, 0.75, 0.9];
+/** 没有收尾线（工位）：按已用 token 每 5 万一档 */
+const CTX_STEP = 50_000;
 const TOOL_BANDS = [3, 6, 10];
-const band = (x: number, bands: number[]) => bands.filter((b) => x >= b).length;
 
 const lastBody = (store: EventStore, session: string | undefined) => lastDelivery(store, "body", session, false);
 
@@ -73,36 +61,41 @@ function models(store: EventStore, session: string | undefined): { here?: string
   return { here, before };
 }
 
-/**
- * 额度常显（10-24 Joy）：跨档的提醒照旧在「身上」里说一次；另外每轮在 <now> 的事实里给一行此刻的数，
- * 只有 Soma 带来了额度（走订阅的身体）才有。不然他只能拿记着的旧数说话（10-21 的 84%，两天后还在报）。
- */
-export function quotaLine(store: EventStore, quota: BodyInput["quota"]): string | null {
-  const parts = (["fiveHour", "sevenDay"] as const)
-    .map((k) => (quota?.[k] ? `${QUOTA_NAME[k]} ${Math.round(quota[k]!.pct)}%${resetLabel(quota[k]!.resetsAt, store.timeZone)}` : ""))
-    .filter(Boolean);
-  return parts.length ? `订阅额度（全屋共用）：${parts.join(" · ")}` : null;
+/** 上下文（moment 的一项）：有收尾线按它的 25 / 50 / 75 / 90% 分档，没有（工位）按已用 token 每 5 万一档 */
+export function ctxItem(input: Pick<BodyInput, "ctx" | "wrapAt">): StateItem | null {
+  if (input.ctx === undefined) return null;
+  const k = Math.round(input.ctx / 1000);
+  if (!input.wrapAt) return { key: "ctx", sig: String(Math.floor(input.ctx / CTX_STEP)), text: `上下文：已用约 ${k}k token` };
+  const ratio = input.ctx / input.wrapAt;
+  const b = bandOf(ratio, CTX_BANDS);
+  const pct = Math.round(ratio * 100);
+  return {
+    key: "ctx",
+    sig: String(b),
+    text: `上下文：约 ${k}k，到收尾线的 ${pct}%${b === 4 ? "——再过几轮就会收尾、把这段写进记忆、换新的一段接着过" : ""}`,
+  };
 }
 
-export function deliverBody(store: EventStore, session: string | undefined, input: BodyInput): string | null {
+/**
+ * 订阅额度（moment 的一项，10-24 Joy 要常显）：Soma 带来 claude.ai 登录的 5 小时 / 7 天窗口用了多少（只有走订阅的身体有），
+ * 全屋同一个登录的人共用。跨 50 / 75 / 90% 或换了窗口才重报。
+ */
+export function quotaItem(store: EventStore, quota: BodyInput["quota"]): StateItem | null {
+  const ks = (["fiveHour", "sevenDay"] as const).filter((k) => quota?.[k]);
+  if (!ks.length) return null;
+  return {
+    key: "quota",
+    sig: ks.map((k) => `${k}:${bandOf(quota![k]!.pct, QUOTA_BANDS)}:${quota![k]!.resetsAt ?? ""}`).join("|"),
+    text: `订阅额度（全屋共用）：${ks.map((k) => `${QUOTA_NAME[k]} ${Math.round(quota![k]!.pct)}%${resetLabel(quota![k]!.resetsAt, store.timeZone)}`).join(" · ")}`,
+  };
+}
+
+/** 身上（事件）：换了模型（首轮说一次）、工具老出错（跨档说） */
+export function deliverBody(store: EventStore, session: string | undefined): string | null {
   const now = store.now();
   const prev = lastBody(store, session);
-  const was = (prev?.levels as Levels | undefined) ?? { ctx: 0, tools: 0 };
+  const was = (prev?.levels as Levels | undefined) ?? { tools: 0 };
   const lines: string[] = [];
-
-  // 上下文
-  const ratio = input.ctx !== undefined && input.wrapAt ? input.ctx / input.wrapAt : undefined;
-  const ctxBand = ratio === undefined ? was.ctx : band(ratio, CTX_BANDS);
-  if (ratio !== undefined && ctxBand > was.ctx) {
-    const pct = Math.round(ratio * 100);
-    lines.push(
-      ctxBand === 3
-        ? `这一段的上下文快到头了（到收尾线的 ${pct}%）：再过几轮就会收尾、把这段写进记忆、换新的一段接着过`
-        : ctxBand === 2
-          ? `这一段的上下文用了收尾线的 ${pct}%，快满了`
-          : `这一段的上下文过半了（收尾线的 ${pct}%）`,
-    );
-  }
 
   // 模型
   const m = models(store, session);
@@ -119,30 +112,13 @@ export function deliverBody(store: EventStore, session: string | undefined, inpu
       .get(session, now - 30 * 60_000) as { n: number };
     tools = r.n;
   }
-  const toolBand = band(tools, TOOL_BANDS);
-  if (toolBand > was.tools) lines.push(`最近半小时工具出错了 ${tools} 次`);
+  const toolBand = bandOf(tools, TOOL_BANDS);
+  if (toolBand > (was.tools ?? 0)) lines.push(`最近半小时工具出错了 ${tools} 次`);
 
-  // 订阅额度
-  const qWas = lastQuota(store) ?? {};
-  const quota: NonNullable<Levels["quota"]> = { ...qWas };
-  let quotaUp = false;
-  for (const k of ["fiveHour", "sevenDay"] as const) {
-    const w = input.quota?.[k];
-    if (!w) continue;
-    const b = band(w.pct, QUOTA_BANDS);
-    const prevW = qWas[k];
-    const before = prevW && prevW.resetsAt === w.resetsAt ? prevW.band : 0;
-    quota[k] = { band: b, resetsAt: w.resetsAt };
-    if (b !== (prevW?.band ?? 0) || w.resetsAt !== prevW?.resetsAt) quotaUp = true;
-    if (b > before)
-      lines.push(`订阅额度（全屋用同一个登录的共用）：${QUOTA_NAME[k]}用了 ${Math.round(w.pct)}%${resetLabel(w.resetsAt, store.timeZone)}`);
-  }
-
-  const levels: Levels = { ctx: ctxBand, tools: toolBand, ...(m.here ? { model: m.here } : {}), ...(Object.keys(quota).length ? { quota } : {}) };
+  const levels: Levels = { tools: toolBand, ...(m.here ? { model: m.here } : {}) };
   // 档位回落也要记下（下次再涨过去才会再说），但不递话
   if (!lines.length) {
-    if ((prev && (levels.ctx < was.ctx || levels.tools < was.tools)) || quotaUp)
-      recordDelivery(store, "body", session, { refs: [], text: "", levels });
+    if (prev && levels.tools < (was.tools ?? 0)) recordDelivery(store, "body", session, { refs: [], text: "", levels });
     return null;
   }
   const text = ["身上：", ...lines.map((l) => `- ${l}`)].join("\n");

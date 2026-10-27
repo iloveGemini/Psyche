@@ -198,8 +198,8 @@ describe("recall", () => {
   });
 });
 
-describe("<now>", () => {
-  test("时间带星期、harness 与会话起点、上次有人说话、未写条数", async () => {
+describe("<moment>", () => {
+  test("时间带星期、harness 与会话起点、上次有人说话；没变的状态下一轮不重报", async () => {
     let clock = T("2026-10-14T09:00:00+08:00");
     const { store, projections } = setup(() => clock);
     store.setSituation({ harness: "soma", session: "S1" });
@@ -211,7 +211,22 @@ describe("<now>", () => {
     const app = createApp({ store, projections });
     const { text } = await (await app.request("/v1/now")).json();
     expect(text).toBe(
-      ["<now>", "现在：2026-10-14 周三 12:10", "在：soma，本会话从 10-14 09:00 起", "上次有人跟我说话：Joy，3 小时前", "还没写进记忆的：3 条", "</now>"].join("\n"),
+      ["<moment>", "现在：2026-10-14 周三 12:10", "在：soma，本会话从 10-14 09:00 起", "上次有人跟我说话：Joy，3 小时前", "</moment>"].join("\n"),
+    );
+    // 下一轮小白接着说：上次说话的换了人才重报，「在」没变不报
+    clock = T("2026-10-14T12:12:00+08:00");
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "小白", text: "还在吗" } });
+    expect((await (await app.request("/v1/now")).json()).text).toBe("<moment>\n现在：2026-10-14 周三 12:12\n上次有人跟我说话：小白，3 分钟前\n</moment>");
+    // 再一轮，还是小白、隔了几分钟：什么状态都不重报
+    clock = T("2026-10-14T12:15:00+08:00");
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "小白", text: "喂" } });
+    expect((await (await app.request("/v1/now")).json()).text).toBe("<moment>\n现在：2026-10-14 周三 12:15\n</moment>");
+    // 压缩之后全报
+    await app.request("/v1/moment/reset", { method: "POST", body: JSON.stringify({ session: "S1" }) });
+    clock = T("2026-10-14T12:16:00+08:00");
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "小白", text: "喂喂" } });
+    expect((await (await app.request("/v1/now")).json()).text).toBe(
+      "<moment>\n现在：2026-10-14 周三 12:16\n在：soma，本会话从 10-14 09:00 起\n上次有人跟我说话：小白，1 分钟前\n</moment>",
     );
   });
 
@@ -219,14 +234,14 @@ describe("<now>", () => {
     const { store, projections } = setup(() => T("2027-01-02T08:00:00+08:00"));
     intake(store, { kind: "message.in", source: "roxy", payload: { from: "Joy", text: "只有一条" } });
     const { text } = await (await createApp({ store, projections }).request("/v1/now")).json();
-    expect(text).toBe("<now>\n现在：2027-01-02 周六 08:00\n</now>");
+    expect(text).toBe("<moment>\n现在：2027-01-02 周六 08:00\n</moment>");
   });
 
   test("处境没有会话：只报 harness，不报未写条数", async () => {
     const { store, projections } = setup(() => T("2026-10-14T09:00:00+08:00"));
     store.setSituation({ harness: "roxy" });
     const { text } = await (await createApp({ store, projections }).request("/v1/now")).json();
-    expect(text).toBe("<now>\n现在：2026-10-14 周三 09:00\n在：roxy\n</now>");
+    expect(text).toBe("<moment>\n现在：2026-10-14 周三 09:00\n在：roxy\n</moment>");
   });
 
   test("多久前", () => {

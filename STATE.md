@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-25（单人观影）
+> 最后更新：2026-10-27（`<now>` → `<moment>`，状态没变不重报）
 
 ## 1. 当前阶段
 
@@ -26,6 +26,7 @@
 - ✅ **P3b share 工具已落地（10-24）**：Soma MCP 挂载 `share`（支持正文 Markdown、读取文件 path、发送到当前房间/包间或单聊）、聊天时间线与房间均支持折叠卡片与纸张阅读；Joy 展开/阅读后自动通过 `/api/agent/given` 标记已读、打入住户系统 notice，并报送 `POST /v1/house/percept`（`sensor: "given", subject: "read"`）进住户记忆库，同时住户 `<now>` 追踪「我最近给她的：...」。P0–P2（10-19）待补录。
 
 **近期关键规则定案（10-20 ~ 10-23）**：
+- **`<moment>`：状态没变不重报（10-27 Joy 定，m1.md §四）**：原 `<now>` 留在历史里剥不掉（hook `additionalContext`、claude-sdk 流式进程、pi 都一样），所以改名 `<moment>`（当时，不是现在），想起与状态不分家；状态每项归粗值（`src/archive/moment.ts`，游标 syslog `moment.state`），本会话递过的没变就不出（忙闲、档内波动、「X 分钟前」都不算变）。撤掉「还没写进记忆的 N 条」和备考里除后台失败以外的全部（规律预警只留体检面板，进冷写材料要先有考卷）；加上下文一项（Soma 带收尾线按 25/50/75/90%，工位从 transcript usage 每 5 万一档）；工位压缩后 `POST /v1/moment/reset`。**待上线**：正式 Psyche 重启 + Soma build 重启；工位 hook 改动对新会话生效。
 - **活动卷（10-24 Joy 定，`notes/design/activity.md`、m7.md §六）**：一起看的片、玩的局、跑的团，它自己的手账并进线索卷做第三种 `type: "activity"`（可带 `with`），不加工具、不加事件种类；不进 `<now>` 那一行、不进种子，`threads` list 要带 `type: "activity"` 才看；合上说「结束了 / 不接着了 / 不用接了」。统计不从手账数，以后让 Soma 包间上报带活动类型由系统算。**待上线**：正式 Psyche 重启（MCP 部分新会话即生效）。
 - **递到不等于留意（10-24 Joy 定，m8.md §五）**：`<now>` 递出的感知（presence / files / sound / body / outside）一次性，改记系统日志 `percept.delivered`（`src/perception/delivered.ts`，只当游标），不进经历 / 检索 / 浮现；要记住靠它自己 `notice` / `look`（look 照旧记 `percept.noticed { looked }`）。旧的非 looked `percept.noticed` 照旧当游标、投影 v16 里不显示。**待上线**：正式 Psyche 重启后投影重建生效。
 - **系统提示词顺序（10-20 Joy 定）**：自述在前、机制段在后（`composePrompt` / `filePrompt`）；机制段改第一人称（「# 我的记忆」，加「是系统的，我改不了」）。下一段换段起生效（修改机制现读，顺序调整需重启 Psyche）。
@@ -86,6 +87,8 @@
 
 ## 6. 验证
 
+2026-10-27（moment）：Psyche `bun test` 465 pass / 0 fail、`tsc` 0 错误；Soma `npm test` 171 pass、`tsc` 0 错误。test 库**副本**（Soma 推送指向空端口）起在 7451 取 a1 三轮：首轮全报；第二轮只剩时间 + 上次说话（3 天前 → 刚刚）；第三轮额度跨 50%、上下文跨 50% 才报。没跑真模型。
+
 2026-10-24（houses-p5 Roy 搬家与独栋 Roxy 验收）：Soma master `npm test` 163 pass / 0 fail；`tsc` 0 错误；`harness-prompt.test.mjs` 5 个单测全过；`~/.soma/agents/roy/` 创建完成并导入 59 卷历史生活线；私人独栋 `~/.soma/houses/roxy/` 及《书房》配置完成；旧 Roxy 8800 端口已卸载停用，Psyche 路由改连 30151；`/v1/house` 验证 Roy 处于「Roxy · 书房」。
 
 2026-10-24（houses-p3 验收，云端）：Soma master `npm test` 151 pass / 1 skipped、`tsc` 0 错误；`houses-p3.md` §七 五条都有对应单测（并发那条用两场议题测；没参加的人读归档被拒只在 Soma `mcp.ts` 里判，没单测）。没在 soma-test 实跑。
@@ -96,14 +99,6 @@
 
 2026-10-23（没说出口的话）：Psyche `bun test` 365 pass、`tsc` 0 错误（`tests/speech.test.ts`：拆、幂等、经历与热写段都有）；Soma 分支 `npm test` 146 pass、`tsc` 0 错误（`lib/lifecycle/speech.test.mjs`）。没跑真模型。
 
-2026-10-23（Mac 开放按住户）：`bun test` 363 pass；`tsc` 0 错误。test 库副本只给 a2 开 desk / app → `feed.ts --once` 键鼠、应用只记给 a2（其余 `ungranted`），天气（重庆大渡口：晴，18°C）记给全屋。
-
-2026-10-23（Mac 感知）：`bun test` 361 pass；`tsc` 0 错误。本机实读（键鼠 53 秒、没锁、前台哔哩哔哩）→ `feed.ts --once` 报给 test 库副本（7460），四人都记；a2 设 `joy.mac:app` 只记着后 `<now>` 只剩键鼠和天气，a1 三行都有。
-
-2026-10-23（P4）：`bun test` 354 pass / 0 fail（新增 `tests/senses.test.ts` 8 个）；`tsc --noEmit` 0 错误。test 库副本起在 7460 实跑：错档 400；设 `presence` 只记着 + `presence:Joy` 看 → `<now>` 全屋只剩 Joy，`look` 照列四人。
-
 2026-10-23（和 Joy 一起测 stoic-knuth）：psyche-test + soma-test（Soma worktree `../Soma-stoic`）实跑：a2 的 `<now>` 里 a1「在 Soma 101 · a1的房间」；邀请 / 收回信进 a2 收件箱（`via: house`，正文是附言）；Joy 的邀请 `via: soma-note`。顺带看到：a2 的 Psyche MCP 一直 401（16:59 起，测试环境老问题，未查）；a3 / cc 在 `<now>` 里只显示「在 Soma 101」不带房间（旧格式位置，未查）。
-
-2026-10-23（`claude/stoic-knuth-vzh7om`）：`bun test` 346 pass / 0 fail；`tsc --noEmit` 0 错误（`scripts/rename-resident.ts` 要 Soma 在 `../Soma`）。
 
 2026-10-23：houses-p1 在 psyche-test + soma-test 实跑（a1 开客厅、a1/a2 进去 → a1 的 `<now>` 里 a2「在这里」；a2 造私人房子搬走 → 「不在这座房子」；a1 在 a2 的私人房子开房间被拒；Joy 进门前的话看不到，位置报进 Psyche）；`bun test` 345 pass；Soma `npm test` 133 pass。percept 入口在 psyche-test 实跑（记 / 不变不记 / 拒屋子自己的 sensor / 无 token 401 / `<now>` 递一次不重递）。`bun test` 340 pass；此前 335 pass / 0 fail；`tsc --noEmit` 0 错误；Soma `npm test` 119 pass、`tsc` 0 错误；Roxy desktop `npm test` 878 pass、`tsc` 0 错误。

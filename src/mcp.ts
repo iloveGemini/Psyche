@@ -619,7 +619,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       "- daily：每天定点 [{ at, note? }]（HH:MM）。",
       "- heartbeat：每隔多少分钟留给自己一段 { everyMin ≥ 15, active?: { from, to } }（HH:MM，可跨零点），从上次醒来与有人找你较晚处算起；落在 active 外顺延到下一个 from。",
       "- wakeOn：{ mail: boolean }，没醒着时来信能否叫醒你（缺省 true，不花额度）。",
-      "- dnd：勿扰 [{ when: { time?: { from, to }, awake?: boolean, in?: string, busy?: boolean }, except?: [{ from, urgent?: boolean }] }]。同一条里的 when 条件都满足才挡信（不叫醒、<now> 暂不报，条件解除再报；busy = 最近 15 分钟用过记忆以外的工具）；except 放行指定发信人（如 [{ from: \"Joy\", urgent: true }] 只放行她标急的）。",
+      "- dnd：勿扰 [{ when: { time?: { from, to }, awake?: boolean, in?: string, busy?: boolean }, except?: [{ from, urgent?: boolean }] }]。同一条里的 when 条件都满足才挡信（不叫醒、<moment> 暂不报，条件解除再报；busy = 最近 15 分钟用过记忆以外的工具）；except 放行指定发信人（如 [{ from: \"Joy\", urgent: true }] 只放行她标急的）。",
     );
     return text(out.join("\n"));
   }
@@ -680,9 +680,9 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     "threads",
     {
       description: [
-        "还开着的事：你挂上的、答应过谁的、等后续的。开着的在 <now> 里看得到开着几件、最久没动的是哪件，换会话时全列在开头。系统不替你合、不催、不判做没做到。",
+        "还开着的事：你挂上的、答应过谁的、等后续的。开着的在 <moment> 里看得到开着几件、最久没动的是哪件，换会话时全列在开头。系统不替你合、不催、不判做没做到。",
         "op：list 看（缺省；all: true 连合上的一起看）· open 开一卷（type：promise = 你答应了谁什么，要写 to；matter = 挂着、等后续的事；写 title，可带 note）· note 在一卷上记一笔进展（target + text）· close 合上（target + how：done 做到了 / dropped 不做了 / moot 不用做了，写 why；合上的不能再记，同一件事再起就开新卷）。",
-        "活动卷（type: activity）：一场活动（一起看的片、玩的局、跑的团）你自己的手账——演到哪、你怎么看、下次怎么接，可写 with（和谁）。不进 <now>、不在换会话时列；list 要带 type: activity 才看得到。合上的说法：done 结束了 / dropped 不接着了 / moot 不用接了。",
+        "活动卷（type: activity）：一场活动（一起看的片、玩的局、跑的团）你自己的手账——演到哪、你怎么看、下次怎么接，可写 with（和谁）。不进 <moment>、不在换会话时列；list 要带 type: activity 才看得到。合上的说法：done 结束了 / dropped 不接着了 / moot 不用接了。",
         "target 是开卷那条的档号。",
       ].join("\n"),
       inputSchema: {
@@ -758,7 +758,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         `感知设置：${set.length ? set.map(([k, v]) => `${k} ${v}`).join("；") : "都是「看」"}${set.length ? "（没写的是「看」）" : ""}`,
         ...(s.why ? [`上次这么设的理由：${s.why}`] : []),
         ...(s.outside.length ? [`外头报来过的：${s.outside.join("、")}`] : []),
-        "（设感知说明：传 senses + why 全量替换，没写的回到「看」。三档：看 = 变了记下并在 <now> 报；只记着 = 记下供 look 和联想，<now> 不报；不看 = 不记也不报，look 也不给。可设项：presence、files、sound、body 及外头报来的 id；presence 和外头报来的可按人或子项细设，如 presence:Joy、presence:<住户id>、<id>:<哪一样>，盖过整路）",
+        "（设感知说明：传 senses + why 全量替换，没写的回到「看」。三档：看 = 变了记下并在 <moment> 报；只记着 = 记下供 look 和联想，<moment> 不报；不看 = 不记也不报，look 也不给。可设项：presence、files、sound、body 及外头报来的 id；presence 和外头报来的可按人或子项细设，如 presence:Joy、presence:<住户id>、<id>:<哪一样>，盖过整路）",
       ];
       return text(lines.join("\n"));
     }),
@@ -783,7 +783,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
       description: [
         "你自己的播放器。op：play 放 · stop 停 · listen 听一下此刻在放的（缺省）· with 戴上全屋另一个人的耳机一起听。",
         "play：query 搜一首放（取第一首），或 playlist 放你的一个歌单（shuffle 打乱）。放完就停；再放会顶掉正在放的。",
-        "你听到的是：歌名歌手、随播放推进的歌词、这一段的响度 / 亮暗 / 速度（本地从音频算的，不是模型听的）。在放着时每轮 <now> 的「这段时间听到的」里报；listen 随时听一下（你自己的，或你戴着谁的耳机就是他的）：哪首、放到哪、最近唱的几行、这一段的样子。",
+        "你听到的是：歌名歌手、随播放推进的歌词、这一段的响度 / 亮暗 / 速度（本地从音频算的，不是模型听的）。在放着时每轮 <moment> 的「这段时间听到的」里报；listen 随时听一下（你自己的，或你戴着谁的耳机就是他的）：哪首、放到哪、最近唱的几行、这一段的样子。",
         "全屋的人可以戴上你的一只耳机一起听（Joy 在页面上，或用 with）；只有有人戴着时才真的出声。with：host = 对方的 id（看 look），对方那边看得到你戴上了；host 给空串 = 摘下。",
       ].join("\n"),
       inputSchema: {
@@ -960,8 +960,8 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
     {
       description: [
         "看信。不给 open：列出这几天来往的信（来信、你写给 Joy 的、你留给自己的交接信）；没看过的只显示谁、几时、多少字。",
-        "给 open（档号数组）：翻开这几封，看全文——翻开就算读过，之后 <now> 不再提它。",
-        "来信不会自动塞进你的上下文：<now> 只告诉你有信，什么时候看由你定。",
+        "给 open（档号数组）：翻开这几封，看全文——翻开就算读过，之后 <moment> 不再提它。",
+        "来信不会自动塞进你的上下文：<moment> 只告诉你有信，什么时候看由你定。",
       ].join("\n"),
       inputSchema: {
         open: z.array(z.string()).optional().describe("要翻开的信的档号"),
@@ -987,7 +987,7 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
         "写信。在哪都能写。",
         "to: \"Joy\"：经她设的通道送到她那里（邮件 / 留言）。回她的某封信挂 replyTo（那封的档号），不算额度；没挂 replyTo 就是你主动找她，每封花一次唤醒额度，额度用完会被拒。subject 可选（邮件主题，不写就用正文第一行）。",
         "to: 全屋其他 id：直接送过去，对方醒着时下一轮看到，没醒着会被叫醒（若设了来信叫醒）。每封都花你一次唤醒额度，回信也算。真有急事可以标 urgent：对方那边会写明是急的，勿扰挡不挡由对方的例外定。",
-        "to: \"self\"：交接信，写给之后去了别处的自己（离开家去了别的 harness 才算别处）——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <now> 会告诉你有封交接信；写明 for（如 roxy）就只送那里。不过期，不叫醒你。",
+        "to: \"self\"：交接信，写给之后去了别处的自己（离开家去了别的 harness 才算别处）——不会送回你写信的这个地方（同一个地方换了会话也不送），到了别的地方 <moment> 会告诉你有封交接信；写明 for（如 roxy）就只送那里。不过期，不叫醒你。",
       ].join("\n"),
       inputSchema: {
         to: z.string().min(1).describe("Joy、其他 id，或 self（交接信）"),

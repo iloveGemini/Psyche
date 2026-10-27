@@ -8,7 +8,7 @@ import { Projections } from "../src/store/projections.ts";
 import { intake } from "../src/archive/intake.ts";
 import { experienceProjector, readExperience } from "../src/archive/experience.ts";
 import { createApp } from "../src/server/app.ts";
-import { houseTick, presenceOf, joyPresence, deliverPresence, lookPresence, enterRoom, setMood, seenBy, JOY, describe as line, type Place, type JoyState } from "../src/house/presence.ts";
+import { houseTick, presenceOf, joyPresence, presenceBlock, lookPresence, enterRoom, setMood, seenBy, JOY, describe as line, type Place, type JoyState } from "../src/house/presence.ts";
 import { openHouse } from "../src/house/house.ts";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -214,7 +214,7 @@ describe("全屋感知全透明（houses-p1.md §五，10-23 复盘）", () => {
     h.joy.lastSeen = h.clock.t;
     h.sit(h.a1, "s1");
     h.tick();
-    expect(deliverPresence(h.a1, "s1")!.split("\n")).toEqual([
+    expect(presenceBlock(h.a1, "s1")!.split("\n")).toEqual([
       "全屋：",
       "- a2：在 Soma 101 · a2的房间，离线",
       "- Joy：在 Soma 101 · 客厅，有动静",
@@ -227,7 +227,7 @@ describe("全屋感知全透明（houses-p1.md §五，10-23 复盘）", () => {
     expect(seen[0].value).toEqual({ at: { house: "soma-101", houseName: "Soma 101", id: "own-a2", room: "a2的房间" }, state: "offline" });
   });
 
-  test("<now> 和 look 递全屋位置与状态；递过不重递", () => {
+  test("<moment> 和 look 递全屋位置与状态；递过不重递", () => {
     const h = setup();
     enterRoom(h.a1, { house: "soma-101", houseName: "Soma 101", id: "living", room: "客厅" });
     enterRoom(h.a2, { house: "soma-101", houseName: "Soma 101", id: "tea", room: "茶水间" });
@@ -235,18 +235,18 @@ describe("全屋感知全透明（houses-p1.md §五，10-23 复盘）", () => {
     h.joy.lastSeen = h.clock.t;
     h.sit(h.a1, "s1");
     h.tick();
-    expect(deliverPresence(h.a1, "s1")!.split("\n")).toEqual([
+    expect(presenceBlock(h.a1, "s1")!.split("\n")).toEqual([
       "全屋：",
       "- a2：在 Soma 101 · 茶水间，离线",
       "- Joy：在这里，有动静",
     ]);
-    expect(deliverPresence(h.a1, "s1")).toBeNull();
+    expect(presenceBlock(h.a1, "s1")).toBeNull();
     // a2 在茶水间忙起来：a1 看得到变化
     h.sit(h.a2, "s2", "soma");
     h.her(h.a2, "在吗");
     h.pass(MIN);
     h.tick();
-    expect(deliverPresence(h.a1, "s1")).toBe("这段时间全屋：\n- a2：在 Soma 101 · 茶水间，忙（18:01）");
+    expect(presenceBlock(h.a1, "s1")).toBe("全屋有变：\n- a2：在 Soma 101 · 茶水间，忙（18:01）");
     // Joy 去了 Roxy 书房
     h.joy.place = { house: "roxy", houseName: "Roxy", id: "study", room: "书房" };
     h.tick();
@@ -255,7 +255,7 @@ describe("全屋感知全透明（houses-p1.md §五，10-23 复盘）", () => {
       "- a2：在 Soma 101 · 茶水间，忙",
       "- Joy：在 Roxy · 书房，有动静",
     ]);
-    expect(deliverPresence(h.a1, "s1")).toBeNull();
+    expect(presenceBlock(h.a1, "s1")).toBeNull();
   });
 });
 
@@ -308,27 +308,30 @@ describe("Joy 有没有动静、在哪", () => {
 });
 
 describe("递：<now> 与经历", () => {
-  test("首轮给全貌；之后只报变化，压成一行；没变不报", () => {
+  test("首轮给全貌；之后只报位置 / 上下线 / 个签变了的；忙闲、有没有动静来回不报（10-27）", () => {
     const h = setup();
     h.sit(h.a1, "s1");
     h.tick();
-    const first = deliverPresence(h.a1, "s1")!;
-    expect(first.split("\n")).toEqual(["全屋：", "- a2：离线", "- Joy：在，没动静"]);
-    expect(deliverPresence(h.a1, "s1")).toBeNull();
+    expect(presenceBlock(h.a1, "s1")!.split("\n")).toEqual(["全屋：", "- a2：离线", "- Joy：在，没动静"]);
+    expect(presenceBlock(h.a1, "s1")).toBeNull();
+    // Joy 有动静又没了：不报
+    h.joy.lastSeen = h.clock.t;
+    h.tick();
+    expect(presenceBlock(h.a1, "s1")).toBeNull();
+    // a2 上线（闲）：报
     h.sit(h.a2, "s2", "pi");
     h.me(h.a2, "hi");
     h.pass(MIN);
     h.tick();
-    h.pass(20 * MIN);
-    h.tick(); // 18:21 还是闲
-    h.joy.lastSeen = h.clock.t;
+    expect(presenceBlock(h.a1, "s1")).toBe("全屋有变：\n- a2：在 pi，闲（18:01）");
+    // a2 闲 → 忙：不报
+    h.her(h.a2, "在吗");
     h.tick();
-    h.pass(11 * MIN);
+    expect(presenceBlock(h.a1, "s1")).toBeNull();
+    // 改个签：报
+    setMoodVia(h.a2, "在写东西");
     h.tick();
-    const text = deliverPresence(h.a1, "s1")!;
-    expect(text).toContain("这段时间全屋：");
-    expect(text).toContain("- a2：离线（18:01 起变了 2 次）"); // 18:01 闲 → 18:32 离线
-    expect(text).toMatch(/- Joy：在，没动静（18:21 起变了 2 次）/);
+    expect(presenceBlock(h.a1, "s1")).toContain("个签「在写东西」");
   });
 
   test("递到不等于留意：percept 和递送都不进经历，递送记系统日志", () => {
@@ -336,19 +339,18 @@ describe("递：<now> 与经历", () => {
     h.sit(h.a1, "s1");
     h.her(h.a1, "在吗");
     h.tick();
-    expect(deliverPresence(h.a1, "s1")).toBe("全屋：\n- a2：离线\n- Joy：在，有动静");
+    expect(presenceBlock(h.a1, "s1")).toBe("全屋：\n- a2：离线\n- Joy：在，有动静");
     const lines = readExperience(h.a1.db, {}).map((l) => l.text);
     expect(lines.some((l) => l.includes("a2") || l.includes("感知"))).toBe(false);
-    expect(h.a1.readSyslog({ kind: "percept.delivered" }).map((l) => (l.detail as { session?: string }).session)).toEqual(["s1"]);
+    expect(h.a1.readSyslog({ kind: "moment.state" }).map((l) => (l.detail as { session?: string }).session)).toEqual(["s1"]);
   });
 
-  test("10-24 之前递送写下的 percept.noticed：经历里不显示，照旧当游标", () => {
+  test("10-24 之前递送写下的 percept.noticed：经历里不显示", () => {
     const h = setup();
     h.sit(h.a1, "s1");
     h.her(h.a1, "在吗");
     h.tick();
     h.a1.append({ kind: "percept.noticed", class: "experience", source: "psyche", situation: null, payload: { sensor: "presence", refs: [], text: "全屋：旧递送", session: "s1" } });
-    expect(deliverPresence(h.a1, "s1")).toBeNull(); // 旧条之后没变化
     expect(readExperience(h.a1.db, {}).map((l) => l.text).some((l) => l.includes("旧递送"))).toBe(false);
   });
 
@@ -357,26 +359,22 @@ describe("递：<now> 与经历", () => {
     h.sit(h.a1, "s1");
     h.her(h.a1, "在吗");
     h.tick();
-    deliverPresence(h.a1, "s1");
+    presenceBlock(h.a1, "s1");
     h.sit(h.a2, "s2", "pi");
     h.me(h.a2, "hi");
     h.tick();
     expect(lookPresence(h.a1, undefined)).toContain("a2：在 pi，闲");
-    expect(deliverPresence(h.a1, "s1")).toBeNull();
+    expect(presenceBlock(h.a1, "s1")).toBeNull();
     expect(readExperience(h.a1.db, {}).map((l) => l.text).at(-1)).toMatch(/^（我看了看）全屋：/);
   });
 
-  test("新会话首轮带上次之后的次数", () => {
+  test("新会话首轮重给全貌", () => {
     const h = setup();
     h.sit(h.a1, "s1");
     h.tick();
-    deliverPresence(h.a1, "s1");
-    h.joy.lastSeen = h.clock.t;
-    h.tick();
-    h.pass(11 * MIN);
-    h.tick();
+    presenceBlock(h.a1, "s1");
     h.sit(h.a1, "s2");
-    expect(deliverPresence(h.a1, "s2")).toContain("（上次之后：Joy 变过 2 次）");
+    expect(presenceBlock(h.a1, "s2")!.split("\n")).toEqual(["全屋：", "- a2：离线", "- Joy：在，没动静"]);
   });
 
   test("/v1/now 里带「全屋」", async () => {

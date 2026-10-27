@@ -80,14 +80,14 @@ describe("四个 hook 对着 Psyche", () => {
   };
   const kinds = () => store.list({}).map((e) => e.kind);
 
-  test("开会话：报处境，给地方说明 + 自述；她说话：先报再给 <now>；Stop：报经过，重跑不重复", async () => {
+  test("开会话：报处境，给地方说明 + 自述；她说话：先报再给 <moment>；Stop：报经过，重跑不重复", async () => {
     writeFileSync(transcript, "");
     const ctx = await run("session-start", { session_id: "S", source: "startup", cwd: "/w/p", model: "claude-opus-5-5" });
     expect(ctx).toContain("这个地方：Claude Code（工位）");
     expect(store.list({ kinds: ["situation"] }).at(-1)!.payload).toEqual({ harness: "claude-code", session: "S", model: "claude-opus-5-5", cwd: "/w/p" });
 
     const now = await run("user-prompt", { session_id: "S", prompt: "看下测试" });
-    expect(now).toContain("<now>");
+    expect(now).toContain("<moment>");
     expect(store.list({ kinds: ["message.in"] }).at(-1)!.payload).toMatchObject({ from: "Joy", text: "看下测试", via: "claude-code", session: "S" });
     expect(await run("user-prompt", { session_id: "S", prompt: "/clear" })).toBe("");
 
@@ -102,6 +102,15 @@ describe("四个 hook 对着 Psyche", () => {
     // 换了模型重报处境，在新事件之前
     const sits = store.list({ kinds: ["situation"] });
     expect(sits.at(-1)!.payload).toMatchObject({ model: "claude-sonnet-5-5" });
+ 
+    // 上下文从 transcript 里最后一条回复的 usage 算；「在」没变不重报
+    appendFileSync(transcript, `\n${assistant("a7", [{ type: "text", text: "好" }], { message: { model: "claude-sonnet-5-5", content: [{ type: "text", text: "好" }], usage: { input_tokens: 2000, cache_read_input_tokens: 80000, cache_creation_input_tokens: 0 } } })}`);
+    const again = await run("user-prompt", { session_id: "S", prompt: "继续", transcript_path: transcript });
+    expect(again).toContain("上下文：已用约 82k token");
+    expect(again).not.toContain("在：claude-code");
+    // 压缩之后全报
+    await run("session-start", { session_id: "S", source: "compact" });
+    expect(await run("user-prompt", { session_id: "S", prompt: "接着" })).toContain("在：claude-code");
   });
 
   test("Psyche 不在：安静退出，什么都不输出；关掉开关也不动", async () => {

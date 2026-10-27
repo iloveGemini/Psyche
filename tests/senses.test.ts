@@ -11,7 +11,7 @@ import { Projections } from "../src/store/projections.ts";
 import { intake } from "../src/archive/intake.ts";
 import { experienceProjector, readExperience } from "../src/archive/experience.ts";
 import { createApp } from "../src/server/app.ts";
-import { houseTick, deliverPresence, lookPresence, type JoyState } from "../src/house/presence.ts";
+import { houseTick, presenceBlock, lookPresence, type JoyState } from "../src/house/presence.ts";
 import { filesTick } from "../src/house/files.ts";
 import { deliverOutside, recordPercept } from "../src/perception/outside.ts";
 import { levelOf, readSenses, setSenses } from "../src/perception/senses.ts";
@@ -99,7 +99,7 @@ describe("全屋有谁", () => {
     h.wake(h.a1, "早");
     h.tick();
     expect(h.percepts(h.a2, "presence").map((p) => p.subject)).toEqual(["Joy"]);
-    expect(deliverPresence(h.a2, "s2")).not.toContain("a1");
+    expect(presenceBlock(h.a2, "s2")).not.toContain("a1");
     expect(lookPresence(h.a2, "s2")).not.toContain("a1");
   });
 
@@ -109,10 +109,10 @@ describe("全屋有谁", () => {
     h.wake(h.a1, "早");
     h.tick();
     expect(h.percepts(h.a2, "presence").map((p) => p.subject)).toContain("a1");
-    expect(deliverPresence(h.a2, "s2")).toBeNull();
+    expect(presenceBlock(h.a2, "s2")).toBeNull();
     expect(lookPresence(h.a2, "s2")).toContain("a1");
     setSenses(h.a2, { senses: {}, why: "还是看吧" });
-    expect(deliverPresence(h.a2, "s3")).toContain("a1");
+    expect(presenceBlock(h.a2, "s3")).toContain("a1");
   });
 
   test("不看改回看：下一圈看到的样子当一次变化记下", () => {
@@ -160,7 +160,7 @@ describe("全屋的东西、内感受、声音", () => {
     const app = createApp({ store: h.a2, projections: new Projections(h.a2) });
     const now = (await (await app.request("/v1/now?session=s&ctx=95000&wrapAt=100000")).json()) as { text: string };
     expect(now.text).not.toContain("全屋的东西");
-    expect(now.text).toContain("上下文快到头了");
+    expect(now.text).toContain("到收尾线的 95%");
     setSenses(h.a2, { senses: { files: "只记着", body: "不看" }, why: "x" });
     h.clock.t += MIN;
     const again = (await (await app.request("/v1/now?session=s2&ctx=95000&wrapAt=100000")).json()) as { text: string };

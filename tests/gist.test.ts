@@ -200,8 +200,8 @@ describe("调度", () => {
   });
 });
 
-describe("馆藏书架（Continuity）与备考表（<now>）", () => {
-  test("Continuity 顶部常驻馆藏、前世、书架分类、按人与规律预警", () => {
+describe("馆藏书架（Continuity）与备考（<moment>）", () => {
+  test("Continuity 顶部常驻馆藏、前世、书架分类、按人；规律预警不放（10-27 撤）", () => {
     const h = setup("2026-10-18T12:00:00");
     // 1. 前世全宗记录
     h.store.append({ kind: "message.in", class: "experience", source: "past:ROY", fonds: "ROY", situation: null, at: T("2026-09-01T10:00:00"), payload: { from: "Joy", text: "旧话" } });
@@ -226,50 +226,32 @@ describe("馆藏书架（Continuity）与备考表（<now>）", () => {
 
     const text = renderContinuity(h.store)!;
     expect(text).toContain("馆藏：原始记录 0 条 · 情节 3 条 · 梗概：天 0 / 周 0 / 月 0 · 前世：ROY 1 条");
-    expect(text).toContain("书架：事实 1 · 明说的规矩 0 · 规律 1 · 镜子 0 · 留意 0 · 关系 1（含前世待印证 1 条）；按人：Joy 1；预警：待复核 1 条 [10-17#4]");
+    expect(text).toContain("书架：事实 1 · 明说的规矩 0 · 规律 1 · 镜子 0 · 留意 0 · 关系 1（含前世待印证 1 条）；按人：Joy 1");
+    expect(text).not.toContain("预警");
   });
 
-  test("<now> 备考表：实时感知旧会话断层、待写梗概、后台失败、静默缺口与书架积压，处理完自动消失", async () => {
+  test("<moment> 备考：只报后台失败，恢复了报一句；旧会话未写 / 梗概未写 / 静默缺口 / 书架积压不报（10-27）", async () => {
     const h = setup("2026-10-14T10:00:00");
     h.store.setSituation({ harness: "soma", session: "S1" }, "soma", T("2026-10-14T10:00:00"));
     intake(h.store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "早" }, at: T("2026-10-14T10:01:00") });
+    expect((await h.get("/v1/now?session=S1")).text).not.toContain("备考");
 
-    // 正常状态：无备考行
-    expect((await h.get("/v1/now?session=S1")).text).not.toContain("备考：");
-
-    // 切到新会话 S2（且隔了 26 小时，触发 ≥24h 静默缺口 + S1 未写情节的旧会话）
+    // 新会话 S2，隔了 26 小时，S1 没写情节，攒了 5 条情节没整理：都不报
     h.set("2026-10-15T12:30:00");
     h.store.setSituation({ harness: "soma", session: "S2" }, "soma", T("2026-10-15T12:30:00"));
     intake(h.store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "在吗" }, at: T("2026-10-15T12:30:00") });
+    for (let i = 0; i < 5; i++) h.episode(`2026-10-15T11:0${i}:00`, `新情节 ${i}`);
+    const quiet = (await h.get("/v1/now?session=S2")).text as string;
+    expect(quiet).not.toContain("备考");
+    expect(quiet).not.toContain("还没写进记忆");
 
-    // 记一笔后台 tidy 失败日志
+    // 后台整理失败：报
     h.store.syslog("wake.run", { key: "tidy:1", error: "timeout" });
-
-    const now1 = (await h.get("/v1/now?session=S2")).text as string;
-    expect(now1).toContain("备考：");
-    expect(now1).toContain("未写情节的旧会话 1 段（共 1 条）");
-    expect(now1).toContain("后台整理失败于 10-15 12:30");
-    expect(now1).toContain("静默缺口：10-14 10:01 至 10-15 12:30 连续 26h 无记录");
-
-    // 补写 S1 的情节 → 旧会话断层立刻消失，但因 10-14 有了情节且已过完，实时浮现「待写梗概：2026-10-14」
-    const seg1 = await h.get("/v1/hotwrite?session=S1");
-    await h.post("/v1/hotwrite", { session: "S1", upTo: seg1.upTo, entries: [{ text: "十四号早上问好", cites: ["10-14#2"] }] });
-
-    const now2 = (await h.get("/v1/now?session=S2")).text as string;
-    expect(now2).not.toContain("未写情节的旧会话");
-    expect(now2).toContain("待写梗概：2026-10-14");
-
-    // 交回 2026-10-14 的天梗概 + 补交 coldwrite.done → 待写梗概与后台整理失败均消失
-    writeGist(h.store, { span: "day", key: "2026-10-14", text: "十四号梗概" });
+    expect((await h.get("/v1/now?session=S2")).text).toContain("备考：后台整理失败于 10-15 12:30");
+    // 没变不重报
+    expect((await h.get("/v1/now?session=S2")).text).not.toContain("备考");
+    // 交回整理：报一句恢复了
     h.store.append({ kind: "coldwrite.done", class: "self", source: "agent", at: T("2026-10-15T12:31:00"), payload: { upTo: "z", unjudged: [] } });
-
-    const now3 = (await h.get("/v1/now?session=S2")).text as string;
-    expect(now3).not.toContain("待写梗概");
-    expect(now3).not.toContain("后台整理失败");
-
-    // 新攒 5 条情节 → 实时提示书架待整理
-    for (let i = 0; i < 5; i++) h.episode(`2026-10-15T13:0${i}:00`, `新情节 ${i}`);
-    const now4 = (await h.get("/v1/now?session=S2")).text as string;
-    expect(now4).toContain("书架待整理：已攒 5 条新情节（上次整理：10-15 12:31）");
+    expect((await h.get("/v1/now?session=S2")).text).toContain("备考：后台的活恢复了");
   });
 });

@@ -187,7 +187,7 @@ export function renderNotice(store: EventStore, n: Notice): string {
 }
 
 /** 状态行：每轮现算，不成立就消失。just = 这次已在「刚发生」报过的（这一轮不再重复） */
-export function mailStateLines(store: EventStore, here: Place | null, f: Facts, just: Notice[] = []): { lines: string[]; held: number } {
+export function mailStateLines(store: EventStore, here: Place | null, f: Facts, just: Notice[] = []): { lines: string[]; held: number; sig: string } {
   const skip = new Set(just.map((n) => n.ev.id));
   const rules = currentDnd(store);
   const unread = unreadMail(store);
@@ -200,7 +200,9 @@ export function mailStateLines(store: EventStore, here: Place | null, f: Facts, 
   const lines = parts.length ? [`收件箱：${parts.join("；")}`] : [];
   const failed = undelivered(store);
   if (failed.length) lines.push(`没送出去的信：${failed.length} 封（${VIA[failed.at(-1)!.via] ?? failed.at(-1)!.via}：${failed.at(-1)!.error ?? "出错"}）`);
-  return { lines, held: blocked.length };
+  // moment 的状态闸（m1.md §四）：哪几封没看、哪几封没送出去变了才重报
+  const sig = [open.map((m) => m.ev.id).join(","), handoffs.map((e) => e.id).join(","), failed.map((f) => `${f.ref}:${f.via}`).join(",")].join("|");
+  return { lines, held: blocked.length, sig: sig === "||" ? "" : sig };
 }
 
 /** 写给人的信里，最近一次投递失败的（同一封后来送成了就不算） */

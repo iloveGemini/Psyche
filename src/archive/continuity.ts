@@ -9,7 +9,7 @@
 import type { EventStore } from "../store/events.ts";
 import { localDay } from "../core/time.ts";
 import { currentEpisodes, monthOf, readGists, weekOf } from "../catalog/gist.ts";
-import { readShelf, SHELF_NAME, SHELVES, shelfWarnings, stillPast, type Shelf } from "../reading/shelf.ts";
+import { readShelf, SHELF_NAME, SHELVES, stillPast, type Shelf } from "../reading/shelf.ts";
 import { renderOpenThreads } from "../self/threads.ts";
 import { renderPinned } from "../self/pinned.ts";
 
@@ -52,15 +52,8 @@ export function renderCatalog(store: EventStore): string | null {
   }
   const aboutSuffix = byAbout.size ? `；按人：${[...byAbout].map(([who, n]) => `${who} ${n}`).join(" · ")}` : "";
 
-  const warnings = shelfWarnings(store, activeShelf);
-  const noAgainst = warnings.filter((w) => w.reason === "no_against");
-  const stale = warnings.filter((w) => w.reason === "stale");
-  const warnItems: string[] = [];
-  if (noAgainst.length) warnItems.push(`待复核 ${noAgainst.length} 条 [${noAgainst.map((w) => w.archiveNo).join(", ")}]`);
-  if (stale.length) warnItems.push(`久未验证 ${stale.length} 条 [${stale.map((w) => w.archiveNo).join(", ")}]`);
-  const warnSuffix = warnItems.length ? `；预警：${warnItems.join(" · ")}` : "";
-
-  const shelfLine = `书架：${shelfParts.join(" · ")}${pastShelfCount ? `（含前世待印证 ${pastShelfCount} 条）` : ""}${aboutSuffix}${warnSuffix}`;
+  // 规律预警 10-27 撤了：它在这里没法处理（反例不是想要就有的），留在体检面板（m1.md §四）
+  const shelfLine = `书架：${shelfParts.join(" · ")}${pastShelfCount ? `（含前世待印证 ${pastShelfCount} 条）` : ""}${aboutSuffix}`;
   return ["【馆藏与书架】", archiveLine, shelfLine].join("\n");
 }
 
