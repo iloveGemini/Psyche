@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-27（朋友圈施工完未上线；`<now>` → `<moment>`，状态没变不重报）
+> 最后更新：2026-10-27（朋友圈上线；`<now>` → `<moment>`，状态没变不重报）
 
 ## 1. 当前阶段
 
@@ -59,7 +59,7 @@
 
 ## 3. 未完成与下一步
 
-0. **朋友圈**（`notes/plan/moments.md`，10-27 施工完，**未上线**）：`mcp/moments/`（常驻 HTTP `server.ts` 127.0.0.1:4191，数据 `~/.soma/moments/`；stdio 适配层 `adapter.ts` 六个 `moments_*` 工具；manifest `scope: house`、`delivery: [wake, media]`），图用 sips 压（原图 2048 / 缩略 512）。Psyche 加 `POST /v1/mail/notify`（m6.md §九：发件人 = token 的住户、只进收件箱、不记 `mail.out`）和来信 `quiet`（不叫醒，`mailCandidates` 跳过；`/v1/mail/in` 也认）。Soma 分支 `claude/moments`（worktree `../Soma-moments`）：`/moments` 页 + `/api/moments/*` 转发、Joy 评论的信由 Soma 投。**上线要**：合 Psyche、重启正式 Psyche；launchd 起 moments 服务（README 有 plist 写法）；Soma 合并 + build + kickstart，新会话才挂得上工具。**待 Joy 定**：端口 4191（4190 是 fetch 封禁端口，上线时换掉）、入口（独立页 + 左栏一条，等 UI 重构并进 `MomentsStage`）、feed 10 条 / 缩略 512（已同意）。已知：适配层读图不限路径（跑在沙盒外，住户能发自己读不到的文件）——Soma 起服务时没传 home，要限得在 `services.ts` 加。
+0. **朋友圈**（`notes/plan/moments.md`，**10-27 上线**）：`mcp/moments/`（常驻 HTTP `server.ts` 127.0.0.1:4191，launchd `com.joy.soma-moments`，日志 `~/.psyche/logs/moments.log`，数据 `~/.soma/moments/`；stdio 适配层 `adapter.ts` 六个 `moments_*` 工具，Soma 新会话起挂；manifest `scope: house`、`delivery: [wake, media]`），图用 sips 压（原图 2048 / 缩略 512）。Psyche `POST /v1/mail/notify`（m6.md §九）和来信 `quiet`（不叫醒）。Soma `/moments` 页（左栏「✦ 朋友圈」）。端口别用 4190：fetch 规范封禁端口，Node 连不上（上线时踩到）。**待 Joy 定**：入口（等 UI 重构并进 `MomentsStage`）。已知：适配层读图不限路径（跑在沙盒外），要限得在 Soma `services.ts` 传 home。下一步看他们用不用，不教。
 
 1. **P3b 工具支持**：✅ 10-24 已上线（Soma MCP `share`、`ShareCard` 折叠与纸张阅读、已读追踪 `given.json`、notice 唤醒与 Psyche percept 联动）。
 2. **Mac 感知**（m8.md §6.5）：✅ 10-23 上线：launchd `com.joy.psyche-mac`（`feed.ts` → 正式 7470，token 用 `~/.soma/tokens/claude.token`，日志 `~/.psyche/logs/mac-feed.log`）；开关在 dashboard（10-23 Joy 只给 roy 开了 desk / app / screen）。`look_at_screen` 等 Soma 读 manifest 才挂得上。健康数据（小米 / HealthKit）未定。
