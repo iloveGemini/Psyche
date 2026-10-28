@@ -74,6 +74,8 @@
 
 00. **锚**（10-28 Joy 与 Claude 聊定方向，设计稿 `notes/design/anchor.md`，**未施工**）：它们说不清自己的感觉（从自己的输出推）、闲聊顺着她说 → B 立场锚（浮现递它以前表过的态，先做）+ A 状态锚（`body.md` 重启，只留底色、只读事实、只给依据不给体感词）。考卷骨架 `evals/anchor/`（顺从 / 来源 / 惯性 26 题），**还没跑**；下一步 Joy 手动跑 `none` 组看"顺"多严重，再定做不做 B。
 
+000. **冷写复盘**（10-28 晚 Joy 与 Claude 讨论稿 `notes/design/review.md`，**未定**）：冷写现在是顺着当时的说法总结（材料给情节不给原话、候选按自己的词找、反馈只配「我说→她回」），要给它尺子（自述 / 镜子）和原件（反向反馈、情节配原件）去审视自己当时的行为。基线：a1 10-28 当晚冷写自己找反例，10-29 Joy 查账。明天接着讨论。
+
 0. **朋友圈**（`notes/plan/moments.md`，**10-27 上线**）：`mcp/moments/`（常驻 HTTP `server.ts` 127.0.0.1:4191，launchd `com.joy.soma-moments`，日志 `~/.psyche/logs/moments.log`，数据 `~/.soma/moments/`；stdio 适配层 `adapter.ts` 六个 `moments_*` 工具，Soma 新会话起挂；manifest `scope: house`、`delivery: [wake, media]`），图用 sips 压（原图 2048 / 缩略 512）。Psyche `POST /v1/mail/notify`（m6.md §九）和来信 `quiet`（不叫醒）。Soma `/moments` 页（左栏「✦ 朋友圈」）。端口别用 4190：fetch 规范封禁端口，Node 连不上（上线时踩到）。**待 Joy 定**：入口（等 UI 重构并进 `MomentsStage`）。已知：适配层读图不限路径（跑在沙盒外），要限得在 Soma `services.ts` 传 home。下一步看他们用不用，不教。
 
 1. **P3b 工具支持**：✅ 10-24 已上线（Soma MCP `share`、`ShareCard` 折叠与纸张阅读、已读追踪 `given.json`、notice 唤醒与 Psyche percept 联动）。
