@@ -1,7 +1,7 @@
 # Psyche 当前状态
 
 > 开发交接用，不替代 `README.md`（是什么、为什么）和 `notes/`（设计与契约）。只留接下来要用的信息；全文 ≲ 150 行，做完的压成一行或删掉。
-> 最后更新：2026-10-27（朋友圈上线；`<now>` → `<moment>`，状态没变不重报）
+> 最后更新：2026-10-28（锚：身体重启设计稿 + 考卷骨架，未施工）
 
 ## 1. 当前阶段
 
@@ -59,6 +59,8 @@
 
 ## 3. 未完成与下一步
 
+00. **锚**（10-28 Joy 与 Claude 聊定方向，设计稿 `notes/design/anchor.md`，**未施工**）：它们说不清自己的感觉（从自己的输出推）、闲聊顺着她说 → B 立场锚（浮现递它以前表过的态，先做）+ A 状态锚（`body.md` 重启，只留底色、只读事实、只给依据不给体感词）。考卷骨架 `evals/anchor/`（顺从 / 来源 / 惯性 26 题），**还没跑**；下一步 Joy 手动跑 `none` 组看"顺"多严重，再定做不做 B。
+
 0. **朋友圈**（`notes/plan/moments.md`，**10-27 上线**）：`mcp/moments/`（常驻 HTTP `server.ts` 127.0.0.1:4191，launchd `com.joy.soma-moments`，日志 `~/.psyche/logs/moments.log`，数据 `~/.soma/moments/`；stdio 适配层 `adapter.ts` 六个 `moments_*` 工具，Soma 新会话起挂；manifest `scope: house`、`delivery: [wake, media]`），图用 sips 压（原图 2048 / 缩略 512）。Psyche `POST /v1/mail/notify`（m6.md §九）和来信 `quiet`（不叫醒）。Soma `/moments` 页（左栏「✦ 朋友圈」）。端口别用 4190：fetch 规范封禁端口，Node 连不上（上线时踩到）。**待 Joy 定**：入口（等 UI 重构并进 `MomentsStage`）。已知：适配层读图不限路径（跑在沙盒外），要限得在 Soma `services.ts` 传 home。下一步看他们用不用，不教。
 
 1. **P3b 工具支持**：✅ 10-24 已上线（Soma MCP `share`、`ShareCard` 折叠与纸张阅读、已读追踪 `given.json`、notice 唤醒与 Psyche percept 联动）。
@@ -88,6 +90,8 @@
   - `soma-test`：端口 30152（住户 a1，连接测试 Psyche；监听 0.0.0.0，局域网调试）
 
 ## 6. 验证
+
+2026-10-28（锚考卷骨架）：`bun evals/anchor/build.ts` 出 26 题、`check.ts` 手试通过；没跑模型。云端容器装不上依赖（代理 403），`tsc` 没跑成（`bun-types` 缺），代码未经类型检查。
 
 2026-10-27（朋友圈）：Psyche `bun test` 390 pass / 0 fail（`tests/moments.test.ts` 10 个、`channel.test.ts` 加 notify / quiet 3 个）、`tsc` 只剩 worktree 里 `scripts/rename-resident.ts` 找不到 `../../Soma`（路径问题，主工作区没有）；Soma `npm test` 174 pass、`tsc` 0 错误。§七在 test 库**副本**（Soma 地址指空端口）+ 副本 moments 服务上跑：a1 经真 stdio 适配层发带图帖 → a2 feed 有缩略图块 → a2 评论 → a1 收件箱一封 `via: moments`（`quiet`）、两边 `mail.out` 条数不变 → a1 回复 → a2 收到 → a1 删帖 → 两边 feed 空；Soma 页（worktree `next dev --webpack`，SOMA_HOME 也是 scratch）上 Joy 发帖、评论 a1 的帖 → a1 收到 Joy 的信（`quiet`）、删帖 / 改简介 / 图片转发都通。「没被叫醒」副本里 a1 本来关着 `wakeOn.mail`，靠单测证（缺省开时 quiet 信不进叫醒候选）。没跑真模型。
 
