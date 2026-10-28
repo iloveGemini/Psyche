@@ -230,6 +230,23 @@ describe("<moment>", () => {
     );
   });
 
+  test("<moment>：同一个人连续说话，第二轮不重报「刚刚」（避免第 2 轮抖动）", async () => {
+    let clock = T("2026-10-14T09:00:00+08:00");
+    const { store, projections } = setup(() => clock);
+    store.setSituation({ harness: "soma", session: "S1" });
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "昨天的事" }, at: T("2026-10-14T06:00:00+08:00") });
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "早" }, at: T("2026-10-14T09:00:00+08:00") });
+    const app = createApp({ store, projections });
+    const { text: t1 } = await (await app.request("/v1/now?session=S1")).json();
+    expect(t1).toContain("上次有人跟我说话：Joy，3 小时前");
+
+    // 第二轮：还是 Joy，1 分钟后接着说，不重报
+    clock = T("2026-10-14T09:01:00+08:00");
+    intake(store, { kind: "message.in", source: "soma", payload: { from: "Joy", text: "今天做点什么" }, at: clock });
+    const { text: t2 } = await (await app.request("/v1/now?session=S1")).json();
+    expect(t2).not.toContain("上次有人跟我说话");
+  });
+
   test("没处境、没人说过话：只剩现在", async () => {
     const { store, projections } = setup(() => T("2027-01-02T08:00:00+08:00"));
     intake(store, { kind: "message.in", source: "roxy", payload: { from: "Joy", text: "只有一条" } });

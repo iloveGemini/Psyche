@@ -187,22 +187,37 @@ export function renderNotice(store: EventStore, n: Notice): string {
 }
 
 /** 状态行：每轮现算，不成立就消失。just = 这次已在「刚发生」报过的（这一轮不再重复） */
-export function mailStateLines(store: EventStore, here: Place | null, f: Facts, just: Notice[] = []): { lines: string[]; held: number; sig: string } {
+export interface MailState {
+  letters: MailIn[];
+  moments: MailIn[];
+  handoffs: PsycheEvent[];
+  held: number;
+  failed: { ref: string; via: string; error?: string }[];
+}
+
+export function mailState(store: EventStore, here: Place | null, f: Facts, just: Notice[] = []): MailState {
   const skip = new Set(just.map((n) => n.ev.id));
   const rules = currentDnd(store);
   const unread = unreadMail(store);
   const blocked = unread.filter((m) => held(rules, f, m));
   const open = unread.filter((m) => !held(rules, f, m) && !skip.has(m.ev.id));
   const handoffs = unreadHandoffs(store, here).filter((e) => !skip.has(e.id));
-  const parts: string[] = [];
-  if (open.length) parts.push(`${open.length} 封没看（${[...new Set(open.map((m) => m.from))].join("、")}，最早 ${when(store, open[0].ev.at)}）`);
-  if (handoffs.length) parts.push(`交接信 ${handoffs.length} 封没看`);
-  const lines = parts.length ? [`收件箱：${parts.join("；")}`] : [];
+  const letters = open.filter((m) => (m.ev.payload as { via?: string }).via !== "moments");
+  const moments = open.filter((m) => (m.ev.payload as { via?: string }).via === "moments");
   const failed = undelivered(store);
-  if (failed.length) lines.push(`没送出去的信：${failed.length} 封（${VIA[failed.at(-1)!.via] ?? failed.at(-1)!.via}：${failed.at(-1)!.error ?? "出错"}）`);
-  // moment 的状态闸（m1.md §四）：哪几封没看、哪几封没送出去变了才重报
-  const sig = [open.map((m) => m.ev.id).join(","), handoffs.map((e) => e.id).join(","), failed.map((f) => `${f.ref}:${f.via}`).join(",")].join("|");
-  return { lines, held: blocked.length, sig: sig === "||" ? "" : sig };
+  return { letters, moments, handoffs, held: blocked.length, failed };
+}
+
+export function mailStateLines(store: EventStore, here: Place | null, f: Facts, just: Notice[] = []): { lines: string[]; held: number; sig: string } {
+  const m = mailState(store, here, f, just);
+  const parts: string[] = [];
+  const allOpen = [...m.letters, ...m.moments];
+  if (allOpen.length) parts.push(`${allOpen.length} 封没看（${[...new Set(allOpen.map((x) => x.from))].join("、")}，最早 ${when(store, allOpen[0].ev.at)}）`);
+  if (m.handoffs.length) parts.push(`交接信 ${m.handoffs.length} 封没看`);
+  const lines = parts.length ? [`收件箱：${parts.join("；")}`] : [];
+  if (m.failed.length) lines.push(`没送出去的信：${m.failed.length} 封（${VIA[m.failed.at(-1)!.via] ?? m.failed.at(-1)!.via}：${m.failed.at(-1)!.error ?? "出错"}）`);
+  const sig = [allOpen.map((x) => x.ev.id).join(","), m.handoffs.map((e) => e.id).join(","), m.failed.map((f) => `${f.ref}:${f.via}`).join(",")].join("|");
+  return { lines, held: m.held, sig: sig === "||" ? "" : sig };
 }
 
 /** 写给人的信里，最近一次投递失败的（同一封后来送成了就不算） */

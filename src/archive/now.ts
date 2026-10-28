@@ -6,7 +6,7 @@
 import type { EventStore } from "../store/events.ts";
 import { wallClock } from "../core/time.ts";
 import { readSegment, resolveSession } from "../catalog/hotwrite.ts";
-import type { StateItem } from "./moment.ts";
+import { lastSigs, type StateItem } from "./moment.ts";
 import { pendingGists } from "../catalog/gist.ts";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -71,13 +71,18 @@ export function momentHead(store: EventStore, session?: string): { time: string;
     )
     .get() as { who: string; at: number } | null;
   const prev = lastMail && (!prevMsg || lastMail.at > prevMsg.at) ? { ...lastMail, mail: true } : prevMsg;
-  if (prev)
+  if (prev) {
+    const wasPrev = lastSigs(store, s ?? undefined)["prev"];
+    const samePerson = wasPrev !== undefined && wasPrev.split("|")[0] === prev.who;
+    const chatting = now - prev.at < GAP_MS;
+    const sig = samePerson && chatting ? wasPrev : `${prev.who}|${now - prev.at >= GAP_MS ? prev.at : ""}`;
     items.push({
       key: "prev",
-      // 换了人，或隔了 1 小时以上才算变；聊着的时候「6 分钟前 → 9 分钟前」不重报
-      sig: `${prev.who}|${now - prev.at >= GAP_MS ? prev.at : ""}`,
+      // 换了人，或隔了 1 小时以上才算变；聊着的时候「6 分钟前 → 9 分钟前」不重报（同人且 1 小时内聊沿用上一轮 sig，免得第 2 轮抖动）
+      sig,
       text: `上次有人跟我说话：${prev.who}，${ago(now - prev.at)}${"mail" in prev ? "（来信，看过了）" : ""}`,
     });
+  }
   return { time, items };
 }
 

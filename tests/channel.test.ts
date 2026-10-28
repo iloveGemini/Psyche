@@ -147,7 +147,7 @@ describe("递消息，不递信", () => {
     expect(n1).not.toContain("晚上吃什么");
     const n2 = await h.now("S2");
     expect(n2).not.toContain("刚发生");
-    expect(n2).toContain("收件箱：1 封没看（Joy，最早 14:02）");
+    expect(n2).toContain("未读：收件箱 1 封（Joy）");
     expect(h.store.readSyslog({ kind: "mail.noticed" })).toHaveLength(1);
     await h.ok("/v1/mail/open", { refs: [m.id] });
     expect(await h.now("S2")).not.toContain("收件箱");
@@ -354,7 +354,7 @@ describe("交接信", () => {
     const n = await h.now("R1");
     expect(n).toContain("- 交接信（10-15 09:00 在 soma 写的）");
     expect(n).not.toContain("做到一半");
-    expect(await h.now("R1")).toContain("交接信 1 封没看");
+    expect(await h.now("R1")).toContain("未读：交接信 1 封");
     const list = await h.get("/v1/mail?days=30");
     const letter = list.mails.find((x: { dir: string }) => x.dir === "handoff");
     await h.ok("/v1/mail/open", { refs: [letter.id] });

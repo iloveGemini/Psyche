@@ -70,22 +70,66 @@ test("房间里被静音：Soma 带来的房间名报成一行，没有就不报
   const app = createApp({ store, projections: p });
   const now = async (q: string) => ((await (await app.request(`/v1/now?session=s1${q}`)).json()) as { text: string }).text;
   expect(await now(`&muted=${encodeURIComponent(JSON.stringify(["S3 测试"]))}`)).toContain("房间：你在《S3 测试》被静音了");
+  expect(await now(`&muted=${encodeURIComponent(JSON.stringify(["B房", "A房"]))}`)).toContain("你在《A房》、《B房》被静音了");
+  // 顺序颠倒时排序稳定，sig 不变，不重报
+  expect(await now(`&muted=${encodeURIComponent(JSON.stringify(["A房", "B房"]))}`)).not.toContain("被静音了");
   expect(await now("")).toContain("房间：哪里都没被静音了");
   expect(await now("")).not.toContain("静音");
   expect(await now("&muted=oops")).not.toContain("被静音");
 });
 
-test("房间（P3）：在哪间、谁也在、几条没读；在自己房间也说一声；看不懂不报", async () => {
+test("房间（P3）：在哪间、谁也在；纯处境不带未读数，未读并入统一未读行；在自己房间也说一声；看不懂不报", async () => {
   const { store, p } = setup();
   store.setSituation({ harness: "soma", session: "s1" }, "soma");
   const app = createApp({ store, projections: p });
   const now = async (q: string) => ((await (await app.request(`/v1/now?session=s1${q}`)).json()) as { text: string }).text;
   const room = (r: unknown) => `&room=${encodeURIComponent(JSON.stringify(r))}`;
-  expect(await now(room({ in: "客厅", with: ["a1", "Argon"], unread: 3 }))).toContain("房间：你在《客厅》，a1、Argon 也在；有 3 条没读（rooms 的 read 看）");
-  expect(await now(room({ in: "客厅", with: [], unread: 0 }))).toContain("房间：你在《客厅》，就你一个\n");
+  const t1 = await now(room({ in: "客厅", with: ["a1", "Argon"], unread: 3 }));
+  expect(t1).toContain("房间：你在《客厅》，Argon、a1 也在");
+  expect(t1).toContain("未读：客厅 3 条");
+  // 档内波动（3 -> 4 条）sig 不变，不重报未读
+  const t2 = await now(room({ in: "客厅", with: ["a1", "Argon"], unread: 4 }));
+  expect(t2).not.toContain("未读：");
+  expect(t2).not.toContain("房间：");
+  // 跨档（5 条）重报
+  const t3 = await now(room({ in: "客厅", with: ["a1", "Argon"], unread: 5 }));
+  expect(t3).toContain("未读：客厅 5 条");
+  // 读完了（0 条）报没有了
+  const t4 = await now(room({ in: "客厅", with: ["a1", "Argon"], unread: 0 }));
+  expect(t4).toContain("未读：没有了");
+  // 房间变空或换房间
+  expect(await now(room({ in: "客厅", with: [], unread: 0 }))).toContain("房间：你在《客厅》，就你一个");
   expect(await now(room({ in: null }))).toContain("房间：你在自己房间");
-  expect(await now("&room=oops")).not.toContain("房间：");
-  expect(await now("")).not.toContain("房间：");
+  expect(await now("&room=oops")).not.toContain("房间：你在");
+  expect(await now("")).not.toContain("房间：你在");
+});
+
+test("未读聚合：收件箱、朋友圈、房间、待动作议题（招人中/轮到自己）单行合并；别人开的内部轮次不进未读", async () => {
+  const { store, p } = setup();
+  store.setSituation({ harness: "soma", session: "s1" }, "soma");
+  const app = createApp({ store, projections: p });
+  const now = async (q: string) => ((await (await app.request(`/v1/now?session=s1${q}`)).json()) as { text: string }).text;
+
+  // 1. 来信与朋友圈
+  store.append({ kind: "mail.in", class: "self", source: "agent", payload: { from: "Joy", text: "你好", via: "email" } });
+  store.append({ kind: "mail.in", class: "self", source: "agent", payload: { from: "Argon", text: "点赞", via: "moments" } });
+
+  // 2. 议题：recruiting (!mine)、running (mine)、running (!mine - 别人的内部轮次)
+  const agendas = [
+    { id: "a1", room: "客厅", by: "Argon", title: "读诗", state: "recruiting", mine: false, need: 2, until: "2026-10-28T22:00:00Z" },
+    { id: "a2", room: "茶室", by: "Joy", title: "喝茶", state: "running", mine: true, round: 1, rounds: 2 },
+    { id: "a3", room: "工位", by: "Bob", title: "开会", state: "running", mine: false, round: 1, rounds: 2 },
+  ];
+  const q = `&room=${encodeURIComponent(JSON.stringify({ in: "客厅", with: ["Joy"], unread: 2 }))}&agendas=${encodeURIComponent(JSON.stringify(agendas))}`;
+  // 第一轮：新来信在「刚发生」报
+  const first = await now(q);
+  expect(first).toContain("刚发生：");
+  expect(first).toContain("未读：客厅 2 条 · 议题招人 1 件 · 议题进行中 1 件");
+
+  // 第二轮：信已报过，进入未读状态行，聚合收件箱、朋友圈、房间、议题
+  const t = await now(q);
+  expect(t).toContain("未读：收件箱 1 封（Joy） · 朋友圈 1 条 · 客厅 2 条 · 议题招人 1 件 · 议题进行中 1 件");
+  expect(t).not.toContain("Bob");
 });
 
 test("订阅额度：跨 50 / 75 / 90% 或换了窗口才重报；新一段首轮全报；没带就没有", async () => {

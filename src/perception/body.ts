@@ -85,9 +85,15 @@ export function quotaItem(store: EventStore, quota: BodyInput["quota"]): StateIt
   if (!ks.length) return null;
   return {
     key: "quota",
-    sig: ks.map((k) => `${k}:${bandOf(quota![k]!.pct, QUOTA_BANDS)}:${quota![k]!.resetsAt ?? ""}`).join("|"),
+    sig: ks.map((k) => `${k}:${bandOf(quota![k]!.pct, QUOTA_BANDS)}:${resetBucket(quota![k]!.resetsAt)}`).join("|"),
     text: `订阅额度（全屋共用）：${ks.map((k) => `${QUOTA_NAME[k]} ${Math.round(quota![k]!.pct)}%${resetLabel(quota![k]!.resetsAt, store.timeZone)}`).join(" · ")}`,
   };
+}
+
+/** 重置时刻每轮会抖一两分钟（20:09 / 20:10）：按半小时取整，真换了窗口才算变 */
+function resetBucket(iso: string | null): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isNaN(t) ? "" : String(Math.round(t / 1_800_000));
 }
 
 /** 身上（事件）：换了模型（首轮说一次）、工具老出错（跨档说） */

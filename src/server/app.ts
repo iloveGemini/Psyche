@@ -17,7 +17,7 @@ import { readExperience } from "../archive/experience.ts";
 import { hybridRecall, queryVector, renderShelfHit, shelfRecall } from "../archive/recall.ts";
 import type { Embedder } from "../archive/vectors.ts";
 import { momentHead, noteSheetLine } from "../archive/now.ts";
-import { gate, resetMoment, type StateItem } from "../archive/moment.ts";
+import { bandOf, gate, resetMoment, type StateItem } from "../archive/moment.ts";
 import { asleepPlace, asleepTask } from "../asleep.ts";
 import { renderSurfaced, surface } from "../association/surface.ts";
 import { HotwriteError, readSegment, resolveSession, reviseEpisode, writeEpisodes } from "../catalog/hotwrite.ts";
@@ -31,7 +31,8 @@ import { PROMPTS_DIR, readPrompt } from "../core/prompts.ts";
 import { getSettings, ScheduleError, setSchedule, setSettings, writeDiary, readSchedule } from "../heartbeat/schedule.ts";
 import { deliverDue, nextWake, heartbeatNext, renderJustHappened, scheduleItem, wakeLedger, budgetUsedToday } from "../heartbeat/scheduler.ts";
 import { composePrompt, currentName, nameSelf, pendingSelfLine, readSelf, rewriteSelf, SelfError, selfVersion } from "../self/self.ts";
-import { factsNow, mailStateLines, noticeMail, placeOf, renderNotice } from "../channel/inbox.ts";
+import { factsNow, mailState, noticeMail, placeOf, renderNotice, type MailState } from "../channel/inbox.ts";
+import { VIA } from "../archive/render.ts";
 import { CHANNELS, getChannels, listMail, MailError, openMail, receiveMail, sendMail, setChannels, where } from "../channel/mailbox.ts";
 import type { PsycheEvent } from "../store/events.ts";
 import { GIST_LIMIT, GistError, pendingGists, readGists, writeGist } from "../catalog/gist.ts";
@@ -412,7 +413,7 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const facts = factsNow(store, here);
     const notices = noticeMail(store, here, facts);
     const just = renderJustHappened(store, deliverDue(store), notices.map((n) => ({ at: n.ev.at, line: renderNotice(store, n) })));
-    const mail = mailStateLines(store, here, facts, notices);
+    const mail = mailState(store, here, facts, notices);
     // 订阅额度（走订阅的身体，Soma 带来）：此刻的数每轮一行，跨档提醒另在「身上」里（m8.md §六.1）
     const quota = {
       ...(num(q.q5h) !== undefined ? { fiveHour: { pct: num(q.q5h)!, resetsAt: q.q5hReset || null } } : {}),
@@ -423,18 +424,23 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
     const line = (key: string, text: string | null, none?: string): StateItem => ({ key, sig: text ?? "", text, ...(none ? { none } : {}) });
     const ctx = ctxItem({ ctx: num(q.ctx), wrapAt: num(q.wrapAt) });
     const quotaIt = delivers(store, "body") ? quotaItem(store, quota) : null;
+    const roomIt = roomItem(q.room);
+    const mutedIt = mutedItem(q.muted);
+    const failedIt = failedMailItem(mail.failed);
+    const unreadIt = unreadItem(mail, q.room, q.agendas);
+
     const items: StateItem[] = [
       ...head.items,
       line("self", pendingSelfLine(store, promptsDir)),
-      { key: "mail", sig: mail.sig, text: mail.lines.join("\n") || null },
+      unreadIt,
+      failedIt,
       ...(quotaIt ? [quotaIt] : []),
       ...(ctx && delivers(store, "body") ? [ctx] : []),
       scheduleItem(store, { held: mail.held }),
       threadsItem(store),
       line("notesheet", noteSheetLine(store), "备考：后台的活恢复了"),
-      line("room", roomLine(q.room)),
-      line("muted", mutedLine(q.muted), "房间：哪里都没被静音了"),
-      line("agenda", agendaLines(q.agendas), "议题：没有了"),
+      ...(roomIt ? [roomIt] : []),
+      mutedIt,
       ...presenceItems(store),
     ];
     // 没给会话就按当前处境的会话记游标（同 momentHead）
@@ -694,65 +700,156 @@ export function createApp({ store, token, promptsDir = PROMPTS_DIR, embedder, ou
   return app;
 }
 
-/**
- * 群里的议题（Soma 每轮带来，Soma 101 10-18）：住户自己开的讨论，招人时只在这里看得到，不叫醒谁。
- * 是此刻的状态，每轮都报，不记经历。
- */
-function agendaLines(raw: string | undefined): string | null {
-  let list: unknown;
+
+interface RoomData {
+  in?: string;
+  with?: string[];
+  unread?: number;
+}
+
+function parseRoom(raw: string | undefined): RoomData | null {
+  if (!raw) return null;
   try {
-    list = raw ? JSON.parse(raw) : [];
+    const r = JSON.parse(raw);
+    return r && typeof r === "object" ? r : null;
   } catch {
     return null;
   }
-  if (!Array.isArray(list)) return null;
-  const hhmm = (iso: string) => {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? "" : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * 房间处境（Soma 每轮带来，P3 10-19）：在哪、还有谁在。纯处境，不带未读数，避免聊天消息导致整行抖动。
+ */
+function roomItem(raw: string | undefined): StateItem | null {
+  const r = parseRoom(raw);
+  if (!r) return null;
+  if (typeof r.in !== "string" || !r.in) {
+    return {
+      key: "room",
+      sig: "self",
+      text: "房间：你在自己房间——公共房间里说的话这里听不到（rooms 看有哪些房间、进哪间）",
+    };
+  }
+  const others = Array.isArray(r.with) ? r.with.filter((n): n is string => typeof n === "string" && !!n).sort() : [];
+  return {
+    key: "room",
+    sig: `${r.in}|${others.join(",")}`,
+    text: `房间：你在《${r.in}》${others.length ? `，${others.join("、")} 也在` : "，就你一个"}`,
   };
-  const lines = list
-    .filter((a): a is Record<string, unknown> => !!a && typeof a === "object" && typeof (a as { title?: unknown }).title === "string")
-    .map((a) => {
-      const joined = Array.isArray(a.joined) ? a.joined.map(String) : [];
-      const head = `《${a.room}》里 ${a.by} 开的《${a.title}》`;
-      if (a.state === "running") return `- ${head}正在开（第 ${a.round ?? 0}/${a.rounds} 轮，${joined.join("、")}）${a.mine ? "，轮到你时会叫你" : ""}`;
-      const left = Math.max(0, Number(a.need) - joined.length);
-      const about = typeof a.about === "string" && a.about ? `：${a.about}` : "";
-      return `- ${head}${about}，在招人：已报名 ${joined.join("、")}，还差 ${left} 人，${hhmm(String(a.until))} 前${a.mine ? "（你报名了）" : `——想来就 agenda join ${a.id}`}`;
-    });
-  return lines.length ? `议题：\n${lines.join("\n")}` : null;
 }
 
 /**
- * 在哪个房间（Soma 每轮带来，P3 10-19）：在哪、还有谁在、有几条没读。在房间里才听得到那里说的话；
- * 睡着时 Joy 在那里说的不叫醒他（除非她标了紧急），醒了靠这一行知道。是此刻的状态，每轮都报，不记经历。
+ * 在哪些房间被静音（Soma 每轮带来，soma2.md §5.7）：静音了就没人来问。
+ * 名字排序防止颠倒抖动；解除了出 none 提示。
  */
-function roomLine(raw: string | undefined): string | null {
-  let r: { in?: unknown; with?: unknown; unread?: unknown } | null;
-  try {
-    r = raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-  if (!r || typeof r !== "object") return null;
-  if (typeof r.in !== "string" || !r.in) return "房间：你在自己房间——公共房间里说的话这里听不到（rooms 看有哪些房间、进哪间）";
-  const others = Array.isArray(r.with) ? r.with.filter((n): n is string => typeof n === "string" && !!n) : [];
-  const unread = typeof r.unread === "number" && r.unread > 0 ? r.unread : 0;
-  return `房间：你在《${r.in}》${others.length ? `，${others.join("、")} 也在` : "，就你一个"}${unread ? `；有 ${unread} 条没读（rooms 的 read 看）` : ""}`;
-}
-
-/**
- * 在哪些房间被静音（Soma 每轮带来，soma2.md §5.7，a1 提）：静音了就没人来问，不说它会以为大家都安静了。
- * 是此刻的状态，每轮都报，不记经历。
- */
-function mutedLine(raw: string | undefined): string | null {
+function mutedItem(raw: string | undefined): StateItem {
   let names: unknown;
   try {
     names = raw ? JSON.parse(raw) : [];
   } catch {
-    return null;
+    names = [];
   }
-  const list = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && !!n) : [];
-  if (!list.length) return null;
-  return `房间：你在${list.map((n) => `《${n}》`).join("、")}被静音了（连着两次没说话）——那里不会再轮到你，等 Joy 开新话题或有人 @ 你才会再问你`;
+  const list = Array.isArray(names) ? names.filter((n): n is string => typeof n === "string" && !!n).sort() : [];
+  const text = list.length
+    ? `房间：你在${list.map((n) => `《${n}》`).join("、")}被静音了（连着两次没说话）——那里不会再轮到你，等 Joy 开新话题或有人 @ 你才会再问你`
+    : null;
+  return {
+    key: "muted",
+    sig: list.join(","),
+    text,
+    none: "房间：哪里都没被静音了",
+  };
+}
+
+interface AgendaData {
+  id?: string;
+  room?: string;
+  by?: string;
+  title?: string;
+  about?: string;
+  joined?: string[];
+  need?: number;
+  state?: string;
+  mine?: boolean;
+  until?: string;
+  round?: number;
+  rounds?: number;
+}
+
+function parseAgendas(raw: string | undefined): AgendaData[] {
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    return list.filter((a): a is AgendaData => !!a && typeof a === "object" && typeof a.title === "string");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 未读聚合（10-28 紧凑单行）：收件箱、朋友圈、交接信、房间未读、待动作议题（招人中/进行中轮到自己）。
+ * 房间未读按 [1, 5, 10] 粗分档，避免每条新消息都重报未读。
+ */
+function unreadItem(mail: MailState, roomRaw: string | undefined, agendasRaw: string | undefined): StateItem {
+  const parts: string[] = [];
+  const r = parseRoom(roomRaw);
+  const roomUnread = typeof r?.unread === "number" && r.unread > 0 ? r.unread : 0;
+  const roomName = r?.in && typeof r.in === "string" ? r.in : "房间";
+
+  if (mail.letters.length) {
+    const senders = [...new Set(mail.letters.map((x) => x.from))].join("、");
+    parts.push(`收件箱 ${mail.letters.length} 封${senders ? `（${senders}）` : ""}`);
+  }
+  if (mail.moments.length) {
+    parts.push(`朋友圈 ${mail.moments.length} 条`);
+  }
+  if (mail.handoffs.length) {
+    parts.push(`交接信 ${mail.handoffs.length} 封`);
+  }
+  if (roomUnread) {
+    parts.push(`${roomName} ${roomUnread} 条`);
+  }
+
+  const agendas = parseAgendas(agendasRaw);
+  const recruiting = agendas.filter((a) => a.state !== "running" && !a.mine);
+  const mineRunning = agendas.filter((a) => a.state === "running" && a.mine);
+  if (recruiting.length) {
+    parts.push(`议题招人 ${recruiting.length} 件`);
+  }
+  if (mineRunning.length) {
+    parts.push(`议题进行中 ${mineRunning.length} 件`);
+  }
+
+  const sigParts = [
+    mail.letters.map((x) => x.ev.id).join(","),
+    mail.moments.map((x) => x.ev.id).join(","),
+    mail.handoffs.map((e) => e.id).join(","),
+    roomUnread > 0 ? `${roomName}:${bandOf(roomUnread, [1, 5, 10])}` : "",
+    recruiting.map((a) => a.id ?? "").sort().join(","),
+    mineRunning.map((a) => a.id ?? "").sort().join(","),
+  ];
+
+  const hasAny = sigParts.some(Boolean);
+  return {
+    key: "unread",
+    sig: hasAny ? sigParts.join("|") : "",
+    text: parts.length ? `未读：${parts.join(" · ")}` : null,
+    none: "未读：没有了",
+  };
+}
+
+/**
+ * 没送出去的信：投递失败的出站信。
+ */
+function failedMailItem(failed: { ref: string; via: string; error?: string }[]): StateItem {
+  if (!failed.length) return { key: "failedMail", sig: "", text: null };
+  const last = failed.at(-1)!;
+  const viaName = VIA[last.via] ?? last.via;
+  const error = last.error ?? "出错";
+  return {
+    key: "failedMail",
+    sig: failed.map((f) => `${f.ref}:${f.via}`).join(","),
+    text: `没送出去的信：${failed.length} 封（${viaName}：${error}）`,
+  };
 }
