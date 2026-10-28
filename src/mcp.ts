@@ -416,7 +416,10 @@ export function createPsycheMcp(opts: McpOptions = {}): McpServer {
             ]
           : []),
         "<candidates>",
-        ...(m.candidates.length ? m.candidates.flatMap((c) => [`关于 ${c.target}：`, ...c.lines.map((l) => `${line(l)}　〔命中「${l.hit}」〕`)]) : ["（没有）"]),
+        // 候选行都在 <material> 里，这里只给档号和命中词：原来逐行重抄，九条条目把同一批材料抄了几遍，a1 那次 1.6 万字（10-28）
+        ...(m.candidates.length
+          ? ["（原文在下面 <material> 里按档号找）", ...m.candidates.map((c) => `关于 ${c.target}：${c.lines.map((l) => `[${l.archiveNo}]「${l.hit}」`).join(" ")}`)]
+          : ["（没有）"]),
         "</candidates>",
         "",
         "<material>",
