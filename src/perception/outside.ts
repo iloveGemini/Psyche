@@ -85,6 +85,7 @@ export function recordPercept(residents: { id: string; store: EventStore }[], bo
 /** <now> 的「这段时间感知到的」：本会话上次递到之后的，同一样压成一行（最后的样子 + 次数）；最多 10 行 */
 export function deliverOutside(store: EventStore, session: string | undefined): string | null {
   const lastRow = lastDelivery(store, "outside", session);
+  const wasLevels = (lastRow?.levels as Record<string, unknown> | undefined) ?? {};
   // 同全屋的东西（§6.2）：本会话递过就从那次算；新会话接最后递到的那次；从没递过只报最近 6 小时的
   const floor = lastRow ? 0 : store.now() - 6 * 3_600_000;
   const fresh = outsideOf(store).filter((e) => {
@@ -92,18 +93,58 @@ export function deliverOutside(store: EventStore, session: string | undefined): 
     return (lastRow ? e.id > lastRow.id : e.at >= floor) && e.at <= store.now() && delivers(store, p.sensor, p.subject);
   });
   if (!fresh.length) return null;
+
+  const now = store.now();
+  // 检查是否正在与 Joy 活跃对话中（最近 10 分钟内有人说过话）
+  const lastMsg = store.db
+    .query(
+      `SELECT json_extract(payload, '$.from') AS who, at FROM events WHERE kind IN ('message.in', 'speech.silent') AND fonds = '' ORDER BY at DESC LIMIT 1`,
+    )
+    .get() as { who: string; at: number } | null;
+  const activeChat = !!lastMsg && lastMsg.who === "Joy" && now - lastMsg.at < 10 * 60_000;
+
   const by = new Map<string, PsycheEvent[]>();
   for (const e of fresh) {
     const p = e.payload as Outside;
     const k = `${p.sensor}\u0000${p.subject}`;
     by.set(k, [...(by.get(k) ?? []), e]);
   }
-  const lines = [...by.values()].slice(-MAX_LINES).map((evs) => {
+
+  const newLevels: Record<string, unknown> = { ...wasLevels };
+  const candidateLines: { text: string; at: number }[] = [];
+
+  for (const [k, evs] of by.entries()) {
     const e = evs.at(-1)!;
-    return `- ${(e.payload as Outside).text}（${evs.length > 1 ? `这段时间变了 ${evs.length} 次，` : ""}${clockOf(e.at, store.now(), store.timeZone)}）`;
-  });
-  const more = by.size > MAX_LINES ? [`（还有 ${by.size - MAX_LINES} 样也变了）`] : [];
-  const text = ["这段时间感知到的：", ...lines, ...more].join("\n");
-  recordDelivery(store, "outside", session, { refs: fresh.map((e) => e.id), text });
-  return text;
+    const p = e.payload as Outside;
+    const latestValue = p.value;
+    const wasVal = wasLevels[k];
+    newLevels[k] = latestValue;
+
+    // 1. 最终状态未变（中间哪怕有波动，最终与上次递送给此会话的状态一致）：不重报
+    if (wasVal !== undefined && JSON.stringify(wasVal) === JSON.stringify(latestValue)) {
+      continue;
+    }
+
+    // 2. 活跃对话中抑制冗余自引用与打扰：
+    if (activeChat && p.sensor === "joy.mac") {
+      // 对话中打字必然在用电脑，不插播「Joy 在用电脑」
+      if (p.subject === "desk" && latestValue === "active") continue;
+      // 对话中的前台交互界面（Soma / Claude），不插播自引用
+      if (p.subject === "app" && (latestValue === "Soma" || latestValue === "Claude")) continue;
+      // 该条消息发送前发生的桌面微切片已被消息本身覆盖，不插播过时切片
+      if (e.at < lastMsg.at) continue;
+    }
+
+    const countPart = evs.length > 1 ? `这段时间变了 ${evs.length} 次，` : "";
+    candidateLines.push({
+      text: `- ${p.text}（${countPart}${clockOf(e.at, store.now(), store.timeZone)}）`,
+      at: e.at,
+    });
+  }
+
+  const displayLines = candidateLines.slice(-MAX_LINES).map((c) => c.text);
+  const more = candidateLines.length > MAX_LINES ? [`（还有 ${candidateLines.length - MAX_LINES} 样也变了）`] : [];
+  const text = displayLines.length ? ["这段时间感知到的：", ...displayLines, ...more].join("\n") : "";
+  recordDelivery(store, "outside", session, { refs: fresh.map((e) => e.id), text, levels: newLevels });
+  return displayLines.length ? text : null;
 }

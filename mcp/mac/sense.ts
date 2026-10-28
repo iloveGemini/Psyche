@@ -96,6 +96,7 @@ export interface FeedState {
   /** 已报的前台应用；候选（只见过一圈的） */
   app?: string;
   appSeen?: string;
+  appCount?: number;
 }
 
 const DESK_TEXT: Record<Desk, string> = {
@@ -123,11 +124,19 @@ export function step(state: FeedState, r: Reading, open: { desk: boolean } = { d
   // 应用：没锁屏、键鼠刚动过才算她在用；连着两圈都是它才报（来回切的不报）
   const using = !r.locked && r.idleSeconds !== undefined && r.idleSeconds < ACTIVE_S ? r.app : undefined;
   if (using) {
-    if (using === state.appSeen && using !== state.app) {
+    if (using === state.appSeen) {
+      state.appCount = (state.appCount ?? 1) + 1;
+    } else {
+      state.appSeen = using;
+      state.appCount = 1;
+    }
+    if (state.appCount >= 2 && state.app !== using) {
       state.app = using;
       out.push({ sensor: SENSOR, subject: "app", value: using, text: `Joy 前台在用 ${using}` });
     }
-    state.appSeen = using;
+  } else {
+    state.appSeen = undefined;
+    state.appCount = 0;
   }
   return out;
 }

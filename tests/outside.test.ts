@@ -107,3 +107,37 @@ test("Joy 那边（joy.mac）：她给谁开放了才记给谁；GET /v1/house/m
   const res = await h.house.handle(new Request("http://x/v1/house/mac"));
   expect(await res.json()).toEqual({ grants: { a1: { desk: false, app: false, screen: false }, a2: { desk: false, app: true, screen: false } } });
 });
+
+test("防抖：同一样最终状态未变不重报；活跃对话中抑制自引用与键鼠插话", async () => {
+  const h = setup();
+  const { setSettings } = await import("../src/heartbeat/schedule.ts");
+  setSettings(h.a1, { mac: { app: true, desk: true } });
+  // 1. 首轮递出优酷
+  await h.post({ sensor: "joy.mac", subject: "app", value: "优酷", text: "Joy 前台在用 优酷" });
+  expect(deliverOutside(h.a1, "s1")).toBe("这段时间感知到的：\n- Joy 前台在用 优酷（21:00）");
+
+  // 2. 中间切走又切回优酷，最终状态依然是优酷：不重报「优酷（变了 2 次）」
+  h.clock.t += 60_000;
+  await h.post({ sensor: "joy.mac", subject: "app", value: "Antigravity", text: "Joy 前台在用 Antigravity" });
+  h.clock.t += 60_000;
+  await h.post({ sensor: "joy.mac", subject: "app", value: "优酷", text: "Joy 前台在用 优酷" });
+  expect(deliverOutside(h.a1, "s1")).toBeNull();
+
+  // 3. 切到新应用 Claude：变了才报
+  h.clock.t += 60_000;
+  await h.post({ sensor: "joy.mac", subject: "app", value: "Claude", text: "Joy 前台在用 Claude" });
+  expect(deliverOutside(h.a1, "s1")).toBe("这段时间感知到的：\n- Joy 前台在用 Claude（21:03）");
+
+  // 4. 活跃对话中：Joy 正在说话（用 Soma，在用电脑）
+  h.a1.append({ kind: "message.in", class: "experience", source: "user", at: h.clock.t, situation: null, payload: { from: "Joy", text: "在吗" } });
+  h.clock.t += 10_000;
+  await h.post({ sensor: "joy.mac", subject: "app", value: "Soma", text: "Joy 前台在用 Soma" });
+  await h.post({ sensor: "joy.mac", subject: "desk", value: "active", text: "Joy 在用电脑（键鼠刚动过）" });
+  // Soma 自引用与在用电脑被抑制，不打扰对话
+  expect(deliverOutside(h.a1, "s1")).toBeNull();
+
+  // 5. 离开了 15 分钟（不再活跃对话），锁屏了：属于重要环境事实，正常递出
+  h.clock.t += 15 * 60_000;
+  await h.post({ sensor: "joy.mac", subject: "desk", value: "locked", text: "Joy 的电脑锁屏了" });
+  expect(deliverOutside(h.a1, "s1")).toBe("这段时间感知到的：\n- Joy 的电脑锁屏了（21:18）");
+});
